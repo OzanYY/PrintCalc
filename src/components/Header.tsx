@@ -1,12 +1,16 @@
 //import React from 'react'
+import { Button } from "./ui/button"
+import { Sigma, User } from 'lucide-react'
 
 export default function Header() {
     return (
-        <header>
-            <div>
-                <span className='logo'>PrintCalc</span>
+        <header className="flex justify-between">
+            <div className="flex">
+                <Button className="cursor-pointer hover:bg-gray-300"><Sigma/>PtintCalc</Button>
             </div>
-            <div className='presentation'></div>
+            <div className="flex">
+                <Button className="cursor-pointer hover:bg-gray-300"><User/></Button>
+            </div>
         </header>
     )
 }
