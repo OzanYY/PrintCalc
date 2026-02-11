@@ -5,11 +5,13 @@ import './App.css'
 
 import Header from './components/Header'
 import Footer from './components/Footer'
+import Calc from './components/calculator'
 
 function App() {
   return (
     <div>
       <Header />
+      <Calc />
       <Footer />
     </div>
   )
