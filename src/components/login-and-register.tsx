@@ -12,12 +12,15 @@ import { Input } from "@/components/ui/input"
 
 export default function sign() {
     return (
-        <div className="flex justify-between">
-            <div className="register w-full max-w-sm">
-                <SignupForm />
-            </div>
-            <div className="login w-full max-w-sm">
-                <LoginForm />
+        <div>
+            <div className="flex justify-center mb-20"></div>
+            <div className="flex justify-between">
+                <div className="register w-full max-w-sm">
+                    <SignupForm />
+                </div>
+                <div className="login w-full max-w-sm">
+                    <LoginForm />
+                </div>
             </div>
         </div>
     )
@@ -34,7 +37,7 @@ function LoginForm({
                     <CardTitle className="flex items-center">
                         <LogIn />
                         <p className="ml-4">Войти в аккаунт</p>
-                        </CardTitle>
+                    </CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form>
