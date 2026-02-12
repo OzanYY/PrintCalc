@@ -6,7 +6,7 @@ export default function Header() {
     return (
         <header className="flex justify-between">
             <div className="flex">
-                <Button className="cursor-pointer hover:bg-gray-300"><Sigma/>PtintCalc</Button>
+                <Button className="cursor-pointer hover:bg-gray-300"><Sigma/>PrintCalc</Button>
             </div>
             <div className="flex">
                 <Button className="cursor-pointer hover:bg-gray-300"><User/></Button>
