@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import {
     Card,
     CardContent,
@@ -9,6 +10,7 @@ import {
 import { FieldGroup } from "@/components/ui/field"
 import { UserPlus, LogIn } from 'lucide-react'
 import { Input } from "@/components/ui/input"
+import { FaGithub, FaGoogle } from 'react-icons/fa';
 
 export default function sign() {
     return (
@@ -45,19 +47,24 @@ function LoginForm({
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="email"
+                                placeholder="почта"
                                 required
                             />
-                            <Input id="password" type="password" placeholder="password" required />
+                            <Input id="password" type="password" placeholder="пароль" required />
                             <div className="flex items-center">
                                 <a
                                     href="#"
                                     className="ml-auto inline-block text-sm underline-offset-4 hover:underline text-muted-foreground"
                                 >
-                                    Forgot your password?
+                                    Забыли пароль?
                                 </a>
                             </div>
-                            <Button type="submit">Войти</Button>
+                            <Button className="border" type="submit">Войти</Button>
+                            <SeparatorWithText text="или" />
+                            <div className="flex justify-around">
+                                <Button className="hover:bg-gray-300 w-24/50 border"><FaGoogle /></Button>
+                                <Button className="hover:bg-gray-300 w-24/50 border"><FaGithub /></Button>
+                            </div>
                         </FieldGroup>
                     </form>
                 </CardContent>
@@ -78,19 +85,36 @@ function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
             <CardContent>
                 <form>
                     <FieldGroup className="flex flex-col gap-2">
-                        <Input id="name" type="text" placeholder="username" required />
+                        <Input id="name" type="text" placeholder="логин" required />
                         <Input
                             id="email"
                             type="email"
-                            placeholder="email"
+                            placeholder="почта"
                             required
                         />
-                        <Input id="password" type="password" placeholder="password" required />
-                        <Input id="confirm-password" type="password" placeholder="verify password" required />
-                        <Button type="submit">Создать аккаунт</Button>
+                        <Input id="password" type="password" placeholder="пароль" required />
+                        <Input id="confirm-password" type="password" placeholder="подверждение пароля" required />
+                        <Button type="submit" className="border">Создать аккаунт</Button>
                     </FieldGroup>
                 </form>
             </CardContent>
         </Card>
     )
+}
+
+interface SeparatorWithTextProps {
+  text: string;
+  className?: string;
+}
+
+export function SeparatorWithText({ text, className = "" }: SeparatorWithTextProps) {
+  return (
+    <div className={`relative flex items-center ${className}`}>
+      <Separator className="flex-1" />
+      <span className="mx-4 text-xs text-muted-foreground whitespace-nowrap">
+        {text}
+      </span>
+      <Separator className="flex-1" />
+    </div>
+  );
 }

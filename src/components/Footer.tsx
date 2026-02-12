@@ -2,7 +2,7 @@
 
 export default function Footer() {
     return (
-        <footer>
+        <footer className="bottom-0">
             Какие нибудь ссылочки &copy;
         </footer>
     )

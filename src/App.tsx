@@ -16,13 +16,15 @@ function App() {
     console.log('Получена команда:', page); // 'main' или 'sign'
     setCurrentPage(page); // Сохраняем в состояние
   }
-  
+
   return (
-    <div>
-      <Header onBtnClick={handleBtnClick}/>
-      {/* Показываем компонент в зависимости от полученной строки */}
-      {currentPage === 'main' && <Calc />}
-      {currentPage === 'sign' && <Sign />}
+    <div className="min-h-[calc(100vh-64px)] flex flex-col">
+      <Header onBtnClick={handleBtnClick} />
+      <main className='flex-1'>
+        {/* Показываем компонент в зависимости от полученной строки */}
+        {currentPage === 'main' && <Calc />}
+        {currentPage === 'sign' && <Sign />}
+      </main>
       <Footer />
     </div>
   )
