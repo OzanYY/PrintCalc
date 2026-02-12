@@ -14,8 +14,7 @@ import { FaGithub, FaGoogle } from 'react-icons/fa';
 
 export default function sign() {
     return (
-        <div>
-            <div className="flex justify-center mb-20"></div>
+        <div className="px-4 md:px-8 pt-4 md:pt-8">
             <div className="flex justify-between">
                 <div className="register w-full max-w-sm">
                     <SignupForm />

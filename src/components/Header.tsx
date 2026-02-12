@@ -9,14 +9,14 @@ interface HeaderProps {
 
 export default function Header({ onBtnClick }: HeaderProps) {
     return (
-        <header className="flex justify-between">
+        <header className="flex justify-between p-2 rounded-2xl bg-neutral-50">
             <div className="flex">
-                <Button className="cursor-pointer hover:bg-gray-300" onClick={() => { onBtnClick("main") }}>
+                <Button className="hover:bg-gray-300 bg-neutral-50" onClick={() => { onBtnClick("main") }}>
                     <Sigma />PrintCalc
                 </Button>
             </div>
             <div className="flex">
-                <Button className="cursor-pointer hover:bg-gray-300" onClick={() => { onBtnClick("sign") }}>
+                <Button className="hover:bg-gray-300 bg-neutral-50" onClick={() => { onBtnClick("sign") }}>
                     <User />
                 </Button>
             </div>

@@ -1,9 +1,9 @@
-//import React from 'react'
+import { FaGithub } from 'react-icons/fa';
 
 export default function Footer() {
     return (
         <footer className="bottom-0">
-            Какие нибудь ссылочки &copy;
+            <a href="https://github.com/OzanYY/PrintCalc" className='text-sm flex items-center'><FaGithub /> <p className='ml-2'>github</p></a>
         </footer>
     )
 }
