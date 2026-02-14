@@ -1,0 +1,18 @@
+# .gitignore - ЭТОТ ФАЙЛ ТОЖЕ КОММИТИТСЯ
+
+# dependencies
+/node_modules
+
+# environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# logs
+*.log
+npm-debug.log*
+
+# builds
+/dist
+/build
