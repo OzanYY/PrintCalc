@@ -1,7 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const pool = require("./database")
+const UserModel = require("./models/UserModel")
+const TokenModel = require("./models/TokenModel")
 const router = require("./router/index");
 const cookieParser = require("cookie-parser");
 
@@ -15,6 +16,13 @@ app.use("/api", router);
 
 const start = async () => {
     try {
+        // 2. Создаем таблицы (если их нет)
+        await UserModel.createTable();
+        console.log('✅ Users table ready');
+        
+        await TokenModel.createTable();
+        console.log('✅ Tokens table ready');
+
         app.listen(PORT, () => console.log(`Server started on port - ${PORT}`))
     }
     catch (e) {
