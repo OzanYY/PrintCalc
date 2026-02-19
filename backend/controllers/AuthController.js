@@ -1,6 +1,6 @@
 // controllers/AuthController.js
-const UserService = require('../service/UserService');
-const TokenService = require('../service/TokenService');
+const UserService = require('../services/UserService');
+const TokenService = require('../services/TokenService');
 
 class AuthController {
     // ==================== РЕГИСТРАЦИЯ ====================

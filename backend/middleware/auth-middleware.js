@@ -1,5 +1,5 @@
 // middleware/authMiddleware.js
-const TokenService = require('../service/TokenService');
+const TokenService = require('../services/TokenService');
 
 module.exports = async (req, res, next) => {
     try {

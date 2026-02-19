@@ -1,20 +1,18 @@
 const express = require('express');
 const router = express.Router();
 
-const userController = require("../controllers/user-controller")
 const AuthController = require('../controllers/AuthController');
-const authMiddleware = require('../middleware/authMiddleware');
+const authMiddleware = require('../middleware/auth-middleware');
 
-// Публичные маршруты (не требуют авторизации)
+// Публичные маршруты
 router.post('/register', AuthController.register);
 router.post('/login', AuthController.login);
 router.post('/refresh', AuthController.refresh);
 router.get('/activate/:link', AuthController.activate);
 router.post('/password-reset-request', AuthController.requestPasswordReset);
-router.get("/users", userController.getUsers);
 
-// Защищенные маршруты (требуют авторизацию)
-router.use(authMiddleware); // все маршруты ниже требуют токен
+// Защищенные маршруты
+router.use(authMiddleware);
 
 router.get('/me', AuthController.getMe);
 router.post('/logout', AuthController.logout);
@@ -26,4 +24,3 @@ router.delete('/delete-account', AuthController.deleteAccount);
 router.get('/verify', AuthController.verifyToken);
 
 module.exports = router;
-

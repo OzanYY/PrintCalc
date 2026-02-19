@@ -76,11 +76,6 @@ class UserService {
             throw new Error('Invalid email or password');
         }
 
-        // 3. Проверка активации
-        if (!user.is_activated) {
-            throw new Error('Account not activated. Please check your email.');
-        }
-
         // Возвращаем пользователя без пароля
         const { password_hash, ...userWithoutPassword } = user;
         return userWithoutPassword;
