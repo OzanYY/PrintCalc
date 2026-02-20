@@ -12,12 +12,15 @@ class UserModel {
                 password_hash VARCHAR(255) NOT NULL,
                 is_activated BOOLEAN DEFAULT FALSE,
                 activation_link VARCHAR(255),
+                reset_password_token VARCHAR(255),
+                reset_password_expires TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+            CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_password_token);
         `;
         await pool.query(query);
     }
@@ -116,6 +119,35 @@ class UserModel {
         const query = 'DELETE FROM users WHERE id = $1 RETURNING id';
         const result = await pool.query(query, [id]);
         return result.rows[0];
+    }
+
+    static async setResetToken(userId, token, expiresAt) {
+        const query = `
+        UPDATE users 
+        SET reset_password_token = $1, 
+            reset_password_expires = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING id
+    `;
+        const result = await pool.query(query, [token, expiresAt, userId]);
+        return result.rows[0];
+    }
+
+    static async findByResetToken(token) {
+        const query = 'SELECT * FROM users WHERE reset_password_token = $1 AND reset_password_expires > NOW()';
+        const result = await pool.query(query, [token]);
+        return result.rows[0];
+    }
+
+    static async clearResetToken(userId) {
+        const query = `
+        UPDATE users 
+        SET reset_password_token = NULL, 
+            reset_password_expires = NULL 
+        WHERE id = $1
+    `;
+        await pool.query(query, [userId]);
     }
 }
 

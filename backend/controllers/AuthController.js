@@ -10,8 +10,8 @@ class AuthController {
 
             // Валидация обязательных полей
             if (!username || !email || !password) {
-                return res.status(400).json({ 
-                    error: 'Username, email and password are required' 
+                return res.status(400).json({
+                    error: 'Username, email and password are required'
                 });
             }
 
@@ -35,12 +35,12 @@ class AuthController {
 
         } catch (error) {
             console.error('Register error:', error);
-            
+
             // Обработка разных типов ошибок
             if (error.message.includes('already exists')) {
                 return res.status(409).json({ error: error.message });
             }
-            
+
             res.status(400).json({ error: error.message });
         }
     }
@@ -51,8 +51,8 @@ class AuthController {
             const { email, password } = req.body;
 
             if (!email || !password) {
-                return res.status(400).json({ 
-                    error: 'Email and password are required' 
+                return res.status(400).json({
+                    error: 'Email and password are required'
                 });
             }
 
@@ -76,7 +76,7 @@ class AuthController {
 
         } catch (error) {
             console.error('Login error:', error);
-            
+
             // Одинаковое сообщение для безопасности
             res.status(401).json({ error: 'Invalid email or password' });
         }
@@ -86,17 +86,17 @@ class AuthController {
     static async logout(req, res) {
         try {
             const { refreshToken } = req.body;
-            
+
             if (!refreshToken) {
-                return res.status(400).json({ 
-                    error: 'Refresh token required' 
+                return res.status(400).json({
+                    error: 'Refresh token required'
                 });
             }
 
             await TokenService.removeToken(refreshToken);
 
-            res.json({ 
-                message: 'Logged out successfully' 
+            res.json({
+                message: 'Logged out successfully'
             });
 
         } catch (error) {
@@ -114,8 +114,8 @@ class AuthController {
             // Удаляем все токены пользователя
             const deletedCount = await TokenService.removeAllUserTokens(userId);
 
-            res.json({ 
-                message: `Logged out from ${deletedCount} devices` 
+            res.json({
+                message: `Logged out from ${deletedCount} devices`
             });
 
         } catch (error) {
@@ -130,8 +130,8 @@ class AuthController {
             const { refreshToken } = req.body;
 
             if (!refreshToken) {
-                return res.status(400).json({ 
-                    error: 'Refresh token required' 
+                return res.status(400).json({
+                    error: 'Refresh token required'
                 });
             }
 
@@ -144,11 +144,11 @@ class AuthController {
 
         } catch (error) {
             console.error('Refresh error:', error);
-            
+
             if (error.message.includes('not found') || error.message.includes('expired')) {
                 return res.status(401).json({ error: 'Invalid refresh token' });
             }
-            
+
             res.status(401).json({ error: 'Token refresh failed' });
         }
     }
@@ -173,8 +173,8 @@ class AuthController {
             const { link } = req.params;
 
             if (!link) {
-                return res.status(400).json({ 
-                    error: 'Activation link required' 
+                return res.status(400).json({
+                    error: 'Activation link required'
                 });
             }
 
@@ -198,8 +198,8 @@ class AuthController {
             const { oldPassword, newPassword } = req.body;
 
             if (!oldPassword || !newPassword) {
-                return res.status(400).json({ 
-                    error: 'Old password and new password are required' 
+                return res.status(400).json({
+                    error: 'Old password and new password are required'
                 });
             }
 
@@ -213,11 +213,11 @@ class AuthController {
 
         } catch (error) {
             console.error('Change password error:', error);
-            
+
             if (error.message.includes('incorrect')) {
                 return res.status(400).json({ error: error.message });
             }
-            
+
             res.status(500).json({ error: 'Password change failed' });
         }
     }
@@ -228,19 +228,11 @@ class AuthController {
             const { email } = req.body;
 
             if (!email) {
-                return res.status(400).json({ 
-                    error: 'Email is required' 
-                });
+                return res.status(400).json({ error: 'Email is required' });
             }
 
             const result = await UserService.requestPasswordReset(email);
-
-            // Здесь нужно отправить email с ссылкой для сброса
-            // await EmailService.sendPasswordResetEmail(email, result.resetToken);
-
-            res.json({ 
-                message: 'If email exists, reset link will be sent' 
-            });
+            res.json(result);
 
         } catch (error) {
             console.error('Password reset request error:', error);
@@ -252,20 +244,20 @@ class AuthController {
     static async getSessions(req, res) {
         try {
             const userId = req.user.id; // из auth middleware
-            
+
             // Получаем все сессии пользователя
             const sessions = await TokenService.getUserSessions(userId);
 
             // Получаем текущий refresh token из заголовка (если есть)
             const authHeader = req.headers.authorization;
             const accessToken = authHeader?.split(' ')[1];
-            
+
             // Здесь нужно найти соответствующий refresh token
             // Это упрощенная версия, в реальности лучше передавать refreshToken отдельно
 
-            res.json({ 
+            res.json({
                 sessions,
-                total: sessions.length 
+                total: sessions.length
             });
 
         } catch (error) {
@@ -281,15 +273,15 @@ class AuthController {
             const { refreshToken } = req.body;
 
             if (!refreshToken) {
-                return res.status(400).json({ 
-                    error: 'Current refresh token required' 
+                return res.status(400).json({
+                    error: 'Current refresh token required'
                 });
             }
 
             const deletedCount = await TokenService.terminateOtherSessions(userId, refreshToken);
 
-            res.json({ 
-                message: `Terminated ${deletedCount} other sessions` 
+            res.json({
+                message: `Terminated ${deletedCount} other sessions`
             });
 
         } catch (error) {
@@ -305,8 +297,8 @@ class AuthController {
             const { password } = req.body;
 
             if (!password) {
-                return res.status(400).json({ 
-                    error: 'Password is required' 
+                return res.status(400).json({
+                    error: 'Password is required'
                 });
             }
 
@@ -316,17 +308,17 @@ class AuthController {
             // Удаляем пользователя
             const result = await UserService.deleteAccount(userId, password);
 
-            res.json({ 
-                message: 'Account deleted successfully' 
+            res.json({
+                message: 'Account deleted successfully'
             });
 
         } catch (error) {
             console.error('Delete account error:', error);
-            
+
             if (error.message.includes('Invalid password')) {
                 return res.status(400).json({ error: error.message });
             }
-            
+
             res.status(500).json({ error: 'Failed to delete account' });
         }
     }
@@ -335,14 +327,38 @@ class AuthController {
     static async verifyToken(req, res) {
         try {
             // Этот маршрут защищен middleware, поэтому если мы здесь - токен валидный
-            res.json({ 
+            res.json({
                 valid: true,
-                user: req.user 
+                user: req.user
             });
 
         } catch (error) {
             console.error('Token verification error:', error);
             res.status(401).json({ valid: false });
+        }
+    }
+
+    static async resetPassword(req, res) {
+        try {
+            const { token, newPassword } = req.body;
+
+            if (!token || !newPassword) {
+                return res.status(400).json({
+                    error: 'Token and new password are required'
+                });
+            }
+
+            const result = await UserService.resetPassword(token, newPassword);
+            res.json(result);
+
+        } catch (error) {
+            console.error('Reset password error:', error);
+
+            if (error.message.includes('Invalid or expired')) {
+                return res.status(400).json({ error: error.message });
+            }
+
+            res.status(500).json({ error: 'Failed to reset password' });
         }
     }
 }

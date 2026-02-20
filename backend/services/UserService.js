@@ -2,6 +2,7 @@
 const UserModel = require('../models/UserModel');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const MailService = require('./MailService');
 
 class UserService {
     // Регистрация нового пользователя
@@ -44,6 +45,11 @@ class UserService {
                 activation_link
             });
 
+            // Отправка письма для активации
+            const activationUrl = `${process.env.API_URL}/api/activate/${activation_link}`;
+            await MailService.sendActivationMail(email, activationUrl);
+            console.log(`✅ Activation email sent to ${email}`);
+
             return {
                 user: newUser,
                 activation_link // вернем, чтобы потом отправить по email
@@ -83,14 +89,26 @@ class UserService {
 
     // Активация аккаунта
     static async activateAccount(link) {
-        // 1. Поиск по ссылке
+        // Поиск по ссылке
         const user = await UserModel.findByActivationLink(link);
         if (!user) {
             throw new Error('Invalid or expired activation link');
         }
 
-        // 2. Активация
+        if (user.is_activated) {
+            throw new Error('Account already activated');
+        }
+
+        // Активация
         const activatedUser = await UserModel.activateUser(user.id);
+
+        // Отправляем приветственное письмо
+        try {
+            await MailService.sendWelcomeMail(user.email, user.username);
+        } catch (error) {
+            console.error('Failed to send welcome email:', error);
+        }
+
         return activatedUser;
     }
 
@@ -151,18 +169,58 @@ class UserService {
     // Запрос на сброс пароля
     static async requestPasswordReset(email) {
         const user = await UserModel.findByEmail(email);
+
+        // Всегда возвращаем одинаковый ответ (безопасность)
         if (!user) {
-            // Не говорим, что пользователь не найден (безопасность)
             return { message: 'If email exists, reset link will be sent' };
         }
 
-        // Генерируем токен для сброса
+        // Генерируем токен для сброса (живет 1 час)
         const resetToken = crypto.randomBytes(32).toString('hex');
-        
-        // Здесь нужно сохранить токен в БД (добавить поле в таблицу)
-        // await UserModel.saveResetToken(user.id, resetToken, expiry);
-        
-        return { resetToken };
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 1);
+
+        // Сохраняем в БД
+        await UserModel.setResetToken(user.id, resetToken, expiresAt);
+
+        // Отправляем письмо
+        try {
+            await MailService.sendPasswordResetMail(email, resetToken);
+            console.log(`✅ Password reset email sent to ${email}`);
+        } catch (error) {
+            console.error('❌ Failed to send password reset email:', error);
+            throw new Error('Failed to send reset email');
+        }
+
+        return { message: 'If email exists, reset link will be sent' };
+    }
+
+    // Сброс пароля (по токену из email)
+    static async resetPassword(token, newPassword) {
+        // Ищем пользователя по токену
+        const user = await UserModel.findByResetToken(token);
+        if (!user) {
+            throw new Error('Invalid or expired reset token');
+        }
+
+        // Проверяем новый пароль
+        if (newPassword.length < 6) {
+            throw new Error('Password must be at least 6 characters');
+        }
+
+        // Хешируем новый пароль
+        const password_hash = await bcrypt.hash(newPassword, 10);
+
+        // Обновляем пароль
+        await UserModel.updatePasswordHash(user.id, password_hash);
+
+        // Очищаем токен сброса
+        await UserModel.clearResetToken(user.id);
+
+        // Опционально: удаляем все сессии пользователя
+        await TokenModel.deleteAllByUserId(user.id);
+
+        return { message: 'Password reset successfully' };
     }
 
     // Получение профиля
@@ -179,7 +237,7 @@ class UserService {
         // 1. Проверяем пароль
         const user = await UserModel.findByEmail((await UserModel.findById(userId)).email);
         const isValid = await bcrypt.compare(password, user.password_hash);
-        
+
         if (!isValid) {
             throw new Error('Invalid password');
         }

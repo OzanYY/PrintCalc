@@ -10,6 +10,7 @@ router.post('/login', AuthController.login);
 router.post('/refresh', AuthController.refresh);
 router.get('/activate/:link', AuthController.activate);
 router.post('/password-reset-request', AuthController.requestPasswordReset);
+router.post('/reset-password', AuthController.resetPassword);
 
 // Защищенные маршруты
 router.use(authMiddleware);
