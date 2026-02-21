@@ -15,13 +15,31 @@ const OrderModel = require('./models/OrderModel');
 const PORT = process.env.PORT || 5000;
 const app = express()
 
+// Настройки CORS
+const corsOptions = {
+    origin: 'http://localhost:5173', // твой фронтенд
+    credentials: true,                // разрешаем куки/авторизацию
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use('/api/printers', printerRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api', calculationRoutes);
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        database: 'connected' // или проверь реальное соединение
+    });
+});
 
 const start = async () => {
     try {
