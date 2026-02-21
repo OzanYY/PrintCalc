@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const authRoutes = require('./routes/auth-routes');
 const printerRoutes = require('./routes/printer-routes');
 const materialRoutes = require('./routes/material-routes');
+const calculationRoutes = require('./routes/calculation-routes');
 const UserModel = require('./models/UserModel');
 const TokenModel = require('./models/TokenModel');
 const PrinterModel = require('./models/PrinterModel');
@@ -20,6 +21,7 @@ app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use('/api/printers', printerRoutes);
 app.use('/api/materials', materialRoutes);
+app.use('/api', calculationRoutes);
 
 const start = async () => {
     try {
