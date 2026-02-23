@@ -8,53 +8,86 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { FieldGroup } from "@/components/ui/field"
-import { UserPlus, LogIn, Loader2 } from 'lucide-react'
+import { UserPlus, LogIn } from 'lucide-react'
 import { Input } from "@/components/ui/input"
 import { FaGithub, FaGoogle } from 'react-icons/fa';
 import { useState } from 'react';
-import { useAuth } from '@/features/auth';
-import { useNavigate } from 'react-router-dom';
 
-export default function Sign() {
+export default function sign() {
     return (
         <div className="pt-4 md:pt-8">
-            <div className="flex flex-col md:flex-row justify-between gap-6">
+            <div className="flex justify-between">
                 <div className="register w-full max-w-sm">
-                    <SignupForm />
+                    <RegisterForm />
                 </div>
                 <div className="login w-full max-w-sm">
                     <LoginForm />
                 </div>
             </div>
         </div>
-    );
+    )
 }
 
-function LoginForm({
-    className,
-    ...props
-}: React.ComponentProps<"div">) {
-    const navigate = useNavigate();
-    const { login, loading, error } = useAuth();
+function LoginForm({className, ...props}: React.ComponentProps<"div">) {
     const [formData, setFormData] = useState({
         email: '',
         password: ''
     });
+    
+    const [errors, setErrors] = useState({
+        email: '',
+        password: ''
+    });
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormData({
-            ...formData,
-            [e.target.id]: e.target.value
-        });
+    const validateEmail = (email: string) => {
+        if (!email) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return 'Введите корректный email адрес';
+        }
+        return '';
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const validatePassword = (password: string) => {
+        if (!password) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        if (password.length < 8) {
+            return 'Пароль должен содержать минимум 8 символов';
+        }
+        return '';
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { id, value } = e.target;
+        
+        // Обновляем formData в зависимости от id поля
+        if (id === 'login_email') {
+            setFormData(prev => ({ ...prev, email: value }));
+            setErrors(prev => ({ ...prev, email: validateEmail(value) }));
+        } else if (id === 'login_password') {
+            setFormData(prev => ({ ...prev, password: value }));
+            setErrors(prev => ({ ...prev, password: validatePassword(value) }));
+        }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        try {
-            await login(formData);
-            navigate('/'); // редирект на главную
-        } catch (err) {
-            // ошибка уже в состоянии error
+        
+        // При отправке проверяем все поля, включая обязательность
+        const emailError = !formData.email ? 'Email обязателен' : validateEmail(formData.email);
+        const passwordError = !formData.password ? 'Пароль обязателен' : validatePassword(formData.password);
+        
+        setErrors({
+            email: emailError,
+            password: passwordError
+        });
+        
+        if (!emailError && !passwordError) {
+            // Здесь можно отправлять форму
+            console.log('Форма валидна, отправка данных:', formData);
         }
     };
 
@@ -70,28 +103,35 @@ function LoginForm({
                 <CardContent>
                     <form onSubmit={handleSubmit}>
                         <FieldGroup className="flex flex-col gap-2">
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="почта"
-                                required
-                                value={formData.email}
-                                onChange={handleChange}
-                                disabled={loading}
-                            />
-                            <Input 
-                                id="password" 
-                                type="password" 
-                                placeholder="пароль" 
-                                required
-                                value={formData.password}
-                                onChange={handleChange}
-                                disabled={loading}
-                            />
+                            <div className="space-y-1">
+                                <Input
+                                    id="login_email"
+                                    type="email"
+                                    placeholder="почта"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    className={errors.email ? "border-red-500" : ""}
+                                    required
+                                />
+                                {errors.email && (
+                                    <p className="text-xs text-red-500">{errors.email}</p>
+                                )}
+                            </div>
                             
-                            {error && (
-                                <p className="text-sm text-red-500">{error}</p>
-                            )}
+                            <div className="space-y-1">
+                                <Input
+                                    id="login_password"
+                                    type="password"
+                                    placeholder="пароль"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    className={errors.password ? "border-red-500" : ""}
+                                    required
+                                />
+                                {errors.password && (
+                                    <p className="text-xs text-red-500">{errors.password}</p>
+                                )}
+                            </div>
                             
                             <div className="flex items-center">
                                 <a
@@ -101,96 +141,140 @@ function LoginForm({
                                     Забыли пароль?
                                 </a>
                             </div>
-                            
-                            <Button 
-                                className="border" 
-                                type="submit"
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Вход...
-                                    </>
-                                ) : (
-                                    'Войти'
-                                )}
-                            </Button>
-                            
+                            <Button className="border" type="submit">Войти</Button>
                             <SeparatorWithText text="или" />
-                            
-                            <div className="flex justify-around gap-2">
-                                <Button className="hover:bg-gray-300 flex-1 border" disabled={loading}>
-                                    <FaGoogle />
-                                </Button>
-                                <Button className="hover:bg-gray-300 flex-1 border" disabled={loading}>
-                                    <FaGithub />
-                                </Button>
+                            <div className="flex justify-around">
+                                <Button className="hover:bg-gray-300 w-24/50 border"><FaGoogle /></Button>
+                                <Button className="hover:bg-gray-300 w-24/50 border"><FaGithub /></Button>
                             </div>
                         </FieldGroup>
                     </form>
                 </CardContent>
             </Card>
         </div>
-    );
+    )
 }
 
-export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
-    const navigate = useNavigate();
-    const { register, loading, error } = useAuth();
-    
+function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
     const [formData, setFormData] = useState({
-        username: '',
+        name: '',
         email: '',
         password: '',
-        confirmPassword: ''  // ← обрати внимание: confirmPassword, не confirm-password
+        confirmPassword: ''
     });
     
-    const [passwordError, setPasswordError] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [errors, setErrors] = useState({
+        name: '',
+        email: '',
+        password: '',
+        confirmPassword: ''
+    });
+
+    const validateName = (name: string) => {
+        if (!name) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        if (name.length < 3) {
+            return 'Логин должен содержать минимум 3 символа';
+        }
+        return '';
+    };
+
+    const validateEmail = (email: string) => {
+        if (!email) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return 'Введите корректный email адрес';
+        }
+        return '';
+    };
+
+    const validatePassword = (password: string) => {
+        if (!password) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasLowerCase = /[a-z]/.test(password);
+        const hasNumbers = /\d/.test(password);
+        const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+        if (password.length < 8) {
+            return 'Пароль должен содержать минимум 8 символов';
+        }
+        if (!hasUpperCase || !hasLowerCase) {
+            return 'Пароль должен содержать заглавные и строчные буквы';
+        }
+        if (!hasNumbers) {
+            return 'Пароль должен содержать хотя бы одну цифру';
+        }
+        if (!hasSpecialChar) {
+            return 'Пароль должен содержать хотя бы один специальный символ';
+        }
+        return '';
+    };
+
+    const validateConfirmPassword = (confirmPassword: string, password: string) => {
+        if (!confirmPassword) {
+            return ''; // Убираем ошибку для пустого поля
+        }
+        if (confirmPassword !== password) {
+            return 'Пароли не совпадают';
+        }
+        return '';
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { id, value } = e.target;
         
-        // Преобразуем id из HTML в ключ для formData
-        const key = id === 'confirm-password' ? 'confirmPassword' : id;
-        
-        const newData = {
-            ...formData,
-            [key]: value
-        };
-        setFormData(newData);
-        
-        // Проверка совпадения паролей
-        if (key === 'password' || key === 'confirmPassword') {
-            if (newData.password && newData.confirmPassword) {
-                if (newData.password !== newData.confirmPassword) {
-                    setPasswordError('Пароли не совпадают');
-                } else {
-                    setPasswordError('');
-                }
+        // Обновляем formData в зависимости от id поля
+        if (id === 'name') {
+            setFormData(prev => ({ ...prev, name: value }));
+            setErrors(prev => ({ ...prev, name: validateName(value) }));
+        } else if (id === 'reg_email') {
+            setFormData(prev => ({ ...prev, email: value }));
+            setErrors(prev => ({ ...prev, email: validateEmail(value) }));
+        } else if (id === 'reg_password') {
+            setFormData(prev => ({ ...prev, password: value }));
+            setErrors(prev => ({ ...prev, password: validatePassword(value) }));
+            
+            // Также проверяем подтверждение пароля, если оно уже заполнено
+            if (formData.confirmPassword) {
+                setErrors(prev => ({ 
+                    ...prev, 
+                    confirmPassword: validateConfirmPassword(formData.confirmPassword, value) 
+                }));
             }
+        } else if (id === 'confirm-password') {
+            setFormData(prev => ({ ...prev, confirmPassword: value }));
+            setErrors(prev => ({ 
+                ...prev, 
+                confirmPassword: validateConfirmPassword(value, formData.password) 
+            }));
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (formData.password !== formData.confirmPassword) {
-            setPasswordError('Пароли не совпадают');
-            return;
-        }
+        // При отправке проверяем все поля, включая обязательность
+        const nameError = !formData.name ? 'Логин обязателен' : validateName(formData.name);
+        const emailError = !formData.email ? 'Email обязателен' : validateEmail(formData.email);
+        const passwordError = !formData.password ? 'Пароль обязателен' : validatePassword(formData.password);
+        const confirmPasswordError = !formData.confirmPassword ? 'Подтверждение пароля обязательно' : validateConfirmPassword(formData.confirmPassword, formData.password);
         
-        try {
-            await register({
-                username: formData.username,
-                email: formData.email,
-                password: formData.password
-            });
-            navigate('/');
-        } catch (err) {
-            // ошибка уже в состоянии error
+        setErrors({
+            name: nameError,
+            email: emailError,
+            password: passwordError,
+            confirmPassword: confirmPasswordError
+        });
+        
+        if (!nameError && !emailError && !passwordError && !confirmPasswordError) {
+            // Здесь можно отправлять форму
+            console.log('Форма валидна, отправка данных:', formData);
         }
     };
 
@@ -205,113 +289,87 @@ export function SignupForm({ ...props }: React.ComponentProps<typeof Card>) {
             <CardContent>
                 <form onSubmit={handleSubmit}>
                     <FieldGroup className="flex flex-col gap-2">
-                        {/* Логин */}
-                        <Input 
-                            id="username" 
-                            type="text" 
-                            placeholder="логин" 
-                            required
-                            value={formData.username}
-                            onChange={handleChange}
-                            disabled={loading}
-                        />
-                        
-                        {/* Email */}
-                        <Input
-                            id="email"
-                            type="email"
-                            placeholder="почта"
-                            required
-                            value={formData.email}
-                            onChange={handleChange}
-                            disabled={loading}
-                        />
-                        
-                        {/* Пароль с глазом */}
-                        <div className="relative">
-                            <Input 
-                                id="password" 
-                                type={showPassword ? "text" : "password"}
-                                placeholder="пароль" 
+                        <div className="space-y-1">
+                            <Input
+                                id="name"
+                                type="text"
+                                placeholder="логин"
+                                value={formData.name}
+                                onChange={handleChange}
+                                className={errors.name ? "border-red-500" : ""}
                                 required
+                            />
+                            {errors.name && (
+                                <p className="text-xs text-red-500">{errors.name}</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-1">
+                            <Input
+                                id="reg_email"
+                                type="email"
+                                placeholder="почта"
+                                value={formData.email}
+                                onChange={handleChange}
+                                className={errors.email ? "border-red-500" : ""}
+                                required
+                            />
+                            {errors.email && (
+                                <p className="text-xs text-red-500">{errors.email}</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-1">
+                            <Input
+                                id="reg_password"
+                                type="password"
+                                placeholder="пароль"
                                 value={formData.password}
                                 onChange={handleChange}
-                                disabled={loading}
-                                minLength={6}
-                                className="pr-10"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                            >
-                            </button>
-                        </div>
-                        
-                        {/* Подтверждение пароля с глазом */}
-                        <div className="relative">
-                            <Input 
-                                id="confirm-password"  // ← id с дефисом для HTML
-                                type={showConfirmPassword ? "text" : "password"}
-                                placeholder="подтверждение пароля" 
+                                className={errors.password ? "border-red-500" : ""}
                                 required
-                                value={formData.confirmPassword}  // ← а в state ключ без дефиса
-                                onChange={handleChange}
-                                disabled={loading}
-                                className="pr-10"
                             />
-                            <button
-                                type="button"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                            >
-                            </button>
-                        </div>
-                        
-                        {/* Ошибки */}
-                        {passwordError && (
-                            <p className="text-sm text-red-500">{passwordError}</p>
-                        )}
-                        
-                        {error && (
-                            <p className="text-sm text-red-500">{error}</p>
-                        )}
-                        
-                        {/* Кнопка отправки */}
-                        <Button 
-                            type="submit" 
-                            className="border"
-                            disabled={loading || !!passwordError}
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Регистрация...
-                                </>
-                            ) : (
-                                'Создать аккаунт'
+                            {errors.password && (
+                                <p className="text-xs text-red-500">{errors.password}</p>
                             )}
-                        </Button>
+                        </div>
+
+                        <div className="space-y-1">
+                            <Input
+                                id="confirm-password"
+                                type="password"
+                                placeholder="подтверждение пароля"
+                                value={formData.confirmPassword}
+                                onChange={handleChange}
+                                className={errors.confirmPassword ? "border-red-500" : ""}
+                                required
+                            />
+                            {errors.confirmPassword && (
+                                <p className="text-xs text-red-500">{errors.confirmPassword}</p>
+                            )}
+                        </div>
+
+                        <Button type="submit" className="border">Создать аккаунт</Button>
                     </FieldGroup>
                 </form>
             </CardContent>
         </Card>
-    );
+    )
 }
 
 interface SeparatorWithTextProps {
-  text: string;
-  className?: string;
+    text: string;
+    className?: string;
 }
 
-function SeparatorWithText({ text, className = "" }: SeparatorWithTextProps) {
-  return (
-    <div className={`relative flex items-center py-2 ${className}`}>
-      <Separator className="flex-1" />
-      <span className="mx-4 text-xs text-muted-foreground whitespace-nowrap">
-        {text}
-      </span>
-      <Separator className="flex-1" />
-    </div>
-  );
+export function SeparatorWithText({ text, className = "" }: SeparatorWithTextProps) {
+    return (
+        <div className={`relative flex items-center ${className}`}>
+            <Separator className="flex-1" />
+            <span className="mx-4 text-xs text-muted-foreground whitespace-nowrap">
+                {text}
+            </span>
+            <Separator className="flex-1" />
+        </div>
+    );
 }

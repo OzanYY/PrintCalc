@@ -7,12 +7,12 @@ import LoginPage from './pages/LoginPage/Login';
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-[calc(100vh-64px)] flex flex-col w-full max-w-7xl mx-auto py-4">
+      <div className="min-h-screen flex flex-col w-full max-w-7xl mx-auto py-4">
         <Header />
         <main className="flex-1">
           <Routes>
             <Route path="/" element={<CalcPage />} />
-            <Route path="/auth" element={<LoginPage />} />
+            <Route path="/login" element={<LoginPage />} />
           </Routes>
         </main>
         <Footer />
