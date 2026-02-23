@@ -1,19 +1,17 @@
-import api from './axios';
-import type { AuthResponse, LoginRequest, RegisterRequest, User } from '../types';
+import api from "./axios";
 
 export const authAPI = {
-    register: (data: RegisterRequest) => 
-        api.post<AuthResponse>('/auth/register', data),
-    
-    login: (data: LoginRequest) => 
-        api.post<AuthResponse>('/auth/login', data),
-    
-    logout: (refreshToken: string) => 
-        api.post<{ message: string }>('/auth/logout', { refreshToken }),
-    
-    getMe: () => 
-        api.get<{ user: User }>('/auth/me'),
-    
-    refresh: (refreshToken: string) => 
-        api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken }),
+  login: (email: string, password: string) =>
+    api.post("/auth/login", { email, password }),
+
+  register: (userData: { name: string; email: string; password: string }) =>
+    api.post("/auth/register", {
+      username: userData.name, // вот здесь преобразованиеф
+      email: userData.email,
+      password: userData.password,
+    }),
+
+  logout: () => api.post("/auth/logout"),
+
+  getCurrentUser: () => api.get("/auth/me"),
 };

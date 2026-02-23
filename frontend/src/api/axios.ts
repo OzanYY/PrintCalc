@@ -25,7 +25,11 @@ api.interceptors.response.use(
     async (error: AxiosError) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
         
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Проверяем, не является ли это запросом на аутентификацию
+        const isAuthRequest = originalRequest.url?.includes('/auth/');
+        
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
+            // Только для не-аутентификационных запросов пытаемся обновить токен
             originalRequest._retry = true;
             
             try {
@@ -49,11 +53,15 @@ api.interceptors.response.use(
             } catch (refreshError) {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                // Редиректим только если это не запрос на логин
+                if (!originalRequest.url?.includes('/auth/login')) {
+                    window.location.href = '/login';
+                }
                 return Promise.reject(refreshError);
             }
         }
         
+        // Для всех остальных ошибок просто возвращаем промис с ошибкой
         return Promise.reject(error);
     }
 );
