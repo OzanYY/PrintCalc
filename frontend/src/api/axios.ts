@@ -5,19 +5,21 @@ const API_URL = 'http://localhost:5000/api';
 
 const api: AxiosInstance = axios.create({
     baseURL: API_URL,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
-    },
+    }
 });
 
-// Добавляем токен к каждому запросу
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('accessToken');
-    if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-});
+//api.interceptors.request.use(request => {
+//    console.log('🔍 ПОЛНЫЙ КОНФИГ ЗАПРОСА:');
+//    console.log('- URL:', request.url);
+//    console.log('- Method:', request.method);
+//    console.log('- withCredentials:', request.withCredentials); // Должно быть true
+//    console.log('- baseURL:', request.baseURL);
+//    console.log('- headers:', request.headers);
+//    return request;
+//});
 
 // Обрабатываем ошибки
 api.interceptors.response.use(

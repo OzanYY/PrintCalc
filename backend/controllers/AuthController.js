@@ -27,10 +27,23 @@ class AuthController {
 
             const tokens = await TokenService.createAuthTokens(result.user, metadata);
 
+            res.cookie('accessToken', tokens.accessToken, {
+                httpOnly: true,        // Защита от XSS
+                secure: process.env.NODE_ENV === 'production', // HTTPS в production
+                sameSite: 'strict',    // Защита от CSRF
+                maxAge: 15 * 60 * 1000 // 15 минут
+            });
+
+            res.cookie('refreshToken', tokens.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
+            });
+
             res.status(201).json({
                 message: 'User registered successfully',
                 user: result.user,
-                ...tokens
             });
 
         } catch (error) {
@@ -48,8 +61,10 @@ class AuthController {
     // ==================== ВХОД ====================
     static async login(req, res) {
         try {
+            // Берем из тела запроса (req.body), который пришел в JSON почту и пароль 
             const { email, password } = req.body;
 
+            // Если нет почты или пароля, то возвращаем ответ (res, response) с ошибкой 400 (некоректный синтаксис)
             if (!email || !password) {
                 return res.status(400).json({
                     error: 'Email and password are required'
@@ -68,11 +83,27 @@ class AuthController {
 
             const tokens = await TokenService.createAuthTokens(user, metadata);
 
+            // Возвращаем токены в куках
+            res.cookie('accessToken', tokens.accessToken, {
+                httpOnly: true,        // Защита от XSS
+                secure: process.env.NODE_ENV === 'production', // HTTPS в production
+                sameSite: 'strict',    // Защита от CSRF
+                maxAge: 15 * 60 * 1000 // 15 минут
+            });
+
+            res.cookie('refreshToken', tokens.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
+            });
+
             res.json({
+                success: true,
                 message: 'Login successful',
                 user,
-                ...tokens
             });
+            res.status(200);
 
         } catch (error) {
             console.error('Login error:', error);
@@ -85,7 +116,7 @@ class AuthController {
     // ==================== ВЫХОД ====================
     static async logout(req, res) {
         try {
-            const { refreshToken } = req.body;
+            const refreshToken = req.cookies.refreshToken;
 
             if (!refreshToken) {
                 return res.status(400).json({
@@ -94,6 +125,18 @@ class AuthController {
             }
 
             await TokenService.removeToken(refreshToken);
+
+            res.clearCookie('accessToken', {
+                httpOnly: true,        // Защита от XSS
+                secure: process.env.NODE_ENV === 'production', // HTTPS в production
+                sameSite: 'strict',    // Защита от CSRF
+            });
+
+            res.clearCookie('refreshToken', {
+                httpOnly: true,        // Защита от XSS
+                secure: process.env.NODE_ENV === 'production', // HTTPS в production
+                sameSite: 'strict',    // Защита от CSRF
+            });
 
             res.json({
                 message: 'Logged out successfully'
@@ -109,7 +152,6 @@ class AuthController {
     static async logoutAll(req, res) {
         try {
             const userId = req.user.id; // из auth middleware
-            const { refreshToken } = req.body;
 
             // Удаляем все токены пользователя
             const deletedCount = await TokenService.removeAllUserTokens(userId);

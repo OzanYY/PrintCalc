@@ -107,11 +107,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
             // Успешный ответ
             console.log('Ответ от сервера:', response.data);
 
-            // Сохраняем токен если он есть
-            if (response.data.token) {
-                localStorage.setItem('token', response.data.token);
-            }
-
             // Показываем сообщение об успехе
             setSuccessMessage('Успешный вход! Перенаправление...');
 
@@ -162,6 +157,11 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
             setIsLoading(false);
         }
     };
+
+    const temp = async ()=> {
+        const response = await authAPI.logout();
+        console.log('Ответ от сервера:', response.data);
+    }
 
     return (
         <Card {...props}>
@@ -229,7 +229,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
                         <Button className="border" disabled={isLoading} type="submit">{isLoading ? 'Вход...' : 'Войти'}</Button>
                         <SeparatorWithText text="или" />
                         <div className="flex justify-around">
-                            <Button type="button" className="hover:bg-gray-300 w-24/50 border"><FaGoogle /></Button>
+                            <Button type="button" className="hover:bg-gray-300 w-24/50 border" onClick={temp}><FaGoogle /></Button>
                             <Button type="button" className="hover:bg-gray-300 w-24/50 border"><FaGithub /></Button>
                         </div>
                     </FieldGroup>
