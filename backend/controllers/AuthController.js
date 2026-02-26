@@ -3,6 +3,9 @@ const UserService = require('../services/UserService');
 const TokenService = require('../services/TokenService');
 
 class AuthController {
+    static ACCESS_MAX_AGE = 15 * 60 * 1000; // 15 минут
+    static REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000 // 7 дней
+
     // ==================== РЕГИСТРАЦИЯ ====================
     static async register(req, res) {
         try {
@@ -31,14 +34,14 @@ class AuthController {
                 httpOnly: true,        // Защита от XSS
                 secure: process.env.NODE_ENV === 'production', // HTTPS в production
                 sameSite: 'strict',    // Защита от CSRF
-                maxAge: 15 * 60 * 1000 // 15 минут
+                maxAge: AuthController.ACCESS_MAX_AGE // 15 минут
             });
 
             res.cookie('refreshToken', tokens.refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
+                maxAge: AuthController.REFRESH_MAX_AGE // 7 дней
             });
 
             res.status(201).json({
@@ -88,14 +91,14 @@ class AuthController {
                 httpOnly: true,        // Защита от XSS
                 secure: process.env.NODE_ENV === 'production', // HTTPS в production
                 sameSite: 'strict',    // Защита от CSRF
-                maxAge: 15 * 60 * 1000 // 15 минут
+                maxAge: AuthController.ACCESS_MAX_AGE // 15 минут
             });
 
             res.cookie('refreshToken', tokens.refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
+                maxAge: AuthController.REFRESH_MAX_AGE
             });
 
             res.json({
@@ -169,7 +172,7 @@ class AuthController {
     // ==================== ОБНОВЛЕНИЕ ТОКЕНОВ ====================
     static async refresh(req, res) {
         try {
-            const { refreshToken } = req.body;
+            const refreshToken = req.cookies.refreshToken;
 
             if (!refreshToken) {
                 return res.status(400).json({
@@ -178,10 +181,25 @@ class AuthController {
             }
 
             const result = await TokenService.refreshTokens(refreshToken);
+            console.log(result)
+
+            res.cookie('accessToken', result.accessToken, {
+                httpOnly: true,        // Защита от XSS
+                secure: process.env.NODE_ENV === 'production', // HTTPS в production
+                sameSite: 'strict',    // Защита от CSRF
+                maxAge: AuthController.ACCESS_MAX_AGE // 15 минут
+            });
+
+            res.cookie('refreshToken', result.refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: AuthController.REFRESH_MAX_AGE
+            });
 
             res.json({
                 message: 'Tokens refreshed successfully',
-                ...result
+                ...result.user
             });
 
         } catch (error) {

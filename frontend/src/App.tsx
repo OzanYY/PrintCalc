@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from "@/components/ui/sonner"
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
-import CalcPage from './pages/CalcPage/calculator';
+import CalcPage from './pages/CalcPage/Calculator';
 import LoginPage from './pages/LoginPage/Login';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
             <Route path="/" element={<CalcPage />} />
             <Route path="/login" element={<LoginPage />} />
           </Routes>
+          <Toaster />
         </main>
         <Footer />
       </div>

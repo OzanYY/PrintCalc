@@ -10,8 +10,9 @@ import { FieldGroup } from "@/components/ui/field"
 import { UserPlus, LogIn } from 'lucide-react'
 import { Input } from "@/components/ui/input"
 import { FaGithub, FaGoogle } from 'react-icons/fa';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { authAPI } from '@/api/auth';
+import { toast } from "sonner"
 
 export default function sign() {
     return (
@@ -41,6 +42,28 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     const [isLoading, setIsLoading] = useState(false); // для индикации загрузки
     const [serverError, setServerError] = useState(''); // для ошибок сервера
     const [successMessage, setSuccessMessage] = useState(''); // для сообщений об успехе
+
+    useEffect(() => {
+        if (serverError) {
+            toast.error(serverError, { 
+                position: "top-center",
+            });
+        }
+    }, [serverError]);
+    useEffect(() => {
+        if (successMessage) {
+            toast.success(successMessage, { 
+                position: "top-center",
+            });
+        }
+    }, [successMessage]);
+    useEffect(() => {
+        if (isLoading) {
+            toast("Загрузка...", { 
+                position: "top-center",
+            });
+        }
+    }, [isLoading]);
 
     const validateEmail = (email: string) => {
         if (!email) {
@@ -128,9 +151,11 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
                 switch (error.response.status) {
                     case 401:
                         setServerError('Неверный email или пароль');
+                       //toast.error(serverError, { position: "top-center" });
                         break;
                     case 404:
                         setServerError('Пользователь не найден');
+                        //toast.error(serverError, { position: "top-center" });
                         break;
                     case 422:
                         // Ошибки валидации с сервера
@@ -158,8 +183,13 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
         }
     };
 
-    const temp = async ()=> {
+    const temp = async () => {
         const response = await authAPI.logout();
+        console.log('Ответ от сервера:', response.data);
+    }
+
+    const temp1 = async () => {
+        const response = await authAPI.getCurrentUser();
         console.log('Ответ от сервера:', response.data);
     }
 
@@ -173,19 +203,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit} noValidate>
-                    {/* Показываем сообщение об ошибке с сервера */}
-                    {serverError && (
-                        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                            {serverError}
-                        </div>
-                    )}
-
-                    {/* Показываем сообщение об успехе */}
-                    {successMessage && (
-                        <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
-                            {successMessage}
-                        </div>
-                    )}
                     <FieldGroup className="flex flex-col gap-2">
                         <div className="space-y-1">
                             <Input
@@ -230,7 +247,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
                         <SeparatorWithText text="или" />
                         <div className="flex justify-around">
                             <Button type="button" className="hover:bg-gray-300 w-24/50 border" onClick={temp}><FaGoogle /></Button>
-                            <Button type="button" className="hover:bg-gray-300 w-24/50 border"><FaGithub /></Button>
+                            <Button type="button" className="hover:bg-gray-300 w-24/50 border" onClick={temp1}><FaGithub /></Button>
                         </div>
                     </FieldGroup>
                 </form>

@@ -122,3 +122,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+[data-sonner-toast][data-type="error"] {
+  border: 1px solid #fb2c36 !important;
+}
+
+/* Стили для success toast */
+[data-sonner-toast][data-type="success"] {
+  border: 1px solid oklch(72.3% 0.219 149.579) !important;
+}

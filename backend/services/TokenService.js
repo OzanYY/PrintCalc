@@ -156,7 +156,6 @@ class TokenService {
             id: user.id,
             email: user.email,
             username: user.username,
-            isActivated: user.is_activated
         };
         
         const tokens = this.generateTokens(payload);

@@ -1,71 +1,99 @@
-import axios from 'axios';
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios';
+import axios from "axios";
+import type {
+  AxiosInstance,
+  InternalAxiosRequestConfig,
+  AxiosError,
+} from "axios";
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = "http://localhost:5000/api";
 
 const api: AxiosInstance = axios.create({
-    baseURL: API_URL,
-    withCredentials: true,
-    headers: {
-        'Content-Type': 'application/json',
-    }
+  baseURL: API_URL,
+  withCredentials: true, // Единственное, что нужно для работы с cookies
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-//api.interceptors.request.use(request => {
-//    console.log('🔍 ПОЛНЫЙ КОНФИГ ЗАПРОСА:');
-//    console.log('- URL:', request.url);
-//    console.log('- Method:', request.method);
-//    console.log('- withCredentials:', request.withCredentials); // Должно быть true
-//    console.log('- baseURL:', request.baseURL);
-//    console.log('- headers:', request.headers);
-//    return request;
-//});
+// --- Переменные для обработки очереди запросов ---
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+}> = [];
+
+const processQueue = (error: Error | null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(null);
+    }
+  });
+  failedQueue = [];
+};
 
 // Обрабатываем ошибки
 api.interceptors.response.use(
-    (response) => response,
-    async (error: AxiosError) => {
-        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-        
-        // Проверяем, не является ли это запросом на аутентификацию
-        const isAuthRequest = originalRequest.url?.includes('/auth/');
-        
-        if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
-            // Только для не-аутентификационных запросов пытаемся обновить токен
-            originalRequest._retry = true;
-            
-            try {
-                const refreshToken = localStorage.getItem('refreshToken');
-                if (!refreshToken) throw new Error('No refresh token');
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      _retry?: boolean;
+    };
 
-                const response = await axios.post(`${API_URL}/auth/refresh`, {
-                    refreshToken
-                });
-
-                const { accessToken, refreshToken: newRefreshToken } = response.data;
-                
-                localStorage.setItem('accessToken', accessToken);
-                localStorage.setItem('refreshToken', newRefreshToken);
-
-                if (originalRequest.headers) {
-                    originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-                }
-                
-                return api(originalRequest);
-            } catch (refreshError) {
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                // Редиректим только если это не запрос на логин
-                if (!originalRequest.url?.includes('/auth/login')) {
-                    window.location.href = '/login';
-                }
-                return Promise.reject(refreshError);
-            }
-        }
-        
-        // Для всех остальных ошибок просто возвращаем промис с ошибкой
-        return Promise.reject(error);
+    if (
+        originalRequest.url?.includes("/auth/login") ||
+        originalRequest.url?.includes("/auth/register")
+    ) {
+      return Promise.reject(error);
     }
+
+    if (!originalRequest || error.response?.status !== 401) {
+      return Promise.reject(error);
+    }
+
+    // Проверяем, не является ли это запросом на обновление токена
+    if (originalRequest.url?.includes("/auth/refresh")) {
+      window.location.href = "/login";
+      return Promise.reject(error);
+    }
+
+    // Если уже идет обновление токена
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then(() => api(originalRequest))
+        .catch((err) => Promise.reject(err));
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      // Просто вызываем endpoint обновления
+      // Cookies отправятся автоматически благодаря withCredentials: true
+      await axios.post(
+        `${API_URL}/auth/refresh`,
+        {},
+        {
+          withCredentials: true,
+        },
+      );
+
+      // Обрабатываем очередь
+      processQueue(null);
+
+      // Повторяем оригинальный запрос (токен уже обновлен в cookies)
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError as Error);
+      window.location.href = "/login";
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  },
 );
 
 export default api;
