@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import SeparatorWithText from "@/components/ui/separator-with-text"
 import {
     Card,
     CardContent,
@@ -13,6 +13,8 @@ import { FaGithub, FaGoogle } from 'react-icons/fa';
 import { useState, useEffect } from 'react';
 import { authAPI } from '@/api/auth';
 import { toast } from "sonner"
+import { useAuth } from "../../features/auth/context/AuthContext"
+import { useNavigate } from 'react-router-dom'
 
 export default function sign() {
     return (
@@ -30,6 +32,8 @@ export default function sign() {
 }
 
 function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
+    const { setUser } = useAuth();
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -45,21 +49,21 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
 
     useEffect(() => {
         if (serverError) {
-            toast.error(serverError, { 
+            toast.error(serverError, {
                 position: "top-center",
             });
         }
     }, [serverError]);
     useEffect(() => {
         if (successMessage) {
-            toast.success(successMessage, { 
+            toast.success(successMessage, {
                 position: "top-center",
             });
         }
     }, [successMessage]);
     useEffect(() => {
         if (isLoading) {
-            toast("Загрузка...", { 
+            toast("Загрузка...", {
                 position: "top-center",
             });
         }
@@ -129,6 +133,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
 
             // Успешный ответ
             console.log('Ответ от сервера:', response.data);
+            setUser(response.data.user);
 
             // Показываем сообщение об успехе
             setSuccessMessage('Успешный вход! Перенаправление...');
@@ -137,9 +142,9 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
             setFormData({ email: '', password: '' });
 
             // Перенаправление на другую страницу через секунду
-            //setTimeout(() => {
-            //    window.location.href = '/dashboard'; // или используй router.push если есть
-            //}, 1000);
+            setTimeout(() => {
+                navigate('/profile'); // или используй router.push если есть
+            }, 1000);
 
         } catch (error: any) {
             // Обработка ошибок
@@ -151,7 +156,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
                 switch (error.response.status) {
                     case 401:
                         setServerError('Неверный email или пароль');
-                       //toast.error(serverError, { position: "top-center" });
+                        //toast.error(serverError, { position: "top-center" });
                         break;
                     case 404:
                         setServerError('Пользователь не найден');
@@ -184,8 +189,16 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     };
 
     const temp = async () => {
-        const response = await authAPI.logout();
-        console.log('Ответ от сервера:', response.data);
+        try {
+            const response = await authAPI.logout();
+            console.log('Ответ:', response.data);
+            setUser(null);
+            setTimeout(() => {
+                navigate('/login');
+            }, 20);
+        } catch (error) {
+            console.log('❌ Ошибка:', error);
+        }
     }
 
     const temp1 = async () => {
@@ -255,8 +268,11 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
         </Card>
     )
 }
+LoginForm.displayName = 'LoginForm';
 
 function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
+    const { setUser } = useAuth();
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -393,6 +409,7 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
             const response = await authAPI.register(registerData);
 
             console.log('Регистрация успешна:', response.data);
+            setUser(response.data.user);
 
             setSuccessMessage('Регистрация успешна!');
 
@@ -404,10 +421,9 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
                 confirmPassword: ''
             });
 
-            // Можно автоматически переключиться на форму входа
             setTimeout(() => {
-                // Переключить таб на форму входа
-            }, 2000);
+                navigate('/profile'); // или используй router.push если есть
+            }, 1000);
 
         } catch (error: any) {
             console.error('Ошибка регистрации:', error);
@@ -524,20 +540,4 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
         </Card>
     )
 }
-
-interface SeparatorWithTextProps {
-    text: string;
-    className?: string;
-}
-
-export function SeparatorWithText({ text, className = "" }: SeparatorWithTextProps) {
-    return (
-        <div className={`relative flex items-center ${className}`}>
-            <Separator className="flex-1" />
-            <span className="mx-4 text-xs text-muted-foreground whitespace-nowrap">
-                {text}
-            </span>
-            <Separator className="flex-1" />
-        </div>
-    );
-}
+RegisterForm.displayName = 'RegisterForm';
