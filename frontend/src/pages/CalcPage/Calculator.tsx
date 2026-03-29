@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calculator, Package, Zap, Cpu, User, Percent } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
+import { toast } from "sonner"
+import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 
 export default function Calc() {
     // Состояния для всех полей ввода
@@ -37,6 +39,42 @@ export default function Calc() {
         marginPercent: 30,
     })
 
+    // Состояния для уведомлений
+    const [isLoading, setIsLoading] = useState(false)
+    const [serverError, setServerError] = useState('')
+    const [successMessage, setSuccessMessage] = useState('')
+    const [results, setResults] = useState<CalculationResult | null>(null)
+
+    // Эффекты для уведомлений
+    useEffect(() => {
+        if (serverError) {
+            toast.error(serverError, {
+                position: "top-center",
+                duration: 5000,
+            })
+        }
+    }, [serverError])
+
+    useEffect(() => {
+        if (successMessage) {
+            toast.success(successMessage, {
+                position: "top-center",
+                duration: 3000,
+            })
+        }
+    }, [successMessage])
+
+    useEffect(() => {
+        if (isLoading) {
+            toast.loading("Выполняется расчет...", {
+                position: "top-center",
+                id: "calculation-loading",
+            })
+        } else {
+            toast.dismiss("calculation-loading")
+        }
+    }, [isLoading])
+
     // Обработчики изменения полей
     const handleMaterialsChange = (field: string, value: number) => {
         setMaterials({ ...materials, [field]: value })
@@ -58,68 +96,85 @@ export default function Calc() {
         setAdditional({ ...additional, [field]: value })
     }
 
-    // Расчет стоимости
-    const calculateCost = () => {
-        // 1. Материалы
-        const totalWeightGrams = materials.modelWeight + materials.supportWeight
-        const totalWeightKg = totalWeightGrams / 1000
-        const modelCost = materials.modelWeight / 1000 * materials.filamentPrice
-        const supportCost = materials.supportWeight / 1000 * materials.filamentPrice
-        const materialsCost = totalWeightKg * materials.filamentPrice
+    // Отправка запроса на сервер
+    const calculateCost = async () => {
+        // Очищаем предыдущие сообщения
+        setServerError('')
+        setSuccessMessage('')
+        setIsLoading(true)
 
-        // 2. Электроэнергия
-        const printTimeHours = electricity.printTime / 60
-        const energyConsumptionKwh = (electricity.powerConsumption * printTimeHours) / 1000
-        const electricityCost = energyConsumptionKwh * electricity.electricityPrice
+        const requestData: CalculationParams = {
+            // Материалы
+            modelWeight: materials.modelWeight,
+            supportWeight: materials.supportWeight,
+            filamentPrice: materials.filamentPrice,
+            
+            // Электричество
+            powerConsumption: electricity.powerConsumption,
+            printTime: electricity.printTime,
+            electricityPrice: electricity.electricityPrice,
+            
+            // Амортизация
+            printerCost: depreciation.printerCost,
+            printResource: depreciation.printResource,
+            
+            // Работа оператора
+            hourlyRate: labor.hourlyRate,
+            workTime: labor.workTime,
+            
+            // Дополнительно
+            additionalExpensesPercent: additional.additionalExpensesPercent,
+            marginPercent: additional.marginPercent
+        }
 
-        // 3. Амортизация
-        const depreciationPerHour = depreciation.printerCost / depreciation.printResource
-        const depreciationCost = depreciationPerHour * printTimeHours
-
-        // 4. Работа оператора
-        const workTimeHours = labor.workTime / 60
-        const laborCost = labor.hourlyRate * workTimeHours
-
-        // 5. Себестоимость
-        const primeCost = materialsCost + electricityCost + depreciationCost + laborCost
-
-        // 6. Дополнительные расходы
-        const additionalExpenses = primeCost * (additional.additionalExpensesPercent / 100)
-
-        // 7. Полная себестоимость
-        const fullCost = primeCost + additionalExpenses
-
-        // 8. Цена с наценкой
-        const marginAmount = fullCost * (additional.marginPercent / 100)
-        const finalPrice = fullCost + marginAmount
-
-        return {
-            materialsCost,
-            electricityCost,
-            depreciationCost,
-            laborCost,
-            primeCost,
-            additionalExpenses,
-            fullCost,
-            marginAmount,
-            finalPrice,
-            totalWeightGrams,
-            modelCost,
-            supportCost
+        try {
+            const response = await calculationAPI.calculate(requestData)
+            
+            if (response.data.success && response.data.data) {
+                setResults(response.data.data)
+                setSuccessMessage('Расчет успешно выполнен!')
+            } else {
+                throw new Error(response.data.error || 'Ошибка при расчете стоимости')
+            }
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.error || err.message || 'Произошла ошибка при подключении к серверу'
+            setServerError(errorMessage)
+            console.error('Calculation error:', err)
+        } finally {
+            setIsLoading(false)
         }
     }
 
-    const results = calculateCost()
+    // Сброс всех значений
+    const resetValues = () => {
+        setMaterials({ modelWeight: 100, supportWeight: 20, filamentPrice: 1500 })
+        setElectricity({ powerConsumption: 200, printTime: 300, electricityPrice: 6.5 })
+        setDepreciation({ printerCost: 50000, printResource: 5000 })
+        setLabor({ hourlyRate: 500, workTime: 60 })
+        setAdditional({ additionalExpensesPercent: 15, marginPercent: 30 })
+        setResults(null)
+        setServerError('')
+        setSuccessMessage('')
+        
+        toast.info("Значения сброшены к стандартным", {
+            position: "top-center",
+            duration: 2000,
+        })
+    }
+
+    // Обработчик печати
+    const handlePrint = () => {
+        if (results) {
+            window.print()
+            toast.info("Подготовка к печати...", {
+                position: "top-center",
+                duration: 2000,
+            })
+        }
+    }
 
     return (
         <div className="max-w-7xl mx-auto pt-4 md:pt-8">
-            {/* Заголовок 
-                <div className="flex justify-center mb-8">
-                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 ml-8">
-                        Калькулятор стоимости 3D-печати
-                    </h1>
-                </div>*/}
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Левая колонка - форма */}
                 <div className="lg:col-span-2">
@@ -173,6 +228,7 @@ export default function Calc() {
                                                         value={materials.modelWeight}
                                                         onChange={(e) => handleMaterialsChange('modelWeight', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         г
@@ -194,6 +250,7 @@ export default function Calc() {
                                                         value={materials.supportWeight}
                                                         onChange={(e) => handleMaterialsChange('supportWeight', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         г
@@ -215,6 +272,7 @@ export default function Calc() {
                                                         value={materials.filamentPrice}
                                                         onChange={(e) => handleMaterialsChange('filamentPrice', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         ₽/кг
@@ -243,6 +301,7 @@ export default function Calc() {
                                                         value={electricity.powerConsumption}
                                                         onChange={(e) => handleElectricityChange('powerConsumption', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         Вт
@@ -264,6 +323,7 @@ export default function Calc() {
                                                         value={electricity.printTime}
                                                         onChange={(e) => handleElectricityChange('printTime', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         мин
@@ -285,6 +345,7 @@ export default function Calc() {
                                                         value={electricity.electricityPrice}
                                                         onChange={(e) => handleElectricityChange('electricityPrice', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         ₽/кВт·ч
@@ -313,6 +374,7 @@ export default function Calc() {
                                                         value={depreciation.printerCost}
                                                         onChange={(e) => handleDepreciationChange('printerCost', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         ₽
@@ -334,6 +396,7 @@ export default function Calc() {
                                                         value={depreciation.printResource}
                                                         onChange={(e) => handleDepreciationChange('printResource', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         часов
@@ -362,6 +425,7 @@ export default function Calc() {
                                                         value={labor.hourlyRate}
                                                         onChange={(e) => handleLaborChange('hourlyRate', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         ₽/ч
@@ -383,6 +447,7 @@ export default function Calc() {
                                                         value={labor.workTime}
                                                         onChange={(e) => handleLaborChange('workTime', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         мин
@@ -412,6 +477,7 @@ export default function Calc() {
                                                         value={additional.additionalExpensesPercent}
                                                         onChange={(e) => handleAdditionalChange('additionalExpensesPercent', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         %
@@ -434,6 +500,7 @@ export default function Calc() {
                                                         value={additional.marginPercent}
                                                         onChange={(e) => handleAdditionalChange('marginPercent', parseFloat(e.target.value) || 0)}
                                                         className="pr-10"
+                                                        disabled={isLoading}
                                                     />
                                                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                                         %
@@ -444,6 +511,28 @@ export default function Calc() {
                                     </div>
                                 </TabsContent>
                             </Tabs>
+
+                            {/* Кнопка расчета */}
+                            <div className="mt-6">
+                                <Button 
+                                    size="lg" 
+                                    className="w-full"
+                                    onClick={calculateCost}
+                                    disabled={isLoading}
+                                >
+                                    {isLoading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Выполняется расчет...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Calculator className="mr-2 h-4 w-4" />
+                                            Рассчитать стоимость
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -452,113 +541,123 @@ export default function Calc() {
                 <div>
                     <Card className="border h-full">
                         <CardContent>
-                            <div className="space-y-6">
-                                {/* Вес */}
-                                <div>
-                                    <h3 className="text-sm font-medium text-gray-500 mb-2">Общий вес</h3>
-                                    <div className="text-2xl font-bold text-gray-900">
-                                        {results.totalWeightGrams.toFixed(1)} г
-                                        <span className="text-sm font-normal text-gray-500 ml-2">
-                                            ({(results.totalWeightGrams / 1000).toFixed(3)} кг)
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <Separator />
-
-                                {/* Расходы по категориям */}
-                                <div className="space-y-4">
+                            {results ? (
+                                <div className="space-y-6">
+                                    {/* Вес */}
                                     <div>
-                                        <h3 className="text-sm font-medium text-gray-500 mb-3">Расходы по категориям</h3>
-                                        <div className="space-y-3">
-                                            <div className="space-y-1">
+                                        <h3 className="text-sm font-medium text-gray-500 mb-2">Общий вес</h3>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            {results.totalWeight.grams} г
+                                            <span className="text-sm font-normal text-gray-500 ml-2">
+                                                ({results.totalWeight.kg} кг)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <Separator />
+
+                                    {/* Расходы по категориям */}
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h3 className="text-sm font-medium text-gray-500 mb-3">Расходы по категориям</h3>
+                                            <div className="space-y-3">
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm flex items-center gap-2">
+                                                            <Package className="h-4 w-4" />
+                                                            Материалы
+                                                        </span>
+                                                        <span className="font-medium">{results.materials.total.formatted}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-sm pl-4 relative">
+                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                        <span className="text-sm pl-1 text-muted-foreground">Модель</span>
+                                                        <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-sm pl-4 relative">
+                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                        <span className="flex items-center gap-2 pl-1 text-muted-foreground">Поддержки</span>
+                                                        <span className="text-muted-foreground">{results.materials.support.formatted}</span>
+                                                    </div>
+                                                </div>
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-sm flex items-center gap-2">
-                                                        <Package className="h-4 w-4" />
-                                                        Материалы
+                                                        <Zap className="h-4 w-4" />
+                                                        Электричество
                                                     </span>
-                                                    <span className="font-medium">{results.materialsCost.toFixed(2)} ₽</span>
+                                                    <span className="font-medium">{results.electricity.formatted}</span>
                                                 </div>
-                                                <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                    <span className="text-sm pl-1 text-muted-foreground">Модель</span>
-                                                    <span className="font-medium text-muted-foreground">{results.modelCost.toFixed(2)} ₽</span>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm flex items-center gap-2">
+                                                        <Cpu className="h-4 w-4" />
+                                                        Амортизация
+                                                    </span>
+                                                    <span className="font-medium">{results.depreciation.formatted}</span>
                                                 </div>
-                                                <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                    <span className="flex items-center gap-2 pl-1 text-muted-foreground">Поддержки</span>
-                                                    <span className="text-muted-foreground">{results.supportCost.toFixed(2)} ₽</span>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm flex items-center gap-2">
+                                                        <User className="h-4 w-4" />
+                                                        Оператор
+                                                    </span>
+                                                    <span className="font-medium">{results.labor.formatted}</span>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <Separator />
+
+                                        {/* Себестоимость */}
+                                        <div className="space-y-1">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-sm flex items-center gap-2">
-                                                    <Zap className="h-4 w-4" />
-                                                    Электричество
-                                                </span>
-                                                <span className="font-medium">{results.electricityCost.toFixed(2)} ₽</span>
+                                                <span className="font-semibold">Полная себестоимость</span>
+                                                <span className="font-bold">{results.fullCost.formatted}</span>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm flex items-center gap-2">
-                                                    <Cpu className="h-4 w-4" />
-                                                    Амортизация
-                                                </span>
-                                                <span className="font-medium">{results.depreciationCost.toFixed(2)} ₽</span>
+                                            <div className="flex justify-between items-center text-sm pl-4 relative">
+                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                <span className="text-sm text-muted-foreground pl-1">Себестоимость</span>
+                                                <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm flex items-center gap-2">
-                                                    <User className="h-4 w-4" />
-                                                    Оператор
+                                            <div className="flex justify-between items-center text-sm pl-4 relative">
+                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                <span className="flex items-center gap-2 text-muted-foreground pl-1">
+                                                    <Percent className="h-3 w-3" />
+                                                    Доп. расходы ({results.additionalExpenses.percent})
                                                 </span>
-                                                <span className="font-medium">{results.laborCost.toFixed(2)} ₽</span>
+                                                <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
                                             </div>
                                         </div>
-                                    </div>
+                                        <Separator />
 
-                                    <Separator />
+                                        {/* Итоговая цена */}
+                                        <div className="bg-primary/5 p-4 rounded-lg">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-semibold">Маржа ({results.margin.percent})</span>
+                                                <span className="font-bold text-primary">+{results.margin.formatted}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pt-3 border-t border-primary/20">
+                                                <span className="text-lg font-bold">Итоговая цена</span>
+                                                <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
+                                            </div>
+                                        </div>
 
-                                    {/* Себестоимость */}
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-semibold">Полная себестоимость</span>
-                                            <span className="font-bold">{results.fullCost.toFixed(2)} ₽</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm pl-4 relative">
-                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300 "></div>
-                                            <span className="text-sm text-muted-foreground pl-1">Себестоимость</span>
-                                            <span className="font-medium text-muted-foreground">{results.primeCost.toFixed(2)} ₽</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-sm pl-4 relative">
-                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                            <span className="flex items-center gap-2 text-muted-foreground pl-1">
-                                                <Percent className="h-3 w-3" />
-                                                Доп. расходы ({additional.additionalExpensesPercent}%)
-                                            </span>
-                                            <span className="text-muted-foreground">+{results.additionalExpenses.toFixed(2)} ₽</span>
-                                        </div>
-                                    </div>
-                                    <Separator />
-
-                                    {/* Итоговая цена */}
-                                    <div className="bg-primary/5 p-4 rounded-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="font-semibold">Маржа ({additional.marginPercent}%)</span>
-                                            <span className="font-bold text-primary">+{results.marginAmount.toFixed(2)} ₽</span>
-                                        </div>
-                                        <div className="flex justify-between items-center pt-3 border-t border-primary/20">
-                                            <span className="text-lg font-bold">Итоговая цена</span>
-                                            <span className="text-2xl font-bold text-primary">{results.finalPrice.toFixed(2)} ₽</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Стоимость за грамм */}
-                                    <div className="text-center p-3 bg-gray-50 rounded-lg">
-                                        <div className="text-sm text-gray-600">Стоимость печати за грамм</div>
-                                        <div className="text-xl font-bold text-gray-900">
-                                            {(results.finalPrice / results.totalWeightGrams).toFixed(2)} ₽/г
+                                        {/* Стоимость за грамм */}
+                                        <div className="text-center p-3 bg-gray-50 rounded-lg">
+                                            <div className="text-sm text-gray-600">Стоимость печати за грамм</div>
+                                            <div className="text-xl font-bold text-gray-900">
+                                                {results.pricePerGram.formatted}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <Calculator className="h-12 w-12 text-gray-300 mb-4" />
+                                    <p className="text-gray-500 mb-2">Нет данных для отображения</p>
+                                    <p className="text-sm text-gray-400">
+                                        Заполните параметры и нажмите "Рассчитать стоимость"
+                                    </p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
@@ -566,19 +665,23 @@ export default function Calc() {
 
             {/* Кнопки действий */}
             <div className="mt-6 flex justify-center gap-4">
-                <Button variant="outline" size="lg" onClick={() => {
-                    // Сброс значений к стандартным
-                    setMaterials({ modelWeight: 100, supportWeight: 20, filamentPrice: 1500 })
-                    setElectricity({ powerConsumption: 200, printTime: 300, electricityPrice: 6.5 })
-                    setDepreciation({ printerCost: 50000, printResource: 5000 })
-                    setLabor({ hourlyRate: 500, workTime: 60 })
-                    setAdditional({ additionalExpensesPercent: 15, marginPercent: 30 })
-                }}>
+                <Button 
+                    variant="outline" 
+                    size="lg" 
+                    onClick={resetValues}
+                    disabled={isLoading}
+                >
                     Сбросить значения
                 </Button>
-                <Button size="lg" onClick={() => window.print()}>
-                    Распечатать расчет
-                </Button>
+                {results && (
+                    <Button 
+                        size="lg" 
+                        onClick={handlePrint}
+                        disabled={isLoading}
+                    >
+                        Распечатать расчет
+                    </Button>
+                )}
             </div>
         </div>
     )
