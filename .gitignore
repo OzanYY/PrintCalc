@@ -1,5 +1,3 @@
-# .gitignore - ЭТОТ ФАЙЛ ТОЖЕ КОММИТИТСЯ
-
 # dependencies
 backend/node_modules/
 frontend/node_modules/

@@ -35,7 +35,15 @@ const processQueue = (error: Error | null) => {
 
 // Обрабатываем ошибки
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Логирование успешных ответов
+    console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url}`, {
+      status: response.status,
+      data: response.data,
+      headers: response.headers,
+    });
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;

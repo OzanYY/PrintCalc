@@ -46,9 +46,9 @@ class UserService {
             });
 
             // Отправка письма для активации
-            const activationUrl = `${process.env.API_URL}/api/activate/${activation_link}`;
-            await MailService.sendActivationMail(email, activationUrl);
-            console.log(`✅ Activation email sent to ${email}`);
+            //const activationUrl = `${process.env.API_URL}/api/activate/${activation_link}`;
+            //await MailService.sendActivationMail(email, activationUrl);
+            //console.log(`✅ Activation email sent to ${email}`);
 
             return {
                 user: newUser,
