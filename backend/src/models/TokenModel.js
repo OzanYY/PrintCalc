@@ -1,6 +1,8 @@
 // models/TokenModel.js
+// Импортируем объект для работы с бд
 const pool = require('../config/database');
 
+// Создаем класс для работы с моделью для токена
 class TokenModel {
     // Создание таблицы для токенов
     static async createTable() {
@@ -211,4 +213,5 @@ class TokenModel {
     }
 }
 
+// Экспортируем класс
 module.exports = TokenModel;

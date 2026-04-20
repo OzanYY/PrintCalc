@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
+import { SmartInput } from '@/components/ui/smart-input'
 
 export default function Calc() {
     // Состояния для всех полей ввода
@@ -187,28 +187,7 @@ export default function Calc() {
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="materials" className="w-full">
-                                <TabsList className="grid grid-cols-5 mb-6">
-                                    <TabsTrigger value="materials" className="flex items-center gap-2">
-                                        <Package className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Материалы</span>
-                                    </TabsTrigger>
-                                    <TabsTrigger value="electricity" className="flex items-center gap-2">
-                                        <Zap className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Электричество</span>
-                                    </TabsTrigger>
-                                    <TabsTrigger value="depreciation" className="flex items-center gap-2">
-                                        <Cpu className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Амортизация</span>
-                                    </TabsTrigger>
-                                    <TabsTrigger value="labor" className="flex items-center gap-2">
-                                        <User className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Оператор</span>
-                                    </TabsTrigger>
-                                    <TabsTrigger value="additional" className="flex items-center gap-2">
-                                        <Percent className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Дополнительно</span>
-                                    </TabsTrigger>
-                                </TabsList>
+                                {/* ... TabsList без изменений ... */}
 
                                 {/* Материалы */}
                                 <TabsContent value="materials">
@@ -220,13 +199,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">г</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="modelWeight"
-                                                        type="number"
                                                         min="0"
                                                         step="0.1"
                                                         value={materials.modelWeight}
-                                                        onChange={(e) => handleMaterialsChange('modelWeight', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleMaterialsChange('modelWeight', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -242,13 +220,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">г</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="supportWeight"
-                                                        type="number"
                                                         min="0"
                                                         step="0.1"
                                                         value={materials.supportWeight}
-                                                        onChange={(e) => handleMaterialsChange('supportWeight', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleMaterialsChange('supportWeight', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -264,13 +241,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">₽/кг</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="filamentPrice"
-                                                        type="number"
                                                         min="0"
                                                         step="10"
                                                         value={materials.filamentPrice}
-                                                        onChange={(e) => handleMaterialsChange('filamentPrice', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleMaterialsChange('filamentPrice', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -293,13 +269,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">Вт</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="powerConsumption"
-                                                        type="number"
                                                         min="0"
                                                         step="10"
                                                         value={electricity.powerConsumption}
-                                                        onChange={(e) => handleElectricityChange('powerConsumption', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleElectricityChange('powerConsumption', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -315,13 +290,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">мин</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="printTime"
-                                                        type="number"
                                                         min="0"
                                                         step="1"
                                                         value={electricity.printTime}
-                                                        onChange={(e) => handleElectricityChange('printTime', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleElectricityChange('printTime', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -337,13 +311,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">₽/кВт·ч</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="electricityPrice"
-                                                        type="number"
                                                         min="0"
                                                         step="0.1"
                                                         value={electricity.electricityPrice}
-                                                        onChange={(e) => handleElectricityChange('electricityPrice', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleElectricityChange('electricityPrice', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -366,13 +339,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">₽</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="printerCost"
-                                                        type="number"
                                                         min="0"
                                                         step="1000"
                                                         value={depreciation.printerCost}
-                                                        onChange={(e) => handleDepreciationChange('printerCost', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleDepreciationChange('printerCost', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -388,13 +360,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">часов</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="printResource"
-                                                        type="number"
                                                         min="0"
                                                         step="100"
                                                         value={depreciation.printResource}
-                                                        onChange={(e) => handleDepreciationChange('printResource', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleDepreciationChange('printResource', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -417,13 +388,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">₽/ч</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="hourlyRate"
-                                                        type="number"
                                                         min="0"
                                                         step="50"
                                                         value={labor.hourlyRate}
-                                                        onChange={(e) => handleLaborChange('hourlyRate', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleLaborChange('hourlyRate', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -439,13 +409,12 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">мин</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="workTime"
-                                                        type="number"
                                                         min="0"
                                                         step="5"
                                                         value={labor.workTime}
-                                                        onChange={(e) => handleLaborChange('workTime', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleLaborChange('workTime', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -468,14 +437,13 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">%</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="additionalExpensesPercent"
-                                                        type="number"
                                                         min="0"
                                                         max="100"
                                                         step="1"
                                                         value={additional.additionalExpensesPercent}
-                                                        onChange={(e) => handleAdditionalChange('additionalExpensesPercent', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleAdditionalChange('additionalExpensesPercent', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
@@ -491,14 +459,13 @@ export default function Calc() {
                                                     <Badge variant="outline" className="ml-auto">%</Badge>
                                                 </Label>
                                                 <div className="relative">
-                                                    <Input
+                                                    <SmartInput
                                                         id="marginPercent"
-                                                        type="number"
                                                         min="0"
                                                         max="500"
                                                         step="5"
                                                         value={additional.marginPercent}
-                                                        onChange={(e) => handleAdditionalChange('marginPercent', parseFloat(e.target.value) || 0)}
+                                                        onChange={(value) => handleAdditionalChange('marginPercent', value)}
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />

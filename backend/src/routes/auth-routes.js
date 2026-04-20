@@ -14,7 +14,6 @@ router.post('/reset-password', AuthController.resetPassword);
 
 // Защищенные маршруты
 router.use(authMiddleware);
-
 router.get('/me', AuthController.getMe);
 router.post('/logout', AuthController.logout);
 router.post('/logout-all', AuthController.logoutAll);

@@ -1,4 +1,5 @@
-require('dotenv').config();
+//require - функция для импорта модулей .config() загружает переменные в в process.env
+require('dotenv').config(); // загружаем переменные окружения из файла .env
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -12,13 +13,15 @@ const PrinterModel = require('./models/PrinterModel');
 const MaterialModel = require('./models/MaterialModel');
 const OrderModel = require('./models/OrderModel');
 
+// Объявляем порт, на котором будет развернут сервек
 const PORT = process.env.PORT || 5000;
+// Создаем приложение express
 const app = express()
 
 // Настройки CORS
 const corsOptions = {
-    origin: 'http://localhost:5173', // твой фронтенд
-    credentials: true,                // разрешаем куки/авторизацию
+    origin: 'http://localhost:5173', // адрес фронта
+    credentials: true,                // разрешаем куки
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -32,15 +35,6 @@ app.use("/api/auth", authRoutes);
 app.use('/api/printers', printerRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api', calculationRoutes);
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'OK',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        database: 'connected' // или проверь реальное соединение
-    });
-});
 
 const start = async () => {
     try {

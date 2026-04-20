@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 
+// Настраиваем параметры бд
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -11,8 +12,6 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-module.exports = pool;
-
 // Проверка подключения
 pool.on('connect', () => {
   console.log('✅ Connected to PostgreSQL');
@@ -23,4 +22,5 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
+// Экспортируем бд
 module.exports = pool;
