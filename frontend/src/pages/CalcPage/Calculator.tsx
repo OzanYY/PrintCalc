@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
@@ -186,8 +186,29 @@ export default function Calc() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Tabs defaultValue="materials" className="w-full">
-                                {/* ... TabsList без изменений ... */}
+                            <Tabs defaultValue="materials" className="w-fits">
+                                <TabsList className="grid grid-cols-5 mb-6 w-full">
+                                    <TabsTrigger value="materials" className="flex items-center gap-2">
+                                        <Package className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Материалы</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="electricity" className="flex items-center gap-2">
+                                        <Zap className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Электричество</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="depreciation" className="flex items-center gap-2">
+                                        <Cpu className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Амортизация</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="labor" className="flex items-center gap-2">
+                                        <User className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Оператор</span>
+                                    </TabsTrigger>
+                                    <TabsTrigger value="additional" className="flex items-center gap-2">
+                                        <Percent className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Дополнительно</span>
+                                    </TabsTrigger>
+                                </TabsList>
 
                                 {/* Материалы */}
                                 <TabsContent value="materials">
