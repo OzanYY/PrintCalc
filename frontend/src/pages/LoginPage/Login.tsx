@@ -13,7 +13,6 @@ import { FaGithub, FaGoogle } from 'react-icons/fa';
 import { useState, useEffect } from 'react';
 import { authAPI } from '@/api/auth';
 import { toast } from "sonner"
-import { useAuth } from "../../features/auth/context/AuthContext"
 import { useNavigate } from 'react-router-dom'
 
 export default function sign() {
@@ -32,7 +31,6 @@ export default function sign() {
 }
 
 function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
-    const { setUser } = useAuth();
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         email: '',
@@ -133,7 +131,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
 
             // Успешный ответ
             console.log('Ответ от сервера:', response.data);
-            setUser(response.data.user);
 
             // Показываем сообщение об успехе
             setSuccessMessage('Успешный вход! Перенаправление...');
@@ -189,20 +186,12 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     };
 
     const temp = async () => {
-        try {
-            const response = await authAPI.logout();
-            console.log('Ответ:', response.data);
-            setUser(null);
-            setTimeout(() => {
-                navigate('/login');
-            }, 20);
-        } catch (error) {
-            console.log('❌ Ошибка:', error);
-        }
+        const response = await authAPI.status();
+        console.log('Ответ от сервера:', response.data);
     }
 
     const temp1 = async () => {
-        const response = await authAPI.getCurrentUser();
+        const response = await authAPI.logout();
         console.log('Ответ от сервера:', response.data);
     }
 
@@ -271,7 +260,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
 LoginForm.displayName = 'LoginForm';
 
 function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
-    const { setUser } = useAuth();
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         name: '',
@@ -409,7 +397,6 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
             const response = await authAPI.register(registerData);
 
             console.log('Регистрация успешна:', response.data);
-            setUser(response.data.user);
 
             setSuccessMessage('Регистрация успешна!');
 

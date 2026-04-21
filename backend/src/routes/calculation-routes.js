@@ -7,6 +7,6 @@ const authMiddleware = require('../middleware/auth-middleware');
 router.post('/calculate', CalculationController.calculate);
 
 // Защищенный маршрут (требует авторизацию для использования пресетов)
-router.post('/calculate-with-presets', authMiddleware, CalculationController.calculateWithPresets);
+//router.post('/calculate-with-presets', authMiddleware, CalculationController.calculateWithPresets);
 
 module.exports = router;

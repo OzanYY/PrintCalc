@@ -1,31 +1,38 @@
 // middleware/authMiddleware.js
 const TokenService = require('../services/TokenService');
 
-module.exports = async (req, res, next) => {
+async function authMiddleware(req, res, next) {
+    const token = req.cookies.accessToken;
+
+    req.isAuth = false;
+    req.user = null;
+
+    if (!token) {
+        return next();}
+
     try {
-        if (!req.cookies?.accessToken) {
-            return res.status(401).json({
-                error: 'No token provided',
-                code: 'NO_TOKEN'
-            });
-        }
-
-        const token = req.cookies.accessToken;
         const userData = TokenService.validateAccessToken(token);
-
-
         if (!userData) {
-            return res.status(401).json({
-                error: 'Invalid or expired token',
-                code: 'INVALID_TOKEN'
-            });
+            return next();
         }
-
+        req.isAuth = true;
         req.user = userData;
-        next();
-
-    } catch (error) {
-        console.error('Auth middleware error:', error);
-        return res.status(500).json({ error: 'Authentication failed' });
+        return next();
     }
-};
+    catch (error) {
+        console.log("Error auth:", error);
+        return  next();
+    }
+}
+
+async function requireAuth(req, res, next) {
+    if (!req.isAuth) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Authentication required'
+        });
+    }
+    next();
+}
+
+module.exports = { authMiddleware, requireAuth }

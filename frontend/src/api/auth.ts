@@ -14,4 +14,6 @@ export const authAPI = {
   logout: () => api.post("/auth/logout"),
 
   getCurrentUser: () => api.get("/auth/me"),
+
+  status: () => api.get("auth/status")
 };

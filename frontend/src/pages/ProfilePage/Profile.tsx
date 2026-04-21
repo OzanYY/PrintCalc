@@ -38,7 +38,6 @@ import {
     UserPlus,
     LogOut,
 } from 'lucide-react';
-import { useAuth } from "../../features/auth/context/AuthContext"
 import { useNavigate } from 'react-router-dom'
 import { authAPI } from '@/api/auth';
 
@@ -68,7 +67,6 @@ interface StatCard {
 
 export default function UserPage() {
     // Состояния для данных пользователя
-    const { setUser } = useAuth();
     const navigate = useNavigate();
     const [userData, setUserData] = useState<UserData>({
         avatar: 'https://github.com/shadcn.png',
@@ -160,7 +158,6 @@ export default function UserPage() {
         try {
             const response = await authAPI.logout();
             console.log('Ответ:', response.data);
-            setUser(null);
             setTimeout(() => {
                 navigate('/login');
             }, 20);
