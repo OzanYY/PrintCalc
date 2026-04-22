@@ -6,12 +6,15 @@ import {
     AvatarFallback,
     AvatarImage,
 } from "@/components/ui/avatar"
+import { useAuth } from "@/context/AuthContext"
 
 export default function Header() {
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     return (
         <header className="flex justify-between p-2 rounded-xl bg-neutral-50">
+            { user ? 
             <div className="flex">
                 <Button
                     className="hover:bg-gray-300 bg-neutral-50"
@@ -46,6 +49,16 @@ export default function Header() {
                     </Button>
                 </div>
             </div>
+            :
+            <div className="flex">
+                <Button
+                    className="hover:bg-gray-300 bg-neutral-50"
+                    onClick={() => navigate('/')}  // ← на главную
+                >
+                    <Sigma />PrintCalc
+                </Button>
+            </div>
+            }
             <div className="flex">
                 <Button
                     className="hover:bg-gray-300 bg-neutral-50"
