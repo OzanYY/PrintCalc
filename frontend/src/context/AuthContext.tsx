@@ -12,7 +12,7 @@ interface User {
 }
 
 // Тип для ответа API
-interface AuthStatusResponse {
+export interface AuthStatusResponse {
   isAuth: boolean;
   user: User | null;
 }
