@@ -9,6 +9,7 @@ import PrintersPage from './pages/PrinterPage/PrinterPage'
 import MaterialsPage from './pages/MaterialsPage/MaterialPage'
 import OrdersPage from './pages/OrdersPage/OrderPage'
 import StatisticsPage from './pages/dashboardPage/dashboardPage'
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -17,13 +18,17 @@ function App() {
         <Header />
         <main className="flex-1">
           <Routes>
+            {/* Публичные маршруты */}
             <Route path="/" element={<CalcPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/printers" element={<PrintersPage />} />
-            <Route path="/materials" element={<MaterialsPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/dashboard" element={<StatisticsPage />} />
+
+            {/* Защищенные маршруты */}
+            <Route path="/profile" element={<ProtectedRoute> <ProfilePage /> </ProtectedRoute>} />
+            <Route path="/printers" element={<ProtectedRoute> <PrintersPage /> </ProtectedRoute>} />
+            <Route path="/materials" element={<ProtectedRoute> <MaterialsPage /> </ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute> <OrdersPage /> </ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute> <StatisticsPage /> </ProtectedRoute>} />
+
           </Routes>
           <Toaster />
         </main>

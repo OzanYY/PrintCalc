@@ -186,13 +186,11 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     };
 
     const temp = async () => {
-        const response = await authAPI.status();
-        console.log('Ответ от сервера:', response.data);
+        await authAPI.status();
     }
 
     const temp1 = async () => {
-        const response = await authAPI.logout();
-        console.log('Ответ от сервера:', response.data);
+        await authAPI.logout();
     }
 
     return (
