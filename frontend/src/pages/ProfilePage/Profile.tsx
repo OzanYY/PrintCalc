@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom'
 import { authAPI } from '@/api/auth';
-
+import { useAuth } from "@/context/AuthContext"
 
 // Интерфейсы для типизации
 interface UserData {
@@ -68,6 +68,7 @@ interface StatCard {
 export default function UserPage() {
     // Состояния для данных пользователя
     const navigate = useNavigate();
+    const { setUser } = useAuth();
     const [userData, setUserData] = useState<UserData>({
         avatar: 'https://github.com/shadcn.png',
         username: 'john_doe',
@@ -154,13 +155,11 @@ export default function UserPage() {
             .toUpperCase();
     };
 
-    const temp = async () => {
+    const logout = async () => {
         try {
-            const response = await authAPI.logout();
-            console.log('Ответ:', response.data);
-            setTimeout(() => {
-                navigate('/login');
-            }, 20);
+            await authAPI.logout();
+            setUser(null);
+
         } catch (error) {
             console.log('❌ Ошибка:', error);
         }
@@ -194,7 +193,7 @@ export default function UserPage() {
                             <span>Настройки</span>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-red-600" onClick={temp}>
+                        <DropdownMenuItem className="text-red-600" onClick={logout}>
                             <LogOut className="mr-2 h-4 w-4"/>
                             <span>Выйти</span>
                         </DropdownMenuItem>
