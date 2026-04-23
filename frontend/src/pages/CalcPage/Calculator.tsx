@@ -1,49 +1,55 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, type RefObject } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, DessertIcon } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 import { SmartInput } from '@/components/ui/smart-input'
+import { useCalculator } from "@/context/CalculatorContext"
 
 export default function Calc() {
-    // Состояния для всех полей ввода
-    const [materials, setMaterials] = useState({
-        modelWeight: 100,
-        supportWeight: 20,
-        filamentPrice: 1500,
-    })
+    const {
+        materials,
+        setMaterials,
+        electricity,
+        setElectricity,
+        depreciation,
+        setDepreciation,
+        labor,
+        setLabor,
+        additional,
+        setAdditional,
+        hasCalculated,
+        setHasCalculated,
+        resetToDefaults,
+        resetAll,
+    } = useCalculator()
 
-    const [electricity, setElectricity] = useState({
-        powerConsumption: 200,
-        printTime: 300,
-        electricityPrice: 6.5,
-    })
-
-    const [depreciation, setDepreciation] = useState({
-        printerCost: 50000,
-        printResource: 5000,
-    })
-
-    const [labor, setLabor] = useState({
-        hourlyRate: 500,
-        workTime: 60,
-    })
-
-    const [additional, setAdditional] = useState({
-        additionalExpensesPercent: 15,
-        marginPercent: 30,
-    })
 
     // Состояния для уведомлений
     const [isLoading, setIsLoading] = useState(false)
     const [serverError, setServerError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
     const [results, setResults] = useState<CalculationResult | null>(null)
+
+    // При монтировании компонента проверяем статус hasCalculated
+    // Если был расчет, восстанавливаем результаты из localStorage
+    useEffect(() => {
+        if (hasCalculated) {
+            const savedResults = localStorage.getItem('calculator_results')
+            if (savedResults) {
+                try {
+                    setResults(JSON.parse(savedResults))
+                } catch (error) {
+                    console.error('Error loading saved results:', error)
+                }
+            }
+        }
+    }, [hasCalculated])
 
     // Эффекты для уведомлений
     useEffect(() => {
@@ -75,25 +81,25 @@ export default function Calc() {
         }
     }, [isLoading])
 
-    // Обработчики изменения полей
+    // Обработчики изменения полей (обновлены для работы с контекстом)
     const handleMaterialsChange = (field: string, value: number) => {
-        setMaterials({ ...materials, [field]: value })
+        setMaterials(prev => ({ ...prev, [field]: value }))
     }
 
     const handleElectricityChange = (field: string, value: number) => {
-        setElectricity({ ...electricity, [field]: value })
+        setElectricity(prev => ({ ...prev, [field]: value }))
     }
 
     const handleDepreciationChange = (field: string, value: number) => {
-        setDepreciation({ ...depreciation, [field]: value })
+        setDepreciation(prev => ({ ...prev, [field]: value }))
     }
 
     const handleLaborChange = (field: string, value: number) => {
-        setLabor({ ...labor, [field]: value })
+        setLabor(prev => ({ ...prev, [field]: value }))
     }
 
     const handleAdditionalChange = (field: string, value: number) => {
-        setAdditional({ ...additional, [field]: value })
+        setAdditional(prev => ({ ...prev, [field]: value }))
     }
 
     // Отправка запроса на сервер
@@ -108,20 +114,20 @@ export default function Calc() {
             modelWeight: materials.modelWeight,
             supportWeight: materials.supportWeight,
             filamentPrice: materials.filamentPrice,
-            
+
             // Электричество
             powerConsumption: electricity.powerConsumption,
             printTime: electricity.printTime,
             electricityPrice: electricity.electricityPrice,
-            
+
             // Амортизация
             printerCost: depreciation.printerCost,
             printResource: depreciation.printResource,
-            
+
             // Работа оператора
             hourlyRate: labor.hourlyRate,
             workTime: labor.workTime,
-            
+
             // Дополнительно
             additionalExpensesPercent: additional.additionalExpensesPercent,
             marginPercent: additional.marginPercent
@@ -129,9 +135,12 @@ export default function Calc() {
 
         try {
             const response = await calculationAPI.calculate(requestData)
-            
+
             if (response.data.success && response.data.data) {
                 setResults(response.data.data)
+                setHasCalculated(true) // Устанавливаем статус, что был расчет
+                // Сохраняем результаты в localStorage
+                localStorage.setItem('calculator_results', JSON.stringify(response.data.data))
                 setSuccessMessage('Расчет успешно выполнен!')
             } else {
                 throw new Error(response.data.error || 'Ошибка при расчете стоимости')
@@ -145,18 +154,27 @@ export default function Calc() {
         }
     }
 
-    // Сброс всех значений
+    // Сброс всех значений (полный сброс)
     const resetValues = () => {
-        setMaterials({ modelWeight: 100, supportWeight: 20, filamentPrice: 1500 })
-        setElectricity({ powerConsumption: 200, printTime: 300, electricityPrice: 6.5 })
-        setDepreciation({ printerCost: 50000, printResource: 5000 })
-        setLabor({ hourlyRate: 500, workTime: 60 })
-        setAdditional({ additionalExpensesPercent: 15, marginPercent: 30 })
+        resetAll() // Используем resetAll для полного сброса
         setResults(null)
         setServerError('')
         setSuccessMessage('')
-        
+
+        // Очищаем сохраненные результаты
+        localStorage.removeItem('calculator_results')
+
         toast.info("Значения сброшены к стандартным", {
+            position: "top-center",
+            duration: 2000,
+        })
+    }
+
+    // Сброс только формы (сохраняет результаты)
+    const resetFormOnly = () => {
+        resetToDefaults()
+
+        toast.info("Параметры сброшены, результаты сохранены", {
             position: "top-center",
             duration: 2000,
         })
@@ -180,10 +198,18 @@ export default function Calc() {
                 <div className="lg:col-span-2">
                     <Card className="border">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Calculator className="h-5 w-5" />
-                                Введите параметры печати
-                            </CardTitle>
+                            <div className="flex justify-between">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Calculator className="h-5 w-5" />
+                                    Введите параметры печати
+                                </CardTitle>
+                                <Button
+                                    className="text-destructive hover:bg-destructive/10"
+                                    onClick={resetValues}
+                                    disabled={isLoading}>
+                                    Сбросить
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="materials" className="w-fits">
@@ -502,8 +528,8 @@ export default function Calc() {
 
                             {/* Кнопка расчета */}
                             <div className="mt-6">
-                                <Button 
-                                    size="lg" 
+                                <Button
+                                    size="lg"
                                     className="w-full"
                                     onClick={calculateCost}
                                     disabled={isLoading}
@@ -515,7 +541,6 @@ export default function Calc() {
                                         </>
                                     ) : (
                                         <>
-                                            <Calculator className="mr-2 h-4 w-4" />
                                             Рассчитать стоимость
                                         </>
                                     )}
@@ -652,25 +677,26 @@ export default function Calc() {
             </div>
 
             {/* Кнопки действий */}
-            <div className="mt-6 flex justify-center gap-4">
-                <Button 
-                    variant="outline" 
-                    size="lg" 
-                    onClick={resetValues}
-                    disabled={isLoading}
-                >
-                    Сбросить значения
-                </Button>
-                {results && (
-                    <Button 
-                        size="lg" 
+            {results && (
+                <div className="mt-6 flex justify-center gap-4">
+                    <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={() => { }}
+                        disabled={isLoading}
+                    >
+                        Сохранить заказ
+                    </Button>
+                    <Button
+                        size="lg"
                         onClick={handlePrint}
                         disabled={isLoading}
                     >
                         Распечатать расчет
                     </Button>
-                )}
-            </div>
+
+                </div>
+            )}
         </div>
     )
 }
