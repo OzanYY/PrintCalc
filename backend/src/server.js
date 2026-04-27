@@ -7,6 +7,7 @@ const authRoutes = require('./routes/auth-routes');
 const printerRoutes = require('./routes/printer-routes');
 const materialRoutes = require('./routes/material-routes');
 const calculationRoutes = require('./routes/calculation-routes');
+const orderRoutes = require('./routes/order-routes')
 const UserModel = require('./models/UserModel');
 const TokenModel = require('./models/TokenModel');
 const PrinterModel = require('./models/PrinterModel');
@@ -35,6 +36,7 @@ app.use("/api/auth", authRoutes);
 //app.use('/api/printers', printerRoutes);
 //app.use('/api/materials', materialRoutes);
 app.use('/api', calculationRoutes);
+app.use('/api/orders', orderRoutes);
 
 const start = async () => {
     try {

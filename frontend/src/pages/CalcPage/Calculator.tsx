@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback, type RefObject } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, DessertIcon } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
+import { useAuth } from "@/context/AuthContext"
 
 export default function Calc() {
     const {
@@ -29,6 +30,7 @@ export default function Calc() {
         resetAll,
     } = useCalculator()
 
+    const { user } = useAuth();
 
     // Состояния для уведомлений
     const [isLoading, setIsLoading] = useState(false)
@@ -189,6 +191,10 @@ export default function Calc() {
                 duration: 2000,
             })
         }
+    }
+
+    const fun = () => {
+        console.log()
     }
 
     return (
@@ -682,7 +688,7 @@ export default function Calc() {
                     <Button
                         variant="outline"
                         size="lg"
-                        onClick={() => { }}
+                        onClick={() => {}}
                         disabled={isLoading}
                     >
                         Сохранить заказ
