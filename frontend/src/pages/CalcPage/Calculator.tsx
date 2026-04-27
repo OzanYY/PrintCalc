@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
+import { ordersAPI, type CreateOrderData } from "@/api/orders"
 import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
@@ -193,8 +194,68 @@ export default function Calc() {
         }
     }
 
-    const fun = () => {
-        console.log()
+    const fun = async () => {
+        // Очищаем предыдущие сообщения
+        setServerError('')
+        setSuccessMessage('')
+        setIsLoading(true)
+
+        // Получаем переменные
+
+        try {
+            let data: CreateOrderData = {
+                name: "",
+                printer_id: null,
+                material_id: null,
+                model_weight_grams: 0,
+                support_weight_grams: 0,
+                total_weight_grams: 0,
+                print_time_minutes: 0,
+                material_cost: 0,
+                electricity_cost: 0,
+                depreciation_cost: 0,
+                labor_cost: 0,
+                additional_expenses: 0,
+                total_cost: 0,
+                margin_percent: 0,
+                final_price: 0,
+                notes: "",
+                settings: {}
+            };
+            data.name = "Name of order";
+            data.model_weight_grams = JSON.parse(localStorage.getItem("calculator_materials")!).modelWeight;
+            data.support_weight_grams = JSON.parse(localStorage.getItem("calculator_materials")!).supportWeight;
+            data.total_weight_grams = data.model_weight_grams + data.support_weight_grams;
+            data.print_time_minutes = JSON.parse(localStorage.getItem("calculator_electricity")!).printTime;
+            data.material_cost = JSON.parse(localStorage.getItem("calculator_materials")!).filamentPrice;
+            data.electricity_cost = JSON.parse(localStorage.getItem("calculator_electricity")!).electricityPrice;
+            data.depreciation_cost = JSON.parse(localStorage.getItem("calculator_depreciation")!).printerCost;
+            data.labor_cost = JSON.parse(localStorage.getItem("calculator_labor")!).hourlyRate;
+            data.additional_expenses = JSON.parse(localStorage.getItem("calculator_additional")!).additionalExpensesPercent;
+            data.total_cost = results?.primeCost.value!;
+            data.margin_percent = JSON.parse(localStorage.getItem("calculator_additional")!).marginPercent;
+            //data.final_price = ;
+            //data.notes = ;
+            //data.settings = ;
+            console.log(data)
+            //const response = await ordersAPI.create(requestData)
+//
+            //if (response.data.success && response.data.data) {
+            //    setResults(response.data.data)
+            //    setHasCalculated(true) // Устанавливаем статус, что был расчет
+            //    // Сохраняем результаты в localStorage
+            //    localStorage.setItem('calculator_results', JSON.stringify(response.data.data))
+            //    setSuccessMessage('Расчет успешно выполнен!')
+            //} else {
+            //    throw new Error(response.data.error || 'Ошибка при расчете стоимости')
+            //}
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.error || err.message || 'Произошла ошибка при подключении к серверу'
+            setServerError(errorMessage)
+            console.error('Calculation error:', err)
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     return (
@@ -688,7 +749,7 @@ export default function Calc() {
                     <Button
                         variant="outline"
                         size="lg"
-                        onClick={() => {}}
+                        onClick={fun}
                         disabled={isLoading}
                     >
                         Сохранить заказ
