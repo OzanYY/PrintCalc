@@ -1,532 +1,334 @@
 // controllers/orderController.js
 const OrderService = require('../services/orderService');
 
+// ─── Вспомогательные утилиты ──────────────────────────────────────────────────
+
+/**
+ * Извлекает userId из объекта req.user.
+ * Возвращает null, если пользователь не авторизован.
+ */
+function getUserId(req) {
+    return req.user?.id ?? req.user?.userId ?? req.user?._id ?? null;
+}
+
+/**
+ * Проверяет авторизацию и наличие userId.
+ * Возвращает userId или отправляет ответ с ошибкой и возвращает null.
+ */
+function requireAuth(req, res) {
+    if (!req.isAuth || !req.user) {
+        res.status(401).json({ success: false, message: 'Необходима авторизация' });
+        return null;
+    }
+    const userId = getUserId(req);
+    if (!userId) {
+        res.status(400).json({ success: false, message: 'ID пользователя не найден в токене' });
+        return null;
+    }
+    return userId;
+}
+
+/**
+ * Определяет HTTP-статус по тексту ошибки.
+ */
+function errorStatus(message, fallback = 400) {
+    if (message === 'Заказ не найден') return 404;
+    if (message === 'Необходима авторизация') return 401;
+    return fallback;
+}
+
+/**
+ * Отправляет ответ с ошибкой.
+ */
+function sendError(res, error, fallbackStatus = 400) {
+    res.status(errorStatus(error.message, fallbackStatus)).json({
+        success: false,
+        message: error.message,
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+}
+
+// ─── Контроллер ───────────────────────────────────────────────────────────────
+
 class OrderController {
-    // Создание заказа
+
+    // POST /orders
     static async createOrder(req, res) {
         try {
-            // Проверяем, что пользователь авторизован
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            // Получаем ID пользователя (адаптируйте под структуру вашего userData)
-            const userId = req.user.id || req.user.userId || req.user._id;
-            
-            if (!userId) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'ID пользователя не найден в токене'
-                });
-            }
-            
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
             const orderData = req.body;
-            
-            // Валидация обязательных полей
+
             if (!orderData.name) {
+                return res.status(400).json({ success: false, message: 'Название заказа обязательно' });
+            }
+            if (!orderData.calc_result?.finalPrice) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Название заказа обязательно'
+                    message: 'Результат расчёта (calc_result) обязателен для создания заказа'
                 });
             }
-            
+
             const result = await OrderService.createOrder(userId, orderData);
-            
-            res.status(201).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
+            res.status(201).json({ success: true, message: result.message, data: result.data });
         } catch (error) {
             console.error('Create order error:', error);
-            res.status(400).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            sendError(res, error);
         }
     }
 
-    // Получение всех заказов пользователя
+    // GET /orders
     static async getUserOrders(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { status, limit = 50, offset = 0, page = 1 } = req.query;
-            
-            // Преобразуем page в offset
-            const calculatedOffset = (page - 1) * limit;
-            
-            const filters = {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const { status, limit = 50, page = 1 } = req.query;
+            const parsedLimit  = parseInt(limit);
+            const parsedOffset = (parseInt(page) - 1) * parsedLimit;
+
+            const result = await OrderService.getUserOrders(userId, {
                 status: status || null,
-                limit: parseInt(limit),
-                offset: parseInt(calculatedOffset)
-            };
-            
-            const result = await OrderService.getUserOrders(userId, filters);
-            
+                limit:  parsedLimit,
+                offset: parsedOffset
+            });
+
             res.status(200).json({
-                success: true,
-                data: result.data,
+                success:    true,
+                data:       result.data,
                 pagination: result.pagination,
-                filters: result.filters
+                filters:    result.filters
             });
         } catch (error) {
             console.error('Get orders error:', error);
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            sendError(res, error, 500);
         }
     }
 
-    // Получение заказа по ID
-    static async getOrderById(req, res) {
+    // GET /orders/recent
+    static async getRecentOrders(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            
-            const result = await OrderService.getOrderById(id, userId);
-            
-            res.status(200).json({
-                success: true,
-                data: result.data
-            });
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const { limit = 10 } = req.query;
+            const result = await OrderService.getRecentOrders(userId, parseInt(limit));
+
+            res.status(200).json({ success: true, data: result.data, limit: result.limit });
         } catch (error) {
-            if (error.message === 'Заказ не найден') {
-                res.status(404).json({
-                    success: false,
-                    message: error.message
-                });
-            } else {
-                res.status(500).json({
-                    success: false,
-                    message: error.message,
-                    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-                });
-            }
+            console.error('Get recent orders error:', error);
+            sendError(res, error, 500);
         }
     }
 
-    // Обновление заказа
-    static async updateOrder(req, res) {
-        try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            const updateData = req.body;
-            
-            const result = await OrderService.updateOrder(id, userId, updateData);
-            
-            res.status(200).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
-        } catch (error) {
-            let statusCode = 400;
-            if (error.message === 'Заказ не найден') {
-                statusCode = 404;
-            }
-            
-            res.status(statusCode).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Обновление статуса заказа
-    static async updateOrderStatus(req, res) {
-        try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            const { status } = req.body;
-            
-            if (!status) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Статус обязателен для заполнения'
-                });
-            }
-            
-            const result = await OrderService.updateOrderStatus(id, userId, status);
-            
-            res.status(200).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
-        } catch (error) {
-            let statusCode = 400;
-            if (error.message === 'Заказ не найден') {
-                statusCode = 404;
-            }
-            
-            res.status(statusCode).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Отметить заказ как выполненный
-    static async completeOrder(req, res) {
-        try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            
-            const result = await OrderService.updateOrderStatus(id, userId, 'completed');
-            
-            res.status(200).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
-        } catch (error) {
-            let statusCode = 400;
-            if (error.message === 'Заказ не найден') {
-                statusCode = 404;
-            }
-            
-            res.status(statusCode).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Отменить заказ
-    static async cancelOrder(req, res) {
-        try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            
-            const result = await OrderService.updateOrderStatus(id, userId, 'cancelled');
-            
-            res.status(200).json({
-                success: true,
-                message: result.message,
-                data: result.data
-            });
-        } catch (error) {
-            let statusCode = 400;
-            if (error.message === 'Заказ не найден') {
-                statusCode = 404;
-            }
-            
-            res.status(statusCode).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Удаление заказа
-    static async deleteOrder(req, res) {
-        try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            
-            const result = await OrderService.deleteOrder(id, userId);
-            
-            res.status(200).json({
-                success: true,
-                message: result.message,
-                deletedId: result.deletedId
-            });
-        } catch (error) {
-            let statusCode = 400;
-            if (error.message === 'Заказ не найден') {
-                statusCode = 404;
-            } else if (error.message === 'Нельзя удалить выполненный заказ') {
-                statusCode = 400;
-            }
-            
-            res.status(statusCode).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Получение статистики по заказам
+    // GET /orders/stats
     static async getOrderStats(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
             const { period = 'all' } = req.query;
-            
             const result = await OrderService.getOrderStats(userId, period);
-            
-            res.status(200).json({
-                success: true,
-                data: result.data,
-                period: result.period
-            });
+
+            res.status(200).json({ success: true, data: result.data, period: result.period });
         } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Get order stats error:', error);
+            sendError(res, error, 500);
         }
     }
 
-    // Получение заказов по статусу
+    // GET /orders/status/:status
     static async getOrdersByStatus(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
             const { status } = req.params;
             const { limit = 100 } = req.query;
-            
+
             const result = await OrderService.getOrdersByStatus(userId, status, parseInt(limit));
-            
+
             res.status(200).json({
-                success: true,
-                data: result.data,
-                status: result.status,
-                count: result.count,
+                success:       true,
+                data:          result.data,
+                status:        result.status,
+                count:         result.count,
                 totalByStatus: result.total_by_status
             });
         } catch (error) {
-            res.status(400).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Get orders by status error:', error);
+            sendError(res, error);
         }
     }
 
-    // Получение последних заказов
-    static async getRecentOrders(req, res) {
+    // GET /orders/:id
+    static async getOrderById(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { limit = 10 } = req.query;
-            
-            const result = await OrderService.getRecentOrders(userId, parseInt(limit));
-            
-            res.status(200).json({
-                success: true,
-                data: result.data,
-                limit: result.limit
-            });
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const result = await OrderService.getOrderById(req.params.id, userId);
+            res.status(200).json({ success: true, data: result.data });
         } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Get order by id error:', error);
+            sendError(res, error, 500);
         }
     }
 
-    // Массовое обновление статусов
+    // PUT /orders/:id
+    // Body может содержать любое подмножество:
+    //   name, printer_id, material_id, notes, settings,
+    //   calc_materials, calc_electricity, calc_depreciation,
+    //   calc_labor, calc_additional, calc_result
+    static async updateOrder(req, res) {
+        try {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const result = await OrderService.updateOrder(req.params.id, userId, req.body);
+            res.status(200).json({ success: true, message: result.message, data: result.data });
+        } catch (error) {
+            console.error('Update order error:', error);
+            sendError(res, error);
+        }
+    }
+
+    // PATCH /orders/:id/status
+    static async updateOrderStatus(req, res) {
+        try {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const { status } = req.body;
+            if (!status) {
+                return res.status(400).json({ success: false, message: 'Статус обязателен для заполнения' });
+            }
+
+            const result = await OrderService.updateOrderStatus(req.params.id, userId, status);
+            res.status(200).json({ success: true, message: result.message, data: result.data });
+        } catch (error) {
+            console.error('Update order status error:', error);
+            sendError(res, error);
+        }
+    }
+
+    // PATCH /orders/:id/complete
+    static async completeOrder(req, res) {
+        try {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const result = await OrderService.updateOrderStatus(req.params.id, userId, 'completed');
+            res.status(200).json({ success: true, message: result.message, data: result.data });
+        } catch (error) {
+            console.error('Complete order error:', error);
+            sendError(res, error);
+        }
+    }
+
+    // PATCH /orders/:id/cancel
+    static async cancelOrder(req, res) {
+        try {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const result = await OrderService.updateOrderStatus(req.params.id, userId, 'cancelled');
+            res.status(200).json({ success: true, message: result.message, data: result.data });
+        } catch (error) {
+            console.error('Cancel order error:', error);
+            sendError(res, error);
+        }
+    }
+
+    // DELETE /orders/:id
+    static async deleteOrder(req, res) {
+        try {
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const result = await OrderService.deleteOrder(req.params.id, userId);
+            res.status(200).json({ success: true, message: result.message, deletedId: result.deletedId });
+        } catch (error) {
+            console.error('Delete order error:', error);
+            sendError(res, error);
+        }
+    }
+
+    // PATCH /orders/bulk-status
+    // Body: { orderIds: number[], status: string }
     static async bulkUpdateStatus(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
             const { orderIds, status } = req.body;
-            
-            if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Необходимо указать массив ID заказов'
-                });
+
+            if (!Array.isArray(orderIds) || orderIds.length === 0) {
+                return res.status(400).json({ success: false, message: 'Необходимо указать массив ID заказов' });
             }
-            
             if (!status) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Необходимо указать новый статус'
-                });
+                return res.status(400).json({ success: false, message: 'Необходимо указать новый статус' });
             }
-            
+
             const result = await OrderService.bulkUpdateStatus(userId, orderIds, status);
-            
-            res.status(200).json({
-                success: result.success,
-                message: result.message,
-                data: result.data
-            });
+            res.status(200).json({ success: result.success, message: result.message, data: result.data });
         } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Bulk update status error:', error);
+            sendError(res, error, 500);
         }
     }
 
-    // Расчет стоимости заказа (не требует авторизации, но можно оставить)
-    static async calculateCost(req, res) {
-        try {
-            const orderData = req.body;
-            
-            const result = await OrderService.calculateOrderCost(orderData);
-            
-            res.status(200).json({
-                success: true,
-                data: result,
-                message: 'Расчет стоимости выполнен успешно'
-            });
-        } catch (error) {
-            res.status(400).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-        }
-    }
-
-    // Экспорт заказов в CSV
+    // GET /orders/export
+    // Query: ?status=completed
     static async exportOrders(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
             const { status = null } = req.query;
-            
             const result = await OrderService.exportOrdersToCSV(userId, status);
-            
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename=${result.filename}`);
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
             res.status(200).send(result.data);
         } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Export orders error:', error);
+            sendError(res, error, 500);
         }
     }
 
-    // Клонирование заказа
+    // POST /orders/:id/clone
+    // Создаёт копию заказа с тем же calc_result и параметрами калькулятора,
+    // сбрасывая статус в in_progress и добавляя суффикс "(копия)" к названию.
     static async cloneOrder(req, res) {
         try {
-            if (!req.isAuth || !req.user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Необходима авторизация'
-                });
-            }
-            
-            const userId = req.user.id || req.user.userId || req.user._id;
-            const { id } = req.params;
-            
-            // Получаем существующий заказ
-            const existingOrder = await OrderService.getOrderById(id, userId);
-            
-            // Создаем новый заказ на основе существующего
+            const userId = requireAuth(req, res);
+            if (!userId) return;
+
+            const { data: original } = await OrderService.getOrderById(req.params.id, userId);
+
             const clonedData = {
-                ...existingOrder.data,
-                name: `${existingOrder.data.name} (копия)`,
-                status: 'in_progress',
-                created_at: undefined,
-                updated_at: undefined,
-                completed_at: undefined,
-                id: undefined
+                printer_id:        original.printer_id,
+                material_id:       original.material_id,
+                name:              `${original.name} (копия)`,
+                notes:             original.notes,
+                settings:          original.settings,
+                // Параметры калькулятора копируются как есть
+                calc_materials:    original.calc_materials,
+                calc_electricity:  original.calc_electricity,
+                calc_depreciation: original.calc_depreciation,
+                calc_labor:        original.calc_labor,
+                calc_additional:   original.calc_additional,
+                // Результат расчёта тоже копируется — он актуален для тех же параметров
+                calc_result:       original.calc_result,
             };
-            
+
             const result = await OrderService.createOrder(userId, clonedData);
-            
-            res.status(201).json({
-                success: true,
-                message: 'Заказ успешно скопирован',
-                data: result.data
-            });
+            res.status(201).json({ success: true, message: 'Заказ успешно скопирован', data: result.data });
         } catch (error) {
-            res.status(400).json({
-                success: false,
-                message: error.message,
-                error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
+            console.error('Clone order error:', error);
+            sendError(res, error);
         }
     }
 }

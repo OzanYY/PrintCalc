@@ -5,13 +5,33 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+    DialogClose,
+} from "@/components/ui/dialog"
 import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
-import { ordersAPI, type CreateOrderData } from "@/api/orders"
+import { ordersAPI, buildCreateOrderData } from "@/api/orders"
 import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
+
+// Генерирует базовое имя заказа по текущей дате и времени
+function generateOrderName(): string {
+    const now = new Date()
+    const date = now.toLocaleDateString('ru-RU')           // 27.04.2026
+    const time = now.toLocaleTimeString('ru-RU', {        // 14:35
+        hour: '2-digit',
+        minute: '2-digit',
+    })
+    return `Заказ от ${date} ${time}`
+}
 
 export default function Calc() {
     const {
@@ -31,16 +51,19 @@ export default function Calc() {
         resetAll,
     } = useCalculator()
 
-    const { user } = useAuth();
+    const { user } = useAuth()
 
-    // Состояния для уведомлений
-    const [isLoading, setIsLoading] = useState(false)
-    const [serverError, setServerError] = useState('')
+    const [isLoading, setIsLoading]         = useState(false)
+    const [serverError, setServerError]     = useState('')
     const [successMessage, setSuccessMessage] = useState('')
-    const [results, setResults] = useState<CalculationResult | null>(null)
+    const [results, setResults]             = useState<CalculationResult | null>(null)
 
-    // При монтировании компонента проверяем статус hasCalculated
-    // Если был расчет, восстанавливаем результаты из localStorage
+    // ─── Состояние модального окна сохранения ────────────────────────────────
+    const [saveDialogOpen, setSaveDialogOpen]   = useState(false)
+    const [orderTitle, setOrderTitle]           = useState('')      // доп. заголовок от пользователя
+    const [isSaving, setIsSaving]               = useState(false)
+
+    // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
         if (hasCalculated) {
             const savedResults = localStorage.getItem('calculator_results')
@@ -54,86 +77,52 @@ export default function Calc() {
         }
     }, [hasCalculated])
 
-    // Эффекты для уведомлений
     useEffect(() => {
         if (serverError) {
-            toast.error(serverError, {
-                position: "top-center",
-                duration: 5000,
-            })
+            toast.error(serverError, { position: "top-center", duration: 5000 })
         }
     }, [serverError])
 
     useEffect(() => {
         if (successMessage) {
-            toast.success(successMessage, {
-                position: "top-center",
-                duration: 3000,
-            })
+            toast.success(successMessage, { position: "top-center", duration: 3000 })
         }
     }, [successMessage])
 
     useEffect(() => {
         if (isLoading) {
-            toast.loading("Выполняется расчет...", {
-                position: "top-center",
-                id: "calculation-loading",
-            })
+            toast.loading("Выполняется расчет...", { position: "top-center", id: "calculation-loading" })
         } else {
             toast.dismiss("calculation-loading")
         }
     }, [isLoading])
 
-    // Обработчики изменения полей (обновлены для работы с контекстом)
-    const handleMaterialsChange = (field: string, value: number) => {
-        setMaterials(prev => ({ ...prev, [field]: value }))
-    }
+    // ─── Обработчики полей ────────────────────────────────────────────────────
+    const handleMaterialsChange    = (field: string, value: number) => setMaterials(prev => ({ ...prev, [field]: value }))
+    const handleElectricityChange  = (field: string, value: number) => setElectricity(prev => ({ ...prev, [field]: value }))
+    const handleDepreciationChange = (field: string, value: number) => setDepreciation(prev => ({ ...prev, [field]: value }))
+    const handleLaborChange        = (field: string, value: number) => setLabor(prev => ({ ...prev, [field]: value }))
+    const handleAdditionalChange   = (field: string, value: number) => setAdditional(prev => ({ ...prev, [field]: value }))
 
-    const handleElectricityChange = (field: string, value: number) => {
-        setElectricity(prev => ({ ...prev, [field]: value }))
-    }
-
-    const handleDepreciationChange = (field: string, value: number) => {
-        setDepreciation(prev => ({ ...prev, [field]: value }))
-    }
-
-    const handleLaborChange = (field: string, value: number) => {
-        setLabor(prev => ({ ...prev, [field]: value }))
-    }
-
-    const handleAdditionalChange = (field: string, value: number) => {
-        setAdditional(prev => ({ ...prev, [field]: value }))
-    }
-
-    // Отправка запроса на сервер
+    // ─── Расчёт ───────────────────────────────────────────────────────────────
     const calculateCost = async () => {
-        // Очищаем предыдущие сообщения
         setServerError('')
         setSuccessMessage('')
         setIsLoading(true)
 
         const requestData: CalculationParams = {
-            // Материалы
-            modelWeight: materials.modelWeight,
-            supportWeight: materials.supportWeight,
-            filamentPrice: materials.filamentPrice,
-
-            // Электричество
-            powerConsumption: electricity.powerConsumption,
-            printTime: electricity.printTime,
-            electricityPrice: electricity.electricityPrice,
-
-            // Амортизация
-            printerCost: depreciation.printerCost,
-            printResource: depreciation.printResource,
-
-            // Работа оператора
-            hourlyRate: labor.hourlyRate,
-            workTime: labor.workTime,
-
-            // Дополнительно
+            modelWeight:               materials.modelWeight,
+            supportWeight:             materials.supportWeight,
+            filamentPrice:             materials.filamentPrice,
+            powerConsumption:          electricity.powerConsumption,
+            printTime:                 electricity.printTime,
+            electricityPrice:          electricity.electricityPrice,
+            printerCost:               depreciation.printerCost,
+            printResource:             depreciation.printResource,
+            hourlyRate:                labor.hourlyRate,
+            workTime:                  labor.workTime,
             additionalExpensesPercent: additional.additionalExpensesPercent,
-            marginPercent: additional.marginPercent
+            marginPercent:             additional.marginPercent,
         }
 
         try {
@@ -141,8 +130,7 @@ export default function Calc() {
 
             if (response.data.success && response.data.data) {
                 setResults(response.data.data)
-                setHasCalculated(true) // Устанавливаем статус, что был расчет
-                // Сохраняем результаты в localStorage
+                setHasCalculated(true)
                 localStorage.setItem('calculator_results', JSON.stringify(response.data.data))
                 setSuccessMessage('Расчет успешно выполнен!')
             } else {
@@ -157,104 +145,67 @@ export default function Calc() {
         }
     }
 
-    // Сброс всех значений (полный сброс)
-    const resetValues = () => {
-        resetAll() // Используем resetAll для полного сброса
-        setResults(null)
-        setServerError('')
-        setSuccessMessage('')
-
-        // Очищаем сохраненные результаты
-        localStorage.removeItem('calculator_results')
-
-        toast.info("Значения сброшены к стандартным", {
-            position: "top-center",
-            duration: 2000,
-        })
+    // ─── Открытие диалога сохранения ─────────────────────────────────────────
+    const openSaveDialog = () => {
+        setOrderTitle('')       // сбрасываем поле при каждом открытии
+        setSaveDialogOpen(true)
     }
 
-    // Сброс только формы (сохраняет результаты)
-    const resetFormOnly = () => {
-        resetToDefaults()
+    // ─── Сохранение заказа ────────────────────────────────────────────────────
+    const handleSaveOrder = async () => {
+        if (!results) return
 
-        toast.info("Параметры сброшены, результаты сохранены", {
-            position: "top-center",
-            duration: 2000,
-        })
-    }
+        // Итоговое имя: "Доп. заголовок — Заказ от 27.04.2026 14:35"
+        // Если пользователь ничего не ввёл — только автогенерация
+        const autoName   = generateOrderName()
+        const finalName  = orderTitle.trim()
+            ? `${orderTitle.trim()} — ${autoName}`
+            : autoName
 
-    // Обработчик печати
-    const handlePrint = () => {
-        if (results) {
-            window.print()
-            toast.info("Подготовка к печати...", {
-                position: "top-center",
-                duration: 2000,
-            })
+        setIsSaving(true)
+        try {
+            const orderData = buildCreateOrderData(
+                finalName,
+                results,
+                materials,
+                electricity,
+                depreciation,
+                labor,
+                additional,
+            )
+
+            await ordersAPI.create(orderData)
+
+            setSaveDialogOpen(false)
+            toast.success('Заказ успешно сохранён', { position: "top-center", duration: 3000 })
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || err.message || 'Ошибка при сохранении заказа'
+            toast.error(errorMessage, { position: "top-center", duration: 5000 })
+            console.error('Save order error:', err)
+        } finally {
+            setIsSaving(false)
         }
     }
 
-    const fun = async () => {
-        // Очищаем предыдущие сообщения
+    // ─── Сброс ────────────────────────────────────────────────────────────────
+    const resetValues = () => {
+        resetAll()
+        setResults(null)
         setServerError('')
         setSuccessMessage('')
-        setIsLoading(true)
+        localStorage.removeItem('calculator_results')
+        toast.info("Значения сброшены к стандартным", { position: "top-center", duration: 2000 })
+    }
 
-        // Получаем переменные
+    const resetFormOnly = () => {
+        resetToDefaults()
+        toast.info("Параметры сброшены, результаты сохранены", { position: "top-center", duration: 2000 })
+    }
 
-        try {
-            let data: CreateOrderData = {
-                name: "",
-                printer_id: null,
-                material_id: null,
-                model_weight_grams: 0,
-                support_weight_grams: 0,
-                total_weight_grams: 0,
-                print_time_minutes: 0,
-                material_cost: 0,
-                electricity_cost: 0,
-                depreciation_cost: 0,
-                labor_cost: 0,
-                additional_expenses: 0,
-                total_cost: 0,
-                margin_percent: 0,
-                final_price: 0,
-                notes: "",
-                settings: {}
-            };
-            data.name = "Name of order";
-            data.model_weight_grams = JSON.parse(localStorage.getItem("calculator_materials")!).modelWeight;
-            data.support_weight_grams = JSON.parse(localStorage.getItem("calculator_materials")!).supportWeight;
-            data.total_weight_grams = data.model_weight_grams + data.support_weight_grams;
-            data.print_time_minutes = JSON.parse(localStorage.getItem("calculator_electricity")!).printTime;
-            data.material_cost = JSON.parse(localStorage.getItem("calculator_materials")!).filamentPrice;
-            data.electricity_cost = JSON.parse(localStorage.getItem("calculator_electricity")!).electricityPrice;
-            data.depreciation_cost = JSON.parse(localStorage.getItem("calculator_depreciation")!).printerCost;
-            data.labor_cost = JSON.parse(localStorage.getItem("calculator_labor")!).hourlyRate;
-            data.additional_expenses = JSON.parse(localStorage.getItem("calculator_additional")!).additionalExpensesPercent;
-            data.total_cost = results?.primeCost.value!;
-            data.margin_percent = JSON.parse(localStorage.getItem("calculator_additional")!).marginPercent;
-            //data.final_price = ;
-            //data.notes = ;
-            //data.settings = ;
-            console.log(data)
-            //const response = await ordersAPI.create(requestData)
-//
-            //if (response.data.success && response.data.data) {
-            //    setResults(response.data.data)
-            //    setHasCalculated(true) // Устанавливаем статус, что был расчет
-            //    // Сохраняем результаты в localStorage
-            //    localStorage.setItem('calculator_results', JSON.stringify(response.data.data))
-            //    setSuccessMessage('Расчет успешно выполнен!')
-            //} else {
-            //    throw new Error(response.data.error || 'Ошибка при расчете стоимости')
-            //}
-        } catch (err: any) {
-            const errorMessage = err.response?.data?.error || err.message || 'Произошла ошибка при подключении к серверу'
-            setServerError(errorMessage)
-            console.error('Calculation error:', err)
-        } finally {
-            setIsLoading(false)
+    const handlePrint = () => {
+        if (results) {
+            window.print()
+            toast.info("Подготовка к печати...", { position: "top-center", duration: 2000 })
         }
     }
 
@@ -322,9 +273,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        г
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">г</span>
                                                 </div>
                                             </div>
 
@@ -343,9 +292,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        г
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">г</span>
                                                 </div>
                                             </div>
 
@@ -364,9 +311,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        ₽/кг
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽/кг</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -392,9 +337,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        Вт
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Вт</span>
                                                 </div>
                                             </div>
 
@@ -413,9 +356,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        мин
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">мин</span>
                                                 </div>
                                             </div>
 
@@ -434,9 +375,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        ₽/кВт·ч
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽/кВт·ч</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -462,9 +401,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        ₽
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽</span>
                                                 </div>
                                             </div>
 
@@ -483,9 +420,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        часов
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">часов</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -511,9 +446,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        ₽/ч
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽/ч</span>
                                                 </div>
                                             </div>
 
@@ -532,9 +465,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        мин
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">мин</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -561,9 +492,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        %
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                                                 </div>
                                             </div>
 
@@ -583,9 +512,7 @@ export default function Calc() {
                                                         className="pr-10"
                                                         disabled={isLoading}
                                                     />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                                                        %
-                                                    </span>
+                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -593,7 +520,7 @@ export default function Calc() {
                                 </TabsContent>
                             </Tabs>
 
-                            {/* Кнопка расчета */}
+                            {/* Кнопка расчёта */}
                             <div className="mt-6">
                                 <Button
                                     size="lg"
@@ -607,9 +534,7 @@ export default function Calc() {
                                             Выполняется расчет...
                                         </>
                                     ) : (
-                                        <>
-                                            Рассчитать стоимость
-                                        </>
+                                        'Рассчитать стоимость'
                                     )}
                                 </Button>
                             </div>
@@ -749,7 +674,7 @@ export default function Calc() {
                     <Button
                         variant="outline"
                         size="lg"
-                        onClick={fun}
+                        onClick={openSaveDialog}
                         disabled={isLoading}
                     >
                         Сохранить заказ
@@ -761,9 +686,81 @@ export default function Calc() {
                     >
                         Распечатать расчет
                     </Button>
-
                 </div>
             )}
+
+            {/* ─── Модальное окно сохранения заказа ─────────────────────────────── */}
+            <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Сохранить заказ</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        {/* Доп. заголовок */}
+                        <div className="space-y-2">
+                            <Label htmlFor="orderTitle">
+                                Название заказа
+                                <span className="text-muted-foreground font-normal ml-1">(необязательно)</span>
+                            </Label>
+                            <Input
+                                id="orderTitle"
+                                placeholder="Например: Корпус для робота"
+                                value={orderTitle}
+                                onChange={(e) => setOrderTitle(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && !isSaving && handleSaveOrder()}
+                                disabled={isSaving}
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Превью итогового имени */}
+                        <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                            <span className="font-medium text-foreground">Имя заказа: </span>
+                            {orderTitle.trim()
+                                ? `${orderTitle.trim()} — ${generateOrderName()}`
+                                : generateOrderName()
+                            }
+                        </div>
+
+                        {/* Краткая сводка расчёта */}
+                        {results && (
+                            <div className="rounded-md border px-3 py-2 space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Итоговая цена</span>
+                                    <span className="font-semibold">{results.finalPrice.formatted}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Себестоимость</span>
+                                    <span>{results.fullCost.formatted}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Общий вес</span>
+                                    <span>{results.totalWeight.grams} г</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild>
+                            <Button variant="outline" disabled={isSaving}>
+                                Отмена
+                            </Button>
+                        </DialogClose>
+                        <Button onClick={handleSaveOrder} disabled={isSaving}>
+                            {isSaving ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Сохранение...
+                                </>
+                            ) : (
+                                'Сохранить'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
