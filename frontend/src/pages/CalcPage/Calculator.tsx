@@ -14,7 +14,13 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Info } from 'lucide-react'
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 import { ordersAPI, buildCreateOrderData } from "@/api/orders"
@@ -203,10 +209,137 @@ export default function Calc() {
     }
 
     const handlePrint = () => {
-        if (results) {
-            window.print()
-            toast.info("Подготовка к печати...", { position: "top-center", duration: 2000 })
-        }
+        if (!results) return
+
+        const printContent = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>Расчёт стоимости печати</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; font-size: 14px; color: #111; padding: 32px; }
+        h1 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+        .section-title { font-size: 12px; color: #6b7280; font-weight: 500; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .weight { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+        .weight span { font-size: 14px; font-weight: 400; color: #6b7280; margin-left: 6px; }
+        hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+        .row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+        .row .label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+        .row .value { font-weight: 600; font-size: 13px; }
+        .sub { padding-left: 20px; border-left: 2px solid #e5e7eb; margin: 2px 0 2px 6px; }
+        .sub .label { color: #6b7280; font-size: 12px; }
+        .sub .value { color: #6b7280; font-size: 12px; }
+        .box { background: #f3f4f6; border-radius: 8px; padding: 14px; margin-top: 8px; }
+        .box-primary { background: #eff6ff; border-radius: 8px; padding: 14px; }
+        .final-price { font-size: 22px; font-weight: 700; color: #2563eb; }
+        .per-gram { text-align: center; background: #f9fafb; border-radius: 8px; padding: 10px; margin-top: 10px; }
+        .per-gram .pg-label { font-size: 12px; color: #6b7280; }
+        .per-gram .pg-value { font-size: 18px; font-weight: 700; }
+        .meta { font-size: 11px; color: #9ca3af; margin-top: 24px; }
+    </style>
+</head>
+<body>
+    <h1>Расчёт стоимости 3D-печати</h1>
+
+    <div class="section-title">Общий вес</div>
+    <div class="weight">
+        ${results.totalWeight.grams} г
+        <span>(${results.totalWeight.kg} кг)</span>
+    </div>
+
+    <hr />
+
+    <div class="section-title">Расходы по категориям</div>
+
+    <div class="row">
+        <span class="label">📦 Материалы</span>
+        <span class="value">${results.materials.total.formatted}</span>
+    </div>
+    <div class="sub">
+        <div class="row">
+            <span class="label">Модель</span>
+            <span class="value">${results.materials.model.formatted}</span>
+        </div>
+        <div class="row">
+            <span class="label">Поддержки</span>
+            <span class="value">${results.materials.support.formatted}</span>
+        </div>
+    </div>
+    <div class="row">
+        <span class="label">⚡ Электричество</span>
+        <span class="value">${results.electricity.formatted}</span>
+    </div>
+    <div class="row">
+        <span class="label">🖨 Амортизация</span>
+        <span class="value">${results.depreciation.formatted}</span>
+    </div>
+    <div class="row">
+        <span class="label">👤 Оператор</span>
+        <span class="value">${results.labor.formatted}</span>
+    </div>
+
+    <hr />
+
+    <div class="box">
+        <div class="row">
+            <span class="label" style="font-weight:600">Полная себестоимость</span>
+            <span class="value">${results.fullCost.formatted}</span>
+        </div>
+        <div class="sub">
+            <div class="row">
+                <span class="label">Себестоимость</span>
+                <span class="value">${results.primeCost.formatted}</span>
+            </div>
+            <div class="row">
+                <span class="label">Доп. расходы (${results.additionalExpenses.percent})</span>
+                <span class="value">+${results.additionalExpenses.formatted}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="box-primary" style="margin-top:12px">
+        <div class="row">
+            <span class="label" style="font-weight:600">Маржа (${results.margin.percent})</span>
+            <span class="value" style="color:#2563eb">+${results.margin.formatted}</span>
+        </div>
+        <hr style="border-color:#bfdbfe; margin: 10px 0" />
+        <div class="row">
+            <span class="label" style="font-size:16px; font-weight:700">Итоговая цена</span>
+            <span class="final-price">${results.finalPrice.formatted}</span>
+        </div>
+    </div>
+
+    <div class="per-gram">
+        <div class="pg-label">Стоимость печати за грамм</div>
+        <div class="pg-value">${results.pricePerGram.formatted}</div>
+    </div>
+
+    <div class="meta">Распечатано: ${new Date().toLocaleString('ru-RU')}</div>
+</body>
+</html>`
+
+        const iframe = document.createElement('iframe')
+        iframe.style.position = 'fixed'
+        iframe.style.top = '-9999px'
+        iframe.style.left = '-9999px'
+        iframe.style.width = '0'
+        iframe.style.height = '0'
+        document.body.appendChild(iframe)
+
+        const doc = iframe.contentWindow?.document
+        if (!doc) return
+
+        doc.open()
+        doc.write(printContent)
+        doc.close()
+
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+
+        // Удаляем iframe после печати
+        setTimeout(() => document.body.removeChild(iframe), 1000)
     }
 
     return (
@@ -565,93 +698,215 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div>
                                             <h3 className="text-sm font-medium text-gray-500 mb-3">Расходы по категориям</h3>
+                                            <TooltipProvider delayDuration={200}>
                                             <div className="space-y-3">
+                                                {/* Материалы */}
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-sm flex items-center gap-2">
-                                                            <Package className="h-4 w-4" />
-                                                            Материалы
-                                                        </span>
-                                                        <span className="font-medium">{results.materials.total.formatted}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                        <span className="text-sm pl-1 text-muted-foreground">Модель</span>
-                                                        <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                        <span className="flex items-center gap-2 pl-1 text-muted-foreground">Поддержки</span>
-                                                        <span className="text-muted-foreground">{results.materials.support.formatted}</span>
-                                                    </div>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex justify-between items-center cursor-default">
+                                                                <span className="text-sm flex items-center gap-2">
+                                                                    <Package className="h-4 w-4" />
+                                                                    Материалы
+                                                                    <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                                </span>
+                                                                <span className="font-medium">{results.materials.total.formatted}</span>
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="left" className="max-w-xs">
+                                                            <p className="font-medium mb-1">Итого по материалам</p>
+                                                            <p className="text-muted-foreground text-xs">стоимость модели + стоимость поддержек</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                <span className="text-sm pl-1 text-muted-foreground flex items-center gap-1">
+                                                                    Модель
+                                                                    <Info className="h-3 w-3 text-muted-foreground/40" />
+                                                                </span>
+                                                                <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="left" className="max-w-xs">
+                                                            <p className="font-mono text-xs">вес модели (г) × цена филамента (₽/кг) ÷ 1000</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                <span className="flex items-center gap-1 pl-1 text-muted-foreground">
+                                                                    Поддержки
+                                                                    <Info className="h-3 w-3 text-muted-foreground/40" />
+                                                                </span>
+                                                                <span className="text-muted-foreground">{results.materials.support.formatted}</span>
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="left" className="max-w-xs">
+                                                            <p className="font-mono text-xs">вес поддержек (г) × цена филамента (₽/кг) ÷ 1000</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
                                                 </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm flex items-center gap-2">
-                                                        <Zap className="h-4 w-4" />
-                                                        Электричество
-                                                    </span>
-                                                    <span className="font-medium">{results.electricity.formatted}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm flex items-center gap-2">
-                                                        <Cpu className="h-4 w-4" />
-                                                        Амортизация
-                                                    </span>
-                                                    <span className="font-medium">{results.depreciation.formatted}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-sm flex items-center gap-2">
-                                                        <User className="h-4 w-4" />
-                                                        Оператор
-                                                    </span>
-                                                    <span className="font-medium">{results.labor.formatted}</span>
-                                                </div>
+
+                                                {/* Электричество */}
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center cursor-default">
+                                                            <span className="text-sm flex items-center gap-2">
+                                                                <Zap className="h-4 w-4" />
+                                                                Электричество
+                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                            </span>
+                                                            <span className="font-medium">{results.electricity.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left" className="max-w-xs">
+                                                        <p className="font-mono text-xs">мощность (Вт) × время печати (мин) ÷ 60 ÷ 1000 × цена электричества (₽/кВт·ч)</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+
+                                                {/* Амортизация */}
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center cursor-default">
+                                                            <span className="text-sm flex items-center gap-2">
+                                                                <Cpu className="h-4 w-4" />
+                                                                Амортизация
+                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                            </span>
+                                                            <span className="font-medium">{results.depreciation.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left" className="max-w-xs">
+                                                        <p className="font-mono text-xs">стоимость принтера (₽) ÷ ресурс принтера (ч) × время печати (мин) ÷ 60</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+
+                                                {/* Оператор */}
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center cursor-default">
+                                                            <span className="text-sm flex items-center gap-2">
+                                                                <User className="h-4 w-4" />
+                                                                Оператор
+                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                            </span>
+                                                            <span className="font-medium">{results.labor.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left" className="max-w-xs">
+                                                        <p className="font-mono text-xs">ставка оператора (₽/ч) × время работы (мин) ÷ 60</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
                                             </div>
+                                            </TooltipProvider>
                                         </div>
 
                                         <Separator />
 
                                         {/* Себестоимость */}
+                                        <TooltipProvider delayDuration={200}>
                                         <div className="space-y-1">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-semibold">Полная себестоимость</span>
-                                                <span className="font-bold">{results.fullCost.formatted}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                <span className="text-sm text-muted-foreground pl-1">Себестоимость</span>
-                                                <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm pl-4 relative">
-                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                <span className="flex items-center gap-2 text-muted-foreground pl-1">
-                                                    <Percent className="h-3 w-3" />
-                                                    Доп. расходы ({results.additionalExpenses.percent})
-                                                </span>
-                                                <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
-                                            </div>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex justify-between items-center cursor-default">
+                                                        <span className="font-semibold flex items-center gap-1">
+                                                            Полная себестоимость
+                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                        </span>
+                                                        <span className="font-bold">{results.fullCost.formatted}</span>
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="font-mono text-xs">себестоимость + доп. расходы (%)</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                        <span className="text-sm text-muted-foreground pl-1 flex items-center gap-1">
+                                                            Себестоимость
+                                                            <Info className="h-3 w-3 text-muted-foreground/40" />
+                                                        </span>
+                                                        <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="font-mono text-xs">материалы + электричество + амортизация + оператор</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                        <span className="flex items-center gap-1 text-muted-foreground pl-1">
+                                                            <Percent className="h-3 w-3" />
+                                                            Доп. расходы ({results.additionalExpenses.percent})
+                                                            <Info className="h-3 w-3 text-muted-foreground/40" />
+                                                        </span>
+                                                        <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="font-mono text-xs">себестоимость × доп. расходы (%)</p>
+                                                </TooltipContent>
+                                            </Tooltip>
                                         </div>
                                         <Separator />
 
                                         {/* Итоговая цена */}
                                         <div className="bg-primary/5 p-4 rounded-lg">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="font-semibold">Маржа ({results.margin.percent})</span>
-                                                <span className="font-bold text-primary">+{results.margin.formatted}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-3 border-t border-primary/20">
-                                                <span className="text-lg font-bold">Итоговая цена</span>
-                                                <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
-                                            </div>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex justify-between items-center mb-2 cursor-default">
+                                                        <span className="font-semibold flex items-center gap-1">
+                                                            Маржа ({results.margin.percent})
+                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                        </span>
+                                                        <span className="font-bold text-primary">+{results.margin.formatted}</span>
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="font-mono text-xs">полная себестоимость × маржа (%)</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex justify-between items-center pt-3 border-t border-primary/20 cursor-default">
+                                                        <span className="text-lg font-bold flex items-center gap-1">
+                                                            Итоговая цена
+                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                        </span>
+                                                        <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="font-mono text-xs">полная себестоимость + маржа</p>
+                                                </TooltipContent>
+                                            </Tooltip>
                                         </div>
 
                                         {/* Стоимость за грамм */}
-                                        <div className="text-center p-3 bg-gray-50 rounded-lg">
-                                            <div className="text-sm text-gray-600">Стоимость печати за грамм</div>
-                                            <div className="text-xl font-bold text-gray-900">
-                                                {results.pricePerGram.formatted}
-                                            </div>
-                                        </div>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="text-center p-3 bg-gray-50 rounded-lg cursor-default">
+                                                    <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
+                                                        Стоимость печати за грамм
+                                                        <Info className="h-3 w-3 text-muted-foreground/50" />
+                                                    </div>
+                                                    <div className="text-xl font-bold text-gray-900">
+                                                        {results.pricePerGram.formatted}
+                                                    </div>
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left" className="max-w-xs">
+                                                <p className="font-mono text-xs">итоговая цена ÷ общий вес (г)</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                        </TooltipProvider>
                                     </div>
                                 </div>
                             ) : (
