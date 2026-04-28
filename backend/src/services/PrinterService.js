@@ -1,101 +1,73 @@
-const PrinterModel = require('../models/PrinterModel');
+const { PrinterModel, VALID_TYPES } = require('../models/PrinterModel');
 
 class PrinterService {
-    // Получение всех принтеров пользователя
+    // ─── Список ───────────────────────────────────────────────────────────────
     static async getUserPrinters(userId) {
         return PrinterModel.findByUser(userId);
     }
 
-    // Получение конкретного принтера
+    // ─── По ID ────────────────────────────────────────────────────────────────
     static async getPrinterById(id, userId) {
         const printer = await PrinterModel.findById(id, userId);
-        if (!printer) {
-            throw new Error('Принтер не найден');
-        }
+        if (!printer) throw new Error('Принтер не найден');
         return printer;
     }
 
-    // Создание нового принтера
+    // ─── Создание ─────────────────────────────────────────────────────────────
     static async createPrinter(userId, printerData) {
-        const { name, type, model, purchase_price, print_lifetime_hours, power_consumption, is_default, settings } = printerData;
+        const { name, type } = printerData;
 
-        // Валидация обязательных полей
-        if (!name || !type) {
-            throw new Error('Название и тип принтера обязательны');
+        if (!name || !type) throw new Error('Название и тип принтера обязательны');
+        if (!VALID_TYPES.includes(type)) {
+            throw new Error(`Недопустимый тип принтера. Допустимые значения: ${VALID_TYPES.join(', ')}`);
         }
 
-        // Проверка допустимого типа
-        const validTypes = ['FDM', 'SLA', 'SLS', 'PolyJet'];
-        if (!validTypes.includes(type)) {
-            throw new Error(`Недопустимый тип принтера. Допустимые значения: ${validTypes.join(', ')}`);
-        }
-
-        // Создаем принтер
-        const printer = await PrinterModel.create(userId, {
-            name,
-            type,
-            model,
-            purchase_price,
-            print_lifetime_hours,
-            power_consumption,
-            is_default,
-            settings
-        });
-
-        return printer;
+        return PrinterModel.create(userId, printerData);
     }
 
-    // Обновление принтера
+    // ─── Обновление ───────────────────────────────────────────────────────────
     static async updatePrinter(id, userId, printerData) {
-        // Проверяем существование принтера
-        const existingPrinter = await PrinterModel.findById(id, userId);
-        if (!existingPrinter) {
-            throw new Error('Принтер не найден');
+        const existing = await PrinterModel.findById(id, userId);
+        if (!existing) throw new Error('Принтер не найден');
+
+        if (printerData.type && !VALID_TYPES.includes(printerData.type)) {
+            throw new Error(`Недопустимый тип принтера. Допустимые значения: ${VALID_TYPES.join(', ')}`);
         }
 
-        // Валидация типа, если передан
-        if (printerData.type) {
-            const validTypes = ['FDM', 'SLA', 'SLS', 'PolyJet'];
-            if (!validTypes.includes(printerData.type)) {
-                throw new Error(`Недопустимый тип принтера. Допустимые значения: ${validTypes.join(', ')}`);
-            }
-        }
-
-        const updatedPrinter = await PrinterModel.update(id, userId, printerData);
-        return updatedPrinter;
+        const updated = await PrinterModel.update(id, userId, printerData);
+        if (!updated) throw new Error('Принтер не найден');
+        return updated;
     }
 
-    // Удаление принтера
+    // ─── Удаление ─────────────────────────────────────────────────────────────
     static async deletePrinter(id, userId) {
         const result = await PrinterModel.delete(id, userId);
-        if (!result) {
-            throw new Error('Принтер не найден');
-        }
-        return { message: 'Принтер успешно удален', id: result.id };
+        if (!result) throw new Error('Принтер не найден');
+        return { message: 'Принтер успешно удалён', id: result.id };
     }
 
-    // Установка принтера по умолчанию
+    // ─── Установить по умолчанию ──────────────────────────────────────────────
     static async setDefaultPrinter(id, userId) {
         const printer = await PrinterModel.setDefault(id, userId);
-        if (!printer) {
-            throw new Error('Принтер не найден');
-        }
+        if (!printer) throw new Error('Принтер не найден');
         return printer;
     }
 
-    // Получение принтера по умолчанию
+    // ─── Принтер по умолчанию ─────────────────────────────────────────────────
     static async getDefaultPrinter(userId) {
-        const printer = await PrinterModel.findDefault(userId);
-        return printer || null;
+        return PrinterModel.findDefault(userId);
     }
 
-    // Получение статистики по принтерам
+    // ─── Статистика ───────────────────────────────────────────────────────────
     static async getPrinterStats(userId) {
         return PrinterModel.getUserStats(userId);
     }
 
-    // Получение принтеров по типу
+    // ─── По типу ──────────────────────────────────────────────────────────────
     static async getPrintersByType(userId, type) {
+        if (!VALID_TYPES.includes(type)) {
+            throw new Error(`Недопустимый тип принтера. Допустимые значения: ${VALID_TYPES.join(', ')}`);
+        }
         const printers = await PrinterModel.findByUser(userId);
         return printers.filter(p => p.type === type);
     }

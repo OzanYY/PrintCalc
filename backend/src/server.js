@@ -10,7 +10,7 @@ const calculationRoutes = require('./routes/calculation-routes');
 const orderRoutes = require('./routes/order-routes')
 const UserModel = require('./models/UserModel');
 const TokenModel = require('./models/TokenModel');
-const PrinterModel = require('./models/PrinterModel');
+const { PrinterModel } = require('./models/PrinterModel');
 const MaterialModel = require('./models/MaterialModel');
 const OrderModel = require('./models/OrderModel');
 
@@ -33,7 +33,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 app.use("/api/auth", authRoutes);
-//app.use('/api/printers', printerRoutes);
+app.use('/api/printers', printerRoutes);
 //app.use('/api/materials', materialRoutes);
 app.use('/api', calculationRoutes);
 app.use('/api/orders', orderRoutes);
@@ -43,13 +43,13 @@ const start = async () => {
         // 2. Создаем таблицы (если их нет)
         await UserModel.createTable();
         console.log('✅ Users table ready');
-        
+
         await TokenModel.createTable();
         console.log('✅ Tokens table ready');
 
         await PrinterModel.createTable();
         console.log('✅ Printers table ready');
-        
+
         await MaterialModel.createTable();
         console.log('✅ Materials table ready');
 
