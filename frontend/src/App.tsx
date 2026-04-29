@@ -14,7 +14,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col w-full max-w-7xl mx-auto py-4">
+      <div className="min-h-screen flex flex-col w-full max-w-7xl mx-auto py-4 px-4">
         <Header />
         <main className="flex-1">
           <Routes>

@@ -708,14 +708,13 @@ export default function Calc() {
                                                                 <span className="text-sm flex items-center gap-2">
                                                                     <Package className="h-4 w-4" />
                                                                     Материалы
-                                                                    <Info className="h-3 w-3 text-muted-foreground/50" />
                                                                 </span>
                                                                 <span className="font-medium">{results.materials.total.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
-                                                        <TooltipContent side="left" className="max-w-xs">
+                                                        <TooltipContent side="right" className="max-w-xs">
                                                             <p className="font-medium mb-1">Итого по материалам</p>
-                                                            <p className="text-muted-foreground text-xs">стоимость модели + стоимость поддержек</p>
+                                                            <p className="text-xs">стоимость модели + стоимость поддержек</p>
                                                         </TooltipContent>
                                                     </Tooltip>
                                                     <Tooltip>
@@ -724,13 +723,12 @@ export default function Calc() {
                                                                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
                                                                 <span className="text-sm pl-1 text-muted-foreground flex items-center gap-1">
                                                                     Модель
-                                                                    <Info className="h-3 w-3 text-muted-foreground/40" />
                                                                 </span>
                                                                 <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
-                                                        <TooltipContent side="left" className="max-w-xs">
-                                                            <p className="font-mono text-xs">вес модели (г) × цена филамента (₽/кг) ÷ 1000</p>
+                                                        <TooltipContent side="right" className="max-w-xs">
+                                                            <p className="font-mono text-xs">вес модели (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
                                                         </TooltipContent>
                                                     </Tooltip>
                                                     <Tooltip>
@@ -739,13 +737,12 @@ export default function Calc() {
                                                                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
                                                                 <span className="flex items-center gap-1 pl-1 text-muted-foreground">
                                                                     Поддержки
-                                                                    <Info className="h-3 w-3 text-muted-foreground/40" />
                                                                 </span>
                                                                 <span className="text-muted-foreground">{results.materials.support.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
-                                                        <TooltipContent side="left" className="max-w-xs">
-                                                            <p className="font-mono text-xs">вес поддержек (г) × цена филамента (₽/кг) ÷ 1000</p>
+                                                        <TooltipContent side="right" className="max-w-xs">
+                                                            <p className="font-mono text-xs">вес поддержек (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 </div>
@@ -757,13 +754,12 @@ export default function Calc() {
                                                             <span className="text-sm flex items-center gap-2">
                                                                 <Zap className="h-4 w-4" />
                                                                 Электричество
-                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
                                                             </span>
                                                             <span className="font-medium">{results.electricity.formatted}</span>
                                                         </div>
                                                     </TooltipTrigger>
-                                                    <TooltipContent side="left" className="max-w-xs">
-                                                        <p className="font-mono text-xs">мощность (Вт) × время печати (мин) ÷ 60 ÷ 1000 × цена электричества (₽/кВт·ч)</p>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">мощность (Вт) × время печати (мин) ÷ 60 <br></br>÷ 1000 × цена электричества (₽/кВт·ч)</p>
                                                     </TooltipContent>
                                                 </Tooltip>
 
@@ -774,13 +770,12 @@ export default function Calc() {
                                                             <span className="text-sm flex items-center gap-2">
                                                                 <Cpu className="h-4 w-4" />
                                                                 Амортизация
-                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
                                                             </span>
                                                             <span className="font-medium">{results.depreciation.formatted}</span>
                                                         </div>
                                                     </TooltipTrigger>
-                                                    <TooltipContent side="left" className="max-w-xs">
-                                                        <p className="font-mono text-xs">стоимость принтера (₽) ÷ ресурс принтера (ч) × время печати (мин) ÷ 60</p>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">стоимость принтера (₽) ÷ ресурс <br></br>принтера (ч) × время печати (мин) ÷ 60</p>
                                                     </TooltipContent>
                                                 </Tooltip>
 
@@ -791,13 +786,12 @@ export default function Calc() {
                                                             <span className="text-sm flex items-center gap-2">
                                                                 <User className="h-4 w-4" />
                                                                 Оператор
-                                                                <Info className="h-3 w-3 text-muted-foreground/50" />
                                                             </span>
                                                             <span className="font-medium">{results.labor.formatted}</span>
                                                         </div>
                                                     </TooltipTrigger>
-                                                    <TooltipContent side="left" className="max-w-xs">
-                                                        <p className="font-mono text-xs">ставка оператора (₽/ч) × время работы (мин) ÷ 60</p>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">ставка оператора <br></br>(₽/ч) × время работы (мин) ÷ 60</p>
                                                     </TooltipContent>
                                                 </Tooltip>
                                             </div>
@@ -814,12 +808,11 @@ export default function Calc() {
                                                     <div className="flex justify-between items-center cursor-default">
                                                         <span className="font-semibold flex items-center gap-1">
                                                             Полная себестоимость
-                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
                                                         </span>
                                                         <span className="font-bold">{results.fullCost.formatted}</span>
                                                     </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent side="left" className="max-w-xs">
+                                                <TooltipContent side="right" className="max-w-xs">
                                                     <p className="font-mono text-xs">себестоимость + доп. расходы (%)</p>
                                                 </TooltipContent>
                                             </Tooltip>
@@ -829,13 +822,12 @@ export default function Calc() {
                                                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
                                                         <span className="text-sm text-muted-foreground pl-1 flex items-center gap-1">
                                                             Себестоимость
-                                                            <Info className="h-3 w-3 text-muted-foreground/40" />
                                                         </span>
                                                         <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
                                                     </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent side="left" className="max-w-xs">
-                                                    <p className="font-mono text-xs">материалы + электричество + амортизация + оператор</p>
+                                                <TooltipContent side="right" className="max-w-xs">
+                                                    <p className="font-mono text-xs">материалы + электричество <br></br>+ амортизация + оператор</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                             <Tooltip>
@@ -845,12 +837,11 @@ export default function Calc() {
                                                         <span className="flex items-center gap-1 text-muted-foreground pl-1">
                                                             <Percent className="h-3 w-3" />
                                                             Доп. расходы ({results.additionalExpenses.percent})
-                                                            <Info className="h-3 w-3 text-muted-foreground/40" />
                                                         </span>
                                                         <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
                                                     </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent side="left" className="max-w-xs">
+                                                <TooltipContent side="right" className="max-w-xs">
                                                     <p className="font-mono text-xs">себестоимость × доп. расходы (%)</p>
                                                 </TooltipContent>
                                             </Tooltip>
@@ -864,12 +855,11 @@ export default function Calc() {
                                                     <div className="flex justify-between items-center mb-2 cursor-default">
                                                         <span className="font-semibold flex items-center gap-1">
                                                             Маржа ({results.margin.percent})
-                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
                                                         </span>
                                                         <span className="font-bold text-primary">+{results.margin.formatted}</span>
                                                     </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent side="left" className="max-w-xs">
+                                                <TooltipContent side="right" className="max-w-xs">
                                                     <p className="font-mono text-xs">полная себестоимость × маржа (%)</p>
                                                 </TooltipContent>
                                             </Tooltip>
@@ -878,12 +868,11 @@ export default function Calc() {
                                                     <div className="flex justify-between items-center pt-3 border-t border-primary/20 cursor-default">
                                                         <span className="text-lg font-bold flex items-center gap-1">
                                                             Итоговая цена
-                                                            <Info className="h-3 w-3 text-muted-foreground/50" />
                                                         </span>
                                                         <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
                                                     </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent side="left" className="max-w-xs">
+                                                <TooltipContent side="right" className="max-w-xs">
                                                     <p className="font-mono text-xs">полная себестоимость + маржа</p>
                                                 </TooltipContent>
                                             </Tooltip>
@@ -895,14 +884,13 @@ export default function Calc() {
                                                 <div className="text-center p-3 bg-gray-50 rounded-lg cursor-default">
                                                     <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
                                                         Стоимость печати за грамм
-                                                        <Info className="h-3 w-3 text-muted-foreground/50" />
                                                     </div>
                                                     <div className="text-xl font-bold text-gray-900">
                                                         {results.pricePerGram.formatted}
                                                     </div>
                                                 </div>
                                             </TooltipTrigger>
-                                            <TooltipContent side="left" className="max-w-xs">
+                                            <TooltipContent side="right" className="max-w-xs">
                                                 <p className="font-mono text-xs">итоговая цена ÷ общий вес (г)</p>
                                             </TooltipContent>
                                         </Tooltip>
