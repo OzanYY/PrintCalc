@@ -3,6 +3,7 @@ const router = express.Router();
 
 const AuthController = require('../controllers/AuthController');
 const authMiddleware = require('../middleware/auth-middleware');
+const TokenService = require('../services/TokenService');
 
 // Публичные маршруты
 router.use(authMiddleware.authMiddleware);
@@ -12,13 +13,7 @@ router.post('/refresh', AuthController.refresh);
 router.get('/activate/:link', AuthController.activate);
 router.post('/password-reset-request', AuthController.requestPasswordReset);
 router.post('/reset-password', AuthController.resetPassword);
-router.get('/status', (req, res) => {
-  // Возвращаем статус и данные пользователя (если авторизован)
-  res.json({
-    isAuth: req.isAuth,
-    user: req.user // Если null, значит не авторизован
-  });
-});
+router.get('/status', AuthController.status);
 
 // Защищенные маршруты
 router.use(authMiddleware.requireAuth);

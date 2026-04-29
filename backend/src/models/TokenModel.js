@@ -40,7 +40,7 @@ class TokenModel {
                 created_at = CURRENT_TIMESTAMP
             RETURNING *
         `;
-        
+
         const values = [userId, refreshToken, fingerprint, userAgent, ipAddress, expiresAt];
         const result = await pool.query(query, values);
         return result.rows[0];
@@ -181,31 +181,36 @@ class TokenModel {
 
     // Транзакция: удалить старый токен и создать новый
     static async replaceToken(oldToken, newToken, userId, expiresAt, metadata = {}) {
+        const { fingerprint, userAgent, ipAddress } = metadata;
         const client = await pool.connect();
-        
+
         try {
             await client.query('BEGIN');
 
-            // Удаляем старый токен
             await client.query(
                 'DELETE FROM tokens WHERE refresh_token = $1',
                 [oldToken]
             );
 
-            // Создаем новый
-            const { fingerprint, userAgent, ipAddress } = metadata;
             const insertResult = await client.query(
                 `INSERT INTO tokens (user_id, refresh_token, fingerprint, user_agent, ip_address, expires_at)
-                 VALUES ($1, $2, $3, $4, $5, $6)
+                 VALUES ($1, $2, $3, $4, $5::inet, $6)
                  RETURNING *`,
-                [userId, newToken, fingerprint, userAgent, ipAddress, expiresAt]
+                [
+                    parseInt(userId),   // JOIN возвращает строку — явно кастуем в число
+                    newToken,
+                    fingerprint ?? null,
+                    userAgent ?? null,
+                    ipAddress ?? null, // ::inet принимает и '::1' и '127.0.0.1' и null
+                    expiresAt,
+                ]
             );
 
             await client.query('COMMIT');
             return insertResult.rows[0];
-            
         } catch (error) {
             await client.query('ROLLBACK');
+            console.error('[replaceToken] FAILED:', error.message, '| detail:', error.detail, '| code:', error.code);
             throw error;
         } finally {
             client.release();

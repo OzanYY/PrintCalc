@@ -1,86 +1,96 @@
 // contexts/AuthContext.tsx
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import {
+    createContext, useContext, useState,
+    useEffect, useCallback, type ReactNode,
+} from 'react';
 import { Spinner } from '@/components/ui/spinner';
 import { authAPI } from '@/api/auth';
+import { performRefresh } from '@/api/axios'; // импортируем единую функцию рефреша
+import { authRefreshBridge } from '@/utils/authRefreshBridge';
 
-// Типы для пользователя (настрой под свой API)
 interface User {
-  id: string;
-  email: string;
-  name?: string;
-  role?: string;
+    id: string;
+    email: string;
+    username?: string;
+    role?: string;
 }
 
-// Тип для ответа API
 export interface AuthStatusResponse {
-  isAuth: boolean;
-  user: User | null;
+    isAuth: boolean;
+    user: User | null;
+    hasRefreshToken: boolean;
 }
 
-// Тип для контекста
 interface AuthContextType {
-  user: User | null;
-  setUser: (user: User | null) => void;
-  isLoading: boolean;
+    user: User | null;
+    setUser: (user: User | null) => void;
+    isLoading: boolean;
+    checkAuth: () => Promise<void>;
 }
 
-// Создаем контекст с начальным значением undefined
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Тип для пропсов провайдера
-interface AuthProviderProps {
-  children: ReactNode;
-}
+export function AuthProvider({ children }: { children: ReactNode }) {
+    const [isLoading, setIsLoading] = useState(true);
+    const [user, setUser]           = useState<User | null>(null);
 
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [user, setUser] = useState<User | null>(null);
+    const checkAuth = useCallback(async () => {
+        try {
+            const response = await authAPI.status();
+            const data: AuthStatusResponse = response.data;
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+            if (data.isAuth) {
+                setUser(data.user);
+                return;
+            }
 
-  const checkAuth = async (): Promise<void> => {
-    try {
-      const response = await authAPI.status();
+            if (data.hasRefreshToken) {
+                // Используем ту же функцию что и интерцептор —
+                // если рефреш уже идёт, просто ждём его, не запускаем второй
+                try {
+                    await performRefresh();
+                    // После рефреша authRefreshBridge.notify() уже вызван внутри performRefresh,
+                    // но нам нужен user — делаем ещё один запрос status
+                    const retryResponse = await authAPI.status();
+                    setUser(retryResponse.data.user);
+                } catch {
+                    setUser(null);
+                }
+                return;
+            }
 
-      if (response.status != 200) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+            setUser(null);
+        } catch {
+            setUser(null);
+        }
+    }, []);
 
-      const data: AuthStatusResponse = await response.data;
-      //console.log(data);
-      setUser(data.user);
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
+    useEffect(() => {
+        checkAuth().finally(() => setIsLoading(false));
+    }, [checkAuth]);
+
+    useEffect(() => {
+        authRefreshBridge.register(checkAuth);
+        return () => authRefreshBridge.unregister();
+    }, [checkAuth]);
+
+    if (isLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center">
+                <Spinner className="size-6" />
+            </div>
+        );
     }
-  };
 
-  if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Spinner className="size-6" />
-      </div>
+        <AuthContext.Provider value={{ user, setUser, isLoading, checkAuth }}>
+            {children}
+        </AuthContext.Provider>
     );
-  }
-
-  return (
-    <AuthContext.Provider value={{ user, setUser, isLoading }}>
-      {children}
-    </AuthContext.Provider>
-  );
 }
 
-// Кастомный хук с проверкой использования внутри провайдера
 export function useAuth(): AuthContextType {
-  const context = useContext(AuthContext);
-  
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  
-  return context;
+    const context = useContext(AuthContext);
+    if (!context) throw new Error('useAuth must be used within an AuthProvider');
+    return context;
 }
