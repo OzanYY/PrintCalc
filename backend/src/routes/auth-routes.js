@@ -4,6 +4,7 @@ const router = express.Router();
 const AuthController = require('../controllers/AuthController');
 const authMiddleware = require('../middleware/auth-middleware');
 const TokenService = require('../services/TokenService');
+const UserService    = require('../services/UserService');
 
 // Публичные маршруты
 router.use(authMiddleware.authMiddleware);
@@ -25,5 +26,18 @@ router.get('/sessions', AuthController.getSessions);
 router.post('/terminate-other-sessions', AuthController.terminateOtherSessions);
 router.delete('/delete-account', AuthController.deleteAccount);
 router.get('/verify', AuthController.verifyToken);
+router.delete('/sessions/:id', AuthController.terminateSession);
+router.put('/me', async (req, res) => {
+    try {
+        const updated = await UserService.updateProfile(req.user.id, req.body);
+        res.json({ user: updated });
+    } catch (error) {
+        if (error.message.includes('already in use')) {
+            return res.status(409).json({ error: error.message });
+        }
+        res.status(400).json({ error: error.message });
+    }
+});
+ 
 
 module.exports = router;

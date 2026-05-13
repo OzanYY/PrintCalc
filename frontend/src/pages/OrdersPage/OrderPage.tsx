@@ -1,16 +1,24 @@
 import { useState } from 'react';
-import { 
-  Plus, 
-  Printer, 
-  Package, 
+import {
+  Plus,
+  Printer,
+  Package,
   Clock,
-  DollarSign,
   Weight,
   Edit,
   Trash2,
   MoreVertical,
   Filter,
   Search,
+  Copy,
+  CheckCircle,
+  XCircle,
+  Download,
+  RefreshCw,
+  TrendingUp,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,431 +59,531 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOrders } from '@/hooks/useOrders';
+import type { Order, CreateOrderData } from '@/api/orders';
 
-// Типы
+// ─── Вспомогательные утилиты ──────────────────────────────────────────────────
+
 type OrderStatus = 'in_progress' | 'completed' | 'cancelled';
 
-interface Printer {
-  id: number;
-  name: string;
-  type: string;
-  power_consumption: number;
-}
 
-interface Material {
-  id: number;
-  name: string;
-  price_per_kg: number;
-}
 
-interface Order {
-  id: number;
-  user_id: number;
-  printer_id: number | null;
-  material_id: number | null;
-  name: string;
-  status: OrderStatus;
-  
-  model_weight_grams: number;
-  support_weight_grams: number;
-  total_weight_grams: number;
-  print_time_minutes: number;
-  
-  material_cost: number;
-  electricity_cost: number;
-  depreciation_cost: number;
-  labor_cost: number;
-  additional_expenses: number;
-  total_cost: number;
-  margin_percent: number;
-  final_price: number;
-  
-  notes: string;
-  settings: Record<string, any>;
-  
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}
+/** Извлекает числовое значение из calc_result (JSONB может хранить числа как строки) */
+const getCalcValue = (order: Order, path: string[]): number => {
+  let node: any = order.calc_result;
+  for (const key of path) {
+    if (!node || typeof node !== 'object') return 0;
+    node = node[key];
+  }
+  const n = Number(node);
+  return isFinite(n) ? n : 0;
+};
 
-// Интерфейс для формы
+/** Postgres возвращает DECIMAL/BIGINT как строки — всегда приводим к number */
+const toNum = (v: unknown): number => {
+  const n = Number(v);
+  return isFinite(n) ? n : 0;
+};
+
+const getFinalPrice = (order: Order) =>
+  toNum(order.final_price) || getCalcValue(order, ['finalPrice', 'value']);
+
+const getTotalCost = (order: Order) =>
+  toNum(order.total_cost) || getCalcValue(order, ['fullCost', 'value']);
+
+const getProfit = (order: Order) => getFinalPrice(order) - getTotalCost(order);
+
+const getPrintTimeMinutes = (order: Order): number =>
+  toNum(order.print_time_minutes) || toNum(order.calc_electricity?.printTime);
+
+const getTotalWeightGrams = (order: Order): number =>
+  toNum(order.total_weight_grams) || getCalcValue(order, ['totalWeight', 'grams']);
+
+const formatDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+
+const formatTime = (minutes: number) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+};
+
+const formatMoney = (value: number) =>
+  value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
+
+const getProgressValue = (order: Order): number => {
+  if (order.status === 'completed') return 100;
+  if (order.status === 'cancelled') return 0;
+  const created = new Date(order.created_at).getTime();
+  const daysDiff = (Date.now() - created) / (1000 * 60 * 60 * 24);
+  return Math.min(Math.round(daysDiff * 20), 90);
+};
+
+// ─── Форма заказа ─────────────────────────────────────────────────────────────
+
 interface OrderFormData {
+  name: string;
+  notes: string;
   printer_id: string;
   material_id: string;
-  name: string;
-  status: OrderStatus;
-  model_weight_grams: string;
-  support_weight_grams: string;
-  print_time_hours: string;
-  print_time_minutes: string;
-  material_cost: string;
-  electricity_cost: string;
-  depreciation_cost: string;
-  labor_cost: string;
-  additional_expenses: string;
-  margin_percent: string;
-  notes: string;
+  // calc_materials
+  modelWeight: string;
+  supportWeight: string;
+  filamentPrice: string;
+  // calc_electricity
+  powerConsumption: string;
+  printTimeHours: string;
+  printTimeMinutes: string;
+  electricityPrice: string;
+  // calc_depreciation
+  printerCost: string;
+  printResource: string;
+  // calc_labor
+  hourlyRate: string;
+  workTime: string;
+  // calc_additional
+  additionalExpensesPercent: string;
+  marginPercent: string;
 }
 
+const emptyForm = (): OrderFormData => ({
+  name: '',
+  notes: '',
+  printer_id: '',
+  material_id: '',
+  modelWeight: '',
+  supportWeight: '0',
+  filamentPrice: '',
+  powerConsumption: '',
+  printTimeHours: '',
+  printTimeMinutes: '',
+  electricityPrice: '',
+  printerCost: '',
+  printResource: '',
+  hourlyRate: '',
+  workTime: '',
+  additionalExpensesPercent: '0',
+  marginPercent: '20',
+});
+
+const formFromOrder = (order: Order): OrderFormData => {
+  const m  = order.calc_materials    || {};
+  const e  = order.calc_electricity  || {};
+  const d  = order.calc_depreciation || {};
+  const l  = order.calc_labor        || {};
+  const a  = order.calc_additional   || {};
+  const printMin = e.printTime ?? 0;
+
+  return {
+    name:     order.name,
+    notes:    order.notes ?? '',
+    printer_id:  order.printer_id?.toString()  ?? '',
+    material_id: order.material_id?.toString() ?? '',
+    modelWeight:               (m.modelWeight   ?? '').toString(),
+    supportWeight:             (m.supportWeight  ?? 0).toString(),
+    filamentPrice:             (m.filamentPrice  ?? '').toString(),
+    powerConsumption:          (e.powerConsumption ?? '').toString(),
+    printTimeHours:            Math.floor(printMin / 60).toString(),
+    printTimeMinutes:          (printMin % 60).toString(),
+    electricityPrice:          (e.electricityPrice  ?? '').toString(),
+    printerCost:               (d.printerCost   ?? '').toString(),
+    printResource:             (d.printResource ?? '').toString(),
+    hourlyRate:                (l.hourlyRate    ?? '').toString(),
+    workTime:                  (l.workTime      ?? '').toString(),
+    additionalExpensesPercent: (a.additionalExpensesPercent ?? 0).toString(),
+    marginPercent:             (a.marginPercent ?? 20).toString(),
+  };
+};
+
+/** Строит calc_result из формы. В реальном проекте вызывается CalculatorContext. */
+const buildCalcResult = (f: OrderFormData) => {
+  const modelW    = parseFloat(f.modelWeight)    || 0;
+  const supportW  = parseFloat(f.supportWeight)  || 0;
+  const filamentP = parseFloat(f.filamentPrice)  || 0;
+  const printMin  = (parseInt(f.printTimeHours) || 0) * 60 + (parseInt(f.printTimeMinutes) || 0);
+  const power     = parseFloat(f.powerConsumption) || 0;
+  const elPrice   = parseFloat(f.electricityPrice)  || 0;
+  const pCost     = parseFloat(f.printerCost)    || 0;
+  const pRes      = parseFloat(f.printResource)  || 1;
+  const rate      = parseFloat(f.hourlyRate)     || 0;
+  const work      = parseFloat(f.workTime)       || 0;
+  const addPct    = parseFloat(f.additionalExpensesPercent) || 0;
+  const margin    = parseFloat(f.marginPercent)  || 0;
+
+  const totalWeight = modelW + supportW;
+  const matCost     = (totalWeight / 1000) * filamentP;
+  const elCost      = (power / 1000) * (printMin / 60) * elPrice;
+  const deprCost    = pRes > 0 ? (pCost / pRes) * (printMin / 60) : 0;
+  const laborCost   = rate * (work / 60);
+  const primeCost   = matCost + elCost + deprCost + laborCost;
+  const addCost     = primeCost * (addPct / 100);
+  const fullCost    = primeCost + addCost;
+  const marginVal   = fullCost * (margin / 100);
+  const finalPrice  = fullCost + marginVal;
+  const pricePerGram = totalWeight > 0 ? finalPrice / totalWeight : 0;
+
+  const fmt = (v: number) => ({ value: v, formatted: formatMoney(v), currency: '₽' });
+
+  return {
+    materials: {
+      model:   fmt((modelW   / 1000) * filamentP),
+      support: fmt((supportW / 1000) * filamentP),
+      total:   fmt(matCost),
+    },
+    electricity:        fmt(elCost),
+    depreciation:       fmt(deprCost),
+    labor:              fmt(laborCost),
+    primeCost:          fmt(primeCost),
+    additionalExpenses: { ...fmt(addCost), percent: `${addPct}%` },
+    fullCost:           fmt(fullCost),
+    margin:             { ...fmt(marginVal), percent: `${margin}%` },
+    finalPrice:         fmt(finalPrice),
+    pricePerGram:       { value: pricePerGram, formatted: `${pricePerGram.toFixed(2)} ₽/г`, unit: '₽/г' },
+    totalWeight:        { grams: totalWeight, kg: totalWeight / 1000 },
+  };
+};
+
+const buildCreateData = (f: OrderFormData): CreateOrderData => {
+  const printMin = (parseInt(f.printTimeHours) || 0) * 60 + (parseInt(f.printTimeMinutes) || 0);
+  const calc_result = buildCalcResult(f);
+
+  return {
+    name: f.name,
+    notes: f.notes || undefined,
+    printer_id:  f.printer_id  ? parseInt(f.printer_id)  : null,
+    material_id: f.material_id ? parseInt(f.material_id) : null,
+    calc_materials: {
+      modelWeight:   parseFloat(f.modelWeight)   || 0,
+      supportWeight: parseFloat(f.supportWeight) || 0,
+      filamentPrice: parseFloat(f.filamentPrice) || 0,
+    },
+    calc_electricity: {
+      powerConsumption: parseFloat(f.powerConsumption) || 0,
+      printTime:        printMin,
+      electricityPrice: parseFloat(f.electricityPrice) || 0,
+    },
+    calc_depreciation: {
+      printerCost:   parseFloat(f.printerCost)   || 0,
+      printResource: parseFloat(f.printResource) || 0,
+    },
+    calc_labor: {
+      hourlyRate: parseFloat(f.hourlyRate) || 0,
+      workTime:   parseFloat(f.workTime)   || 0,
+    },
+    calc_additional: {
+      additionalExpensesPercent: parseFloat(f.additionalExpensesPercent) || 0,
+      marginPercent:             parseFloat(f.marginPercent) || 0,
+    },
+    calc_result,
+  };
+};
+
+// ─── Бейджи статусов ─────────────────────────────────────────────────────────
+
+const StatusBadge = ({ status }: { status: OrderStatus }) => {
+  if (status === 'in_progress') return <Badge className="bg-blue-500 text-white">В процессе</Badge>;
+  if (status === 'completed')   return <Badge className="bg-green-500 text-white">Завершён</Badge>;
+  return <Badge variant="destructive">Отменён</Badge>;
+};
+
+// ─── Форма ────────────────────────────────────────────────────────────────────
+
+interface OrderFormProps {
+  data: OrderFormData;
+  onChange: (name: string, value: string) => void;
+  printers?: { id: number; name: string; type: string }[];
+  materials?: { id: number; name: string; price_per_kg: number }[];
+  isEdit?: boolean;
+}
+
+const OrderForm = ({ data, onChange, printers = [], materials = [], isEdit }: OrderFormProps) => {
+  const handle = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    onChange(e.target.name, e.target.value);
+
+  // Предварительный расчёт для отображения
+  const preview = buildCalcResult(data);
+
+  return (
+    <div className="grid gap-4 py-4">
+      {/* Основное */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2 space-y-2">
+          <Label>Название заказа *</Label>
+          <Input name="name" value={data.name} onChange={handle} placeholder="Например: Фигурка дракона" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Принтер</Label>
+          <Select value={data.printer_id} onValueChange={v => onChange('printer_id', v)}>
+            <SelectTrigger><SelectValue placeholder="Выберите принтер" /></SelectTrigger>
+            <SelectContent>
+              {printers.map(p => (
+                <SelectItem key={p.id} value={p.id.toString()}>{p.name} ({p.type})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Материал</Label>
+          <Select value={data.material_id} onValueChange={v => onChange('material_id', v)}>
+            <SelectTrigger><SelectValue placeholder="Выберите материал" /></SelectTrigger>
+            <SelectContent>
+              {materials.map(m => (
+                <SelectItem key={m.id} value={m.id.toString()}>{m.name} ({m.price_per_kg} ₽/кг)</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Материал */}
+      <div>
+        <h3 className="text-sm font-medium mb-3">Материал</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>Вес модели (г)</Label>
+            <Input name="modelWeight" type="number" step="0.01" value={data.modelWeight} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Вес поддержек (г)</Label>
+            <Input name="supportWeight" type="number" step="0.01" value={data.supportWeight} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Цена филамента (₽/кг)</Label>
+            <Input name="filamentPrice" type="number" step="0.01" value={data.filamentPrice} onChange={handle} placeholder="0" />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Электричество */}
+      <div>
+        <h3 className="text-sm font-medium mb-3">Электроэнергия</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Мощность принтера (Вт)</Label>
+            <Input name="powerConsumption" type="number" value={data.powerConsumption} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Цена электричества (₽/кВт·ч)</Label>
+            <Input name="electricityPrice" type="number" step="0.01" value={data.electricityPrice} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Часы печати</Label>
+            <Input name="printTimeHours" type="number" min="0" value={data.printTimeHours} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Минуты печати</Label>
+            <Input name="printTimeMinutes" type="number" min="0" max="59" value={data.printTimeMinutes} onChange={handle} placeholder="0" />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Амортизация */}
+      <div>
+        <h3 className="text-sm font-medium mb-3">Амортизация</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Стоимость принтера (₽)</Label>
+            <Input name="printerCost" type="number" value={data.printerCost} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Ресурс принтера (ч)</Label>
+            <Input name="printResource" type="number" value={data.printResource} onChange={handle} placeholder="0" />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Работа и маржа */}
+      <div>
+        <h3 className="text-sm font-medium mb-3">Работа и прибыль</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Ставка (₽/ч)</Label>
+            <Input name="hourlyRate" type="number" value={data.hourlyRate} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Время работы (мин)</Label>
+            <Input name="workTime" type="number" value={data.workTime} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Доп. расходы (%)</Label>
+            <Input name="additionalExpensesPercent" type="number" value={data.additionalExpensesPercent} onChange={handle} placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label>Маржа (%)</Label>
+            <Input name="marginPercent" type="number" value={data.marginPercent} onChange={handle} placeholder="20" />
+          </div>
+        </div>
+      </div>
+
+      {/* Превью расчёта */}
+      {preview.finalPrice.value > 0 && (
+        <>
+          <Separator />
+          <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
+            <h3 className="font-medium mb-2">Предварительный расчёт</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <span className="text-muted-foreground">Материал:</span>
+              <span>{formatMoney(preview.materials.total.value)}</span>
+              <span className="text-muted-foreground">Электричество:</span>
+              <span>{formatMoney(preview.electricity.value)}</span>
+              <span className="text-muted-foreground">Амортизация:</span>
+              <span>{formatMoney(preview.depreciation.value)}</span>
+              <span className="text-muted-foreground">Работа:</span>
+              <span>{formatMoney(preview.labor.value)}</span>
+              <span className="text-muted-foreground font-medium">Себестоимость:</span>
+              <span className="font-medium">{formatMoney(preview.fullCost.value)}</span>
+              <span className="text-muted-foreground font-bold">Итоговая цена:</span>
+              <span className="font-bold text-green-600">{formatMoney(preview.finalPrice.value)}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      <Separator />
+
+      <div className="space-y-2">
+        <Label>Примечания</Label>
+        <Textarea name="notes" value={data.notes} onChange={handle} placeholder="Дополнительная информация..." rows={2} />
+      </div>
+    </div>
+  );
+};
+
+// ─── Главный компонент ────────────────────────────────────────────────────────
+
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      id: 1,
-      user_id: 1,
-      printer_id: 1,
-      material_id: 1,
-      name: 'Фигурка дракона',
-      status: 'completed',
-      model_weight_grams: 45.5,
-      support_weight_grams: 12.3,
-      total_weight_grams: 57.8,
-      print_time_minutes: 360,
-      material_cost: 144.5,
-      electricity_cost: 12.6,
-      depreciation_cost: 50,
-      labor_cost: 300,
-      additional_expenses: 0,
-      total_cost: 507.1,
-      margin_percent: 30,
-      final_price: 659.23,
-      notes: 'Подарок на день рождения',
-      settings: {},
-      created_at: '2024-03-01T10:30:00Z',
-      updated_at: '2024-03-05T15:45:00Z',
-      completed_at: '2024-03-05T15:45:00Z',
-    },
-    {
-      id: 2,
-      user_id: 1,
-      printer_id: 2,
-      material_id: 3,
-      name: 'Шахматные фигуры',
-      status: 'in_progress',
-      model_weight_grams: 120.0,
-      support_weight_grams: 25.5,
-      total_weight_grams: 145.5,
-      print_time_minutes: 720,
-      material_cost: 654.75,
-      electricity_cost: 8.4,
-      depreciation_cost: 100,
-      labor_cost: 500,
-      additional_expenses: 50,
-      total_cost: 1313.15,
-      margin_percent: 25,
-      final_price: 1641.44,
-      notes: 'Черный цвет',
-      settings: {},
-      created_at: '2024-03-10T14:20:00Z',
-      updated_at: '2024-03-12T09:15:00Z',
-      completed_at: null,
-    },
-    {
-      id: 3,
-      user_id: 1,
-      printer_id: 1,
-      material_id: 2,
-      name: 'Держатель для телефона',
-      status: 'cancelled',
-      model_weight_grams: 25.0,
-      support_weight_grams: 5.0,
-      total_weight_grams: 30.0,
-      print_time_minutes: 180,
-      material_cost: 96.0,
-      electricity_cost: 6.3,
-      depreciation_cost: 25,
-      labor_cost: 150,
-      additional_expenses: 0,
-      total_cost: 277.3,
-      margin_percent: 20,
-      final_price: 332.76,
-      notes: 'Клиент отказался',
-      settings: {},
-      created_at: '2024-02-25T11:00:00Z',
-      updated_at: '2024-02-26T16:30:00Z',
-      completed_at: null,
-    },
-  ]);
+  const {
+    orders,
+    stats,
+    pagination,
+    isLoading,
+    isMutating,
+    error,
+    statusFilter,
+    setStatusFilter,
+    currentPage,
+    setCurrentPage,
+    createOrder,
+    updateOrder,
+    deleteOrder,
+    cloneOrder,
+    completeOrder,
+    cancelOrder,
+    updateStatus,
+    exportCSV,
+    clearError,
+    refresh,
+  } = useOrders({ autoFetch: true });
 
-  const [printers] = useState<Printer[]>([
-    { id: 1, name: 'Основной FDM', type: 'FDM', power_consumption: 350 },
-    { id: 2, name: 'Смоляной принтер', type: 'SLA', power_consumption: 120 },
-  ]);
-
-  const [materials] = useState<Material[]>([
-    { id: 1, name: 'PLA Basic', price_per_kg: 2500 },
-    { id: 2, name: 'ABS Pro', price_per_kg: 3200 },
-    { id: 3, name: 'Standard Resin', price_per_kg: 4500 },
-  ]);
-
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  // Локальные фильтры (поиск — только клиентский)
   const [searchQuery, setSearchQuery] = useState('');
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
 
-  const [formData, setFormData] = useState<OrderFormData>({
-    printer_id: '',
-    material_id: '',
-    name: '',
-    status: 'in_progress',
-    model_weight_grams: '',
-    support_weight_grams: '',
-    print_time_hours: '',
-    print_time_minutes: '',
-    material_cost: '',
-    electricity_cost: '',
-    depreciation_cost: '',
-    labor_cost: '',
-    additional_expenses: '',
-    margin_percent: '20',
-    notes: '',
-  });
+  // Диалоги
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen,   setIsEditOpen]   = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // Фильтрация заказов
-  const filteredOrders = orders.filter(order => {
-    const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus;
-    const matchesSearch = order.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         order.id.toString().includes(searchQuery);
-    return matchesStatus && matchesSearch;
-  });
+  // Форма
+  const [formData, setFormData] = useState<OrderFormData>(emptyForm());
 
-  // Статистика
-  const totalOrders = orders.length;
-  const inProgressOrders = orders.filter(o => o.status === 'in_progress').length;
-  const completedOrders = orders.filter(o => o.status === 'completed').length;
-  const totalRevenue = orders
-    .filter(o => o.status === 'completed')
-    .reduce((sum, o) => sum + o.final_price, 0);
-  const totalProfit = orders
-    .filter(o => o.status === 'completed')
-    .reduce((sum, o) => sum + (o.final_price - o.total_cost), 0);
+  const handleFormChange = (name: string, value: string) =>
+    setFormData(prev => ({ ...prev, [name]: value }));
 
-  const getStatusBadge = (status: OrderStatus) => {
-    switch(status) {
-      case 'in_progress':
-        return <Badge className="bg-blue-500">В процессе</Badge>;
-      case 'completed':
-        return <Badge className="bg-green-500">Завершен</Badge>;
-      case 'cancelled':
-        return <Badge variant="destructive">Отменен</Badge>;
+  // ─── Диалоги ───────────────────────────────────────────────────────────────
+
+  const openCreate = () => {
+    setFormData(emptyForm());
+    setIsCreateOpen(true);
+  };
+
+  const openEdit = (order: Order) => {
+    setSelectedOrder(order);
+    setFormData(formFromOrder(order));
+    setIsEditOpen(true);
+  };
+
+  const openDelete = (order: Order) => {
+    setSelectedOrder(order);
+    setIsDeleteOpen(true);
+  };
+
+  // ─── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleCreate = async () => {
+    if (!formData.name.trim()) return;
+    const result = await createOrder(buildCreateData(formData));
+    if (result) setIsCreateOpen(false);
+  };
+
+  const handleEdit = async () => {
+    if (!selectedOrder || !formData.name.trim()) return;
+    const data = buildCreateData(formData);
+    const result = await updateOrder(selectedOrder.id, {
+      name:              data.name,
+      notes:             data.notes,
+      printer_id:        data.printer_id,
+      material_id:       data.material_id,
+      calc_materials:    data.calc_materials,
+      calc_electricity:  data.calc_electricity,
+      calc_depreciation: data.calc_depreciation,
+      calc_labor:        data.calc_labor,
+      calc_additional:   data.calc_additional,
+      calc_result:       data.calc_result,
+    });
+    if (result) {
+      setIsEditOpen(false);
+      setSelectedOrder(null);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}ч ${mins}м`;
-  };
-
-  const getPrinterName = (printerId: number | null) => {
-    if (!printerId) return '—';
-    return printers.find(p => p.id === printerId)?.name || 'Неизвестно';
-  };
-
-  const getMaterialName = (materialId: number | null) => {
-    if (!materialId) return '—';
-    return materials.find(m => m.id === materialId)?.name || 'Неизвестно';
-  };
-
-  const calculateProfit = (order: Order) => {
-    return order.final_price - order.total_cost;
-  };
-
-  const getProgressValue = (order: Order) => {
-    if (order.status === 'completed') return 100;
-    if (order.status === 'cancelled') return 0;
-    const created = new Date(order.created_at).getTime();
-    const now = Date.now();
-    const daysDiff = (now - created) / (1000 * 60 * 60 * 24);
-    return Math.min(Math.round(daysDiff * 20), 90);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const resetForm = () => {
-    setFormData({
-      printer_id: '',
-      material_id: '',
-      name: '',
-      status: 'in_progress',
-      model_weight_grams: '',
-      support_weight_grams: '',
-      print_time_hours: '',
-      print_time_minutes: '',
-      material_cost: '',
-      electricity_cost: '',
-      depreciation_cost: '',
-      labor_cost: '',
-      additional_expenses: '',
-      margin_percent: '20',
-      notes: '',
-    });
-  };
-
-  const calculateTotalCost = (data: OrderFormData) => {
-    const materialCost = parseFloat(data.material_cost) || 0;
-    const electricityCost = parseFloat(data.electricity_cost) || 0;
-    const depreciation = parseFloat(data.depreciation_cost) || 0;
-    const labor = parseFloat(data.labor_cost) || 0;
-    const additional = parseFloat(data.additional_expenses) || 0;
-    return materialCost + electricityCost + depreciation + labor + additional;
-  };
-
-  const handleCreateOrder = () => {
-    const totalMinutes = (parseInt(formData.print_time_hours) || 0) * 60 + 
-                        (parseInt(formData.print_time_minutes) || 0);
-    
-    const modelWeight = parseFloat(formData.model_weight_grams) || 0;
-    const supportWeight = parseFloat(formData.support_weight_grams) || 0;
-    const totalWeight = modelWeight + supportWeight;
-
-    const materialCost = parseFloat(formData.material_cost) || 0;
-    const electricityCost = parseFloat(formData.electricity_cost) || 0;
-    const depreciation = parseFloat(formData.depreciation_cost) || 0;
-    const labor = parseFloat(formData.labor_cost) || 0;
-    const additional = parseFloat(formData.additional_expenses) || 0;
-    const totalCost = materialCost + electricityCost + depreciation + labor + additional;
-    
-    const margin = parseInt(formData.margin_percent) || 0;
-    const finalPrice = totalCost * (1 + margin / 100);
-
-    const newOrder: Order = {
-      id: Date.now(),
-      user_id: 1,
-      printer_id: formData.printer_id ? parseInt(formData.printer_id) : null,
-      material_id: formData.material_id ? parseInt(formData.material_id) : null,
-      name: formData.name,
-      status: formData.status,
-      model_weight_grams: modelWeight,
-      support_weight_grams: supportWeight,
-      total_weight_grams: totalWeight,
-      print_time_minutes: totalMinutes,
-      material_cost: materialCost,
-      electricity_cost: electricityCost,
-      depreciation_cost: depreciation,
-      labor_cost: labor,
-      additional_expenses: additional,
-      total_cost: totalCost,
-      margin_percent: margin,
-      final_price: finalPrice,
-      notes: formData.notes,
-      settings: {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      completed_at: formData.status === 'completed' ? new Date().toISOString() : null,
-    };
-
-    setOrders(prev => [newOrder, ...prev]);
-    setIsCreateDialogOpen(false);
-    resetForm();
-  };
-
-  const handleEditOrder = () => {
+  const handleDelete = async () => {
     if (!selectedOrder) return;
-
-    const totalMinutes = (parseInt(formData.print_time_hours) || 0) * 60 + 
-                        (parseInt(formData.print_time_minutes) || 0);
-    
-    const modelWeight = parseFloat(formData.model_weight_grams) || 0;
-    const supportWeight = parseFloat(formData.support_weight_grams) || 0;
-    const totalWeight = modelWeight + supportWeight;
-
-    const materialCost = parseFloat(formData.material_cost) || 0;
-    const electricityCost = parseFloat(formData.electricity_cost) || 0;
-    const depreciation = parseFloat(formData.depreciation_cost) || 0;
-    const labor = parseFloat(formData.labor_cost) || 0;
-    const additional = parseFloat(formData.additional_expenses) || 0;
-    const totalCost = materialCost + electricityCost + depreciation + labor + additional;
-    
-    const margin = parseInt(formData.margin_percent) || 0;
-    const finalPrice = totalCost * (1 + margin / 100);
-
-    const updatedOrders = orders.map(o => 
-      o.id === selectedOrder.id 
-        ? {
-            ...o,
-            printer_id: formData.printer_id ? parseInt(formData.printer_id) : null,
-            material_id: formData.material_id ? parseInt(formData.material_id) : null,
-            name: formData.name,
-            status: formData.status,
-            model_weight_grams: modelWeight,
-            support_weight_grams: supportWeight,
-            total_weight_grams: totalWeight,
-            print_time_minutes: totalMinutes,
-            material_cost: materialCost,
-            electricity_cost: electricityCost,
-            depreciation_cost: depreciation,
-            labor_cost: labor,
-            additional_expenses: additional,
-            total_cost: totalCost,
-            margin_percent: margin,
-            final_price: finalPrice,
-            notes: formData.notes,
-            updated_at: new Date().toISOString(),
-            completed_at: formData.status === 'completed' ? new Date().toISOString() : o.completed_at,
-          }
-        : o
-    );
-
-    setOrders(updatedOrders);
-    setIsEditDialogOpen(false);
-    setSelectedOrder(null);
-    resetForm();
+    const ok = await deleteOrder(selectedOrder.id);
+    if (ok) {
+      setIsDeleteOpen(false);
+      setSelectedOrder(null);
+    }
   };
 
-  const handleDeleteOrder = () => {
-    if (!selectedOrder) return;
-    setOrders(prev => prev.filter(o => o.id !== selectedOrder.id));
-    setIsDeleteDialogOpen(false);
-    setSelectedOrder(null);
-  };
+  // ─── Фильтрация (клиентский поиск) ─────────────────────────────────────────
 
-  const openEditDialog = (order: Order) => {
-    setSelectedOrder(order);
-    const hours = Math.floor(order.print_time_minutes / 60);
-    const minutes = order.print_time_minutes % 60;
+  const filteredOrders = orders.filter(o =>
+    o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    o.id.toString().includes(searchQuery),
+  );
 
-    setFormData({
-      printer_id: order.printer_id?.toString() || '',
-      material_id: order.material_id?.toString() || '',
-      name: order.name,
-      status: order.status,
-      model_weight_grams: order.model_weight_grams.toString(),
-      support_weight_grams: order.support_weight_grams.toString(),
-      print_time_hours: hours.toString(),
-      print_time_minutes: minutes.toString(),
-      material_cost: order.material_cost.toString(),
-      electricity_cost: order.electricity_cost.toString(),
-      depreciation_cost: order.depreciation_cost.toString(),
-      labor_cost: order.labor_cost.toString(),
-      additional_expenses: order.additional_expenses.toString(),
-      margin_percent: order.margin_percent.toString(),
-      notes: order.notes || '',
-    });
-    setIsEditDialogOpen(true);
-  };
+  // ─── Статистика из хука ─────────────────────────────────────────────────────
 
-  const openDeleteDialog = (order: Order) => {
-    setSelectedOrder(order);
-    setIsDeleteDialogOpen(true);
-  };
+  const summary = stats?.summary;
+  const totalOrders     = parseInt(summary?.total_orders      ?? '0');
+  const inProgress      = parseInt(summary?.in_progress_orders ?? '0');
+  const completed       = parseInt(summary?.completed_orders   ?? '0');
+  const totalRevenue    = parseFloat(summary?.total_revenue    ?? '0');
+  const totalProfit     = parseFloat(summary?.total_profit     ?? '0');
+
+  // ─── Пагинация ─────────────────────────────────────────────────────────────
+
+  const totalPages = Math.ceil(pagination.total / pagination.limit);
+
+  // ─── Рендер ────────────────────────────────────────────────────────────────
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -484,186 +592,210 @@ export default function OrdersPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Заказы на печать</h1>
           <p className="text-muted-foreground">
-            Управление заказами, отслеживание статусов и финансовый учет
+            Управление заказами, отслеживание статусов и финансовый учёт
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Создать заказ
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={refresh} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button variant="outline" onClick={() => exportCSV(statusFilter ?? undefined)}>
+            <Download className="mr-2 h-4 w-4" />
+            Экспорт CSV
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            Создать заказ
+          </Button>
+        </div>
       </div>
+
+      {/* Ошибка */}
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription className="flex justify-between items-center">
+            {error}
+            <Button variant="ghost" size="sm" onClick={clearError}>✕</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Статистика */}
       <div className="grid gap-4 md:grid-cols-5 mb-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Всего заказов</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalOrders}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">В процессе</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{inProgressOrders}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Завершено</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{completedOrders}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Выручка</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRevenue.toLocaleString()} ₽</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Прибыль</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{totalProfit.toLocaleString()} ₽</div>
-          </CardContent>
-        </Card>
+        {[
+          { label: 'Всего заказов',   value: totalOrders,                 color: '' },
+          { label: 'В процессе',      value: inProgress,                  color: 'text-blue-600' },
+          { label: 'Завершено',        value: completed,                   color: 'text-green-600' },
+          { label: 'Выручка',         value: formatMoney(totalRevenue),   color: '' },
+          { label: 'Прибыль',         value: formatMoney(totalProfit),    color: 'text-green-600' },
+        ].map(({ label, value, color }) => (
+          <Card key={label}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">{label}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${color}`}>{value}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Фильтры и поиск */}
+      {/* Фильтры */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Поиск по названию или номеру..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
-        
-        <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-          <SelectTrigger className="w-45">
+
+        <Select
+          value={statusFilter ?? 'all'}
+          onValueChange={v => setStatusFilter(v === 'all' ? null : v as OrderStatus)}
+        >
+          <SelectTrigger className="w-48">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Все статусы" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все статусы</SelectItem>
             <SelectItem value="in_progress">В процессе</SelectItem>
-            <SelectItem value="completed">Завершенные</SelectItem>
-            <SelectItem value="cancelled">Отмененные</SelectItem>
+            <SelectItem value="completed">Завершённые</SelectItem>
+            <SelectItem value="cancelled">Отменённые</SelectItem>
           </SelectContent>
         </Select>
 
         <div className="flex gap-1 border rounded-lg p-1">
-          <Button
-            variant={viewMode === 'cards' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setViewMode('cards')}
-          >
+          <Button variant={viewMode === 'cards' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('cards')}>
             Карточки
           </Button>
-          <Button
-            variant={viewMode === 'table' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setViewMode('table')}
-          >
+          <Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('table')}>
             Таблица
           </Button>
         </div>
       </div>
 
-      {/* Отображение заказов */}
-      {filteredOrders.length === 0 ? (
+      {/* Загрузка */}
+      {isLoading && (
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Пустое состояние */}
+      {!isLoading && filteredOrders.length === 0 && (
         <Card>
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-lg mb-2">Заказы не найдены</p>
-              <p className="text-sm mb-4">Попробуйте изменить параметры поиска или создайте новый заказ</p>
-              <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <p className="text-sm mb-4">
+                Попробуйте изменить параметры поиска или создайте новый заказ
+              </p>
+              <Button onClick={openCreate}>
                 <Plus className="mr-2 h-4 w-4" />
                 Создать заказ
               </Button>
             </div>
           </CardContent>
         </Card>
-      ) : viewMode === 'cards' ? (
+      )}
+
+      {/* Карточки */}
+      {!isLoading && filteredOrders.length > 0 && viewMode === 'cards' && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredOrders.map((order) => {
-            const profit = calculateProfit(order);
+          {filteredOrders.map(order => {
+            const profit     = getProfit(order);
+            const finalPrice = getFinalPrice(order);
+            const totalCost  = getTotalCost(order);
+            const weight     = getTotalWeightGrams(order);
+            const printTime  = getPrintTimeMinutes(order);
+
             return (
               <Card key={order.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{order.name}</CardTitle>
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg truncate">{order.name}</CardTitle>
                       <CardDescription>Заказ #{order.id}</CardDescription>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" disabled={isMutating}>
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => openEditDialog(order)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Редактировать
+                        {order.status === 'in_progress' && (
+                          <DropdownMenuItem onClick={() => openEdit(order)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Редактировать
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => cloneOrder(order.id)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Клонировать
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => openDeleteDialog(order)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Удалить
-                        </DropdownMenuItem>
+                        {order.status === 'in_progress' && (
+                          <DropdownMenuItem onClick={() => completeOrder(order.id)}>
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                            Завершить
+                          </DropdownMenuItem>
+                        )}
+                        {order.status === 'in_progress' && (
+                          <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
+                            <XCircle className="mr-2 h-4 w-4 text-orange-500" />
+                            Отменить
+                          </DropdownMenuItem>
+                        )}
+                        {order.status !== 'completed' && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600" onClick={() => openDelete(order)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Удалить
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </CardHeader>
+
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      {getStatusBadge(order.status)}
+                      <StatusBadge status={order.status} />
                       <span className="text-sm text-muted-foreground">
                         {formatDate(order.created_at)}
                       </span>
                     </div>
-                    
+
                     {order.status === 'in_progress' && (
                       <Progress value={getProgressValue(order)} className="h-2" />
                     )}
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="flex items-center gap-2">
-                        <Printer className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate">{getPrinterName(order.printer_id)}</span>
+                        <Printer className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="truncate">{order.printer_name ?? '—'}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                        <span className="truncate">{getMaterialName(order.material_id)}</span>
+                        <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="truncate">{order.material_name ?? '—'}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Weight className="h-4 w-4 text-muted-foreground" />
-                        <span>{order.total_weight_grams} г</span>
+                        <Weight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span>{weight.toFixed(1)} г</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span>{formatTime(order.print_time_minutes)}</span>
+                        <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span>{formatTime(printTime)}</span>
                       </div>
                     </div>
 
@@ -672,16 +804,19 @@ export default function OrdersPage() {
                     <div className="space-y-1">
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Себестоимость:</span>
-                        <span>{order.total_cost.toFixed(2)} ₽</span>
+                        <span>{formatMoney(totalCost)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Цена:</span>
-                        <span className="font-medium">{order.final_price.toFixed(2)} ₽</span>
+                        <span className="font-medium">{formatMoney(finalPrice)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
-                        <span className="text-muted-foreground">Прибыль:</span>
-                        <span className={profit > 0 ? 'text-green-600' : 'text-red-600'}>
-                          {profit > 0 ? '+' : ''}{profit.toFixed(2)} ₽
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Прибыль:
+                        </span>
+                        <span className={profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {profit >= 0 ? '+' : ''}{formatMoney(profit)}
                         </span>
                       </div>
                     </div>
@@ -689,9 +824,7 @@ export default function OrdersPage() {
                     {order.notes && (
                       <>
                         <Separator />
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {order.notes}
-                        </p>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{order.notes}</p>
                       </>
                     )}
                   </div>
@@ -700,7 +833,10 @@ export default function OrdersPage() {
             );
           })}
         </div>
-      ) : (
+      )}
+
+      {/* Таблица */}
+      {!isLoading && filteredOrders.length > 0 && viewMode === 'table' && (
         <Card>
           <Table>
             <TableHeader>
@@ -712,7 +848,7 @@ export default function OrdersPage() {
                 <TableHead>Материал</TableHead>
                 <TableHead>Вес</TableHead>
                 <TableHead>Время</TableHead>
-                <TableHead>Стоимость</TableHead>
+                <TableHead>Себестоимость</TableHead>
                 <TableHead>Цена</TableHead>
                 <TableHead>Прибыль</TableHead>
                 <TableHead>Дата</TableHead>
@@ -720,30 +856,70 @@ export default function OrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrders.map((order) => {
-                const profit = calculateProfit(order);
+              {filteredOrders.map(order => {
+                const profit     = getProfit(order);
+                const finalPrice = getFinalPrice(order);
+                const totalCost  = getTotalCost(order);
+                const weight     = getTotalWeightGrams(order);
+                const printTime  = getPrintTimeMinutes(order);
+
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">#{order.id}</TableCell>
-                    <TableCell>{order.name}</TableCell>
-                    <TableCell>{getStatusBadge(order.status)}</TableCell>
-                    <TableCell>{getPrinterName(order.printer_id)}</TableCell>
-                    <TableCell>{getMaterialName(order.material_id)}</TableCell>
-                    <TableCell>{order.total_weight_grams} г</TableCell>
-                    <TableCell>{formatTime(order.print_time_minutes)}</TableCell>
-                    <TableCell>{order.total_cost.toFixed(2)} ₽</TableCell>
-                    <TableCell>{order.final_price.toFixed(2)} ₽</TableCell>
-                    <TableCell className={profit > 0 ? 'text-green-600' : 'text-red-600'}>
-                      {profit > 0 ? '+' : ''}{profit.toFixed(2)} ₽
+                    <TableCell className="max-w-[180px] truncate">{order.name}</TableCell>
+                    <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>{order.printer_name ?? '—'}</TableCell>
+                    <TableCell>{order.material_name ?? '—'}</TableCell>
+                    <TableCell>{weight.toFixed(1)} г</TableCell>
+                    <TableCell>{formatTime(printTime)}</TableCell>
+                    <TableCell>{formatMoney(totalCost)}</TableCell>
+                    <TableCell>{formatMoney(finalPrice)}</TableCell>
+                    <TableCell className={profit >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      {profit >= 0 ? '+' : ''}{formatMoney(profit)}
                     </TableCell>
                     <TableCell>{formatDate(order.created_at)}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(order)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(order)}>
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" disabled={isMutating}>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {order.status === 'in_progress' && (
+                            <DropdownMenuItem onClick={() => openEdit(order)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Редактировать
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => cloneOrder(order.id)}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Клонировать
+                          </DropdownMenuItem>
+                          {order.status === 'in_progress' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => completeOrder(order.id)}>
+                                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                                Завершить
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
+                                <XCircle className="mr-2 h-4 w-4 text-orange-500" />
+                                Отменить
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {order.status !== 'completed' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-red-600" onClick={() => openDelete(order)}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Удалить
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 );
@@ -753,487 +929,81 @@ export default function OrdersPage() {
         </Card>
       )}
 
-      {/* Диалог создания заказа */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-150 max-h-[90vh] overflow-y-auto">
+      {/* Пагинация */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 mt-6">
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={currentPage <= 1 || isLoading}
+            onClick={() => setCurrentPage(currentPage - 1)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Страница {currentPage} из {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={currentPage >= totalPages || isLoading}
+            onClick={() => setCurrentPage(currentPage + 1)}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Диалог создания */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Создание нового заказа</DialogTitle>
-            <DialogDescription>
-              Заполните информацию о заказе на 3D печать
-            </DialogDescription>
+            <DialogDescription>Заполните параметры заказа на 3D-печать</DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Название заказа *</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Например: Фигурка дракона"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="status">Статус</Label>
-                <Select 
-                  value={formData.status} 
-                  onValueChange={(value) => handleSelectChange('status', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="in_progress">В процессе</SelectItem>
-                    <SelectItem value="completed">Завершен</SelectItem>
-                    <SelectItem value="cancelled">Отменен</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="printer_id">Принтер</Label>
-                <Select 
-                  value={formData.printer_id} 
-                  onValueChange={(value) => handleSelectChange('printer_id', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите принтер" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {printers.map(printer => (
-                      <SelectItem key={printer.id} value={printer.id.toString()}>
-                        {printer.name} ({printer.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="material_id">Материал</Label>
-                <Select 
-                  value={formData.material_id} 
-                  onValueChange={(value) => handleSelectChange('material_id', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите материал" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materials.map(material => (
-                      <SelectItem key={material.id} value={material.id.toString()}>
-                        {material.name} ({material.price_per_kg} ₽/кг)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-medium mb-3">Параметры модели</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="model_weight_grams">Вес модели (г)</Label>
-                  <Input
-                    id="model_weight_grams"
-                    name="model_weight_grams"
-                    type="number"
-                    step="0.01"
-                    value={formData.model_weight_grams}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="support_weight_grams">Вес поддержек (г)</Label>
-                  <Input
-                    id="support_weight_grams"
-                    name="support_weight_grams"
-                    type="number"
-                    step="0.01"
-                    value={formData.support_weight_grams}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div className="space-y-2">
-                  <Label htmlFor="print_time_hours">Часы печати</Label>
-                  <Input
-                    id="print_time_hours"
-                    name="print_time_hours"
-                    type="number"
-                    min="0"
-                    value={formData.print_time_hours}
-                    onChange={handleInputChange}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="print_time_minutes">Минуты печати</Label>
-                  <Input
-                    id="print_time_minutes"
-                    name="print_time_minutes"
-                    type="number"
-                    min="0"
-                    max="59"
-                    value={formData.print_time_minutes}
-                    onChange={handleInputChange}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-medium mb-3">Финансы</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="material_cost">Стоимость материала (₽)</Label>
-                  <Input
-                    id="material_cost"
-                    name="material_cost"
-                    type="number"
-                    step="0.01"
-                    value={formData.material_cost}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="electricity_cost">Электричество (₽)</Label>
-                  <Input
-                    id="electricity_cost"
-                    name="electricity_cost"
-                    type="number"
-                    step="0.01"
-                    value={formData.electricity_cost}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="depreciation_cost">Амортизация (₽)</Label>
-                  <Input
-                    id="depreciation_cost"
-                    name="depreciation_cost"
-                    type="number"
-                    step="0.01"
-                    value={formData.depreciation_cost}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="labor_cost">Работа (₽)</Label>
-                  <Input
-                    id="labor_cost"
-                    name="labor_cost"
-                    type="number"
-                    step="0.01"
-                    value={formData.labor_cost}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="additional_expenses">Доп. расходы (₽)</Label>
-                  <Input
-                    id="additional_expenses"
-                    name="additional_expenses"
-                    type="number"
-                    step="0.01"
-                    value={formData.additional_expenses}
-                    onChange={handleInputChange}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div className="space-y-2">
-                  <Label htmlFor="margin_percent">Маржа (%)</Label>
-                  <Input
-                    id="margin_percent"
-                    name="margin_percent"
-                    type="number"
-                    value={formData.margin_percent}
-                    onChange={handleInputChange}
-                    placeholder="20"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Примечания</Label>
-              <Textarea
-                id="notes"
-                name="notes"
-                value={formData.notes}
-                onChange={handleInputChange}
-                placeholder="Дополнительная информация..."
-                rows={3}
-              />
-            </div>
-          </div>
-
+          <OrderForm data={formData} onChange={handleFormChange} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-              Отмена
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Отмена</Button>
+            <Button onClick={handleCreate} disabled={isMutating || !formData.name.trim()}>
+              {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Создать заказ
             </Button>
-            <Button onClick={handleCreateOrder}>Создать заказ</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Диалог редактирования */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-150 max-h-[90vh] overflow-y-auto">
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Редактирование заказа</DialogTitle>
-            <DialogDescription>
-              Измените информацию о заказе
-            </DialogDescription>
+            <DialogTitle>Редактирование заказа #{selectedOrder?.id}</DialogTitle>
+            <DialogDescription>Измените параметры заказа и пересчитайте стоимость</DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Название заказа *</Label>
-                <Input
-                  id="edit-name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Статус</Label>
-                <Select 
-                  value={formData.status} 
-                  onValueChange={(value) => handleSelectChange('status', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="in_progress">В процессе</SelectItem>
-                    <SelectItem value="completed">Завершен</SelectItem>
-                    <SelectItem value="cancelled">Отменен</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-printer">Принтер</Label>
-                <Select 
-                  value={formData.printer_id} 
-                  onValueChange={(value) => handleSelectChange('printer_id', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {printers.map(printer => (
-                      <SelectItem key={printer.id} value={printer.id.toString()}>
-                        {printer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-material">Материал</Label>
-                <Select 
-                  value={formData.material_id} 
-                  onValueChange={(value) => handleSelectChange('material_id', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {materials.map(material => (
-                      <SelectItem key={material.id} value={material.id.toString()}>
-                        {material.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-medium mb-3">Параметры модели</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Вес модели (г)</Label>
-                  <Input
-                    name="model_weight_grams"
-                    type="number"
-                    value={formData.model_weight_grams}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Вес поддержек (г)</Label>
-                  <Input
-                    name="support_weight_grams"
-                    type="number"
-                    value={formData.support_weight_grams}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div className="space-y-2">
-                  <Label>Часы печати</Label>
-                  <Input
-                    name="print_time_hours"
-                    type="number"
-                    value={formData.print_time_hours}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Минуты печати</Label>
-                  <Input
-                    name="print_time_minutes"
-                    type="number"
-                    value={formData.print_time_minutes}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="text-sm font-medium mb-3">Финансы</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Стоимость материала (₽)</Label>
-                  <Input
-                    name="material_cost"
-                    type="number"
-                    value={formData.material_cost}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Электричество (₽)</Label>
-                  <Input
-                    name="electricity_cost"
-                    type="number"
-                    value={formData.electricity_cost}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Амортизация (₽)</Label>
-                  <Input
-                    name="depreciation_cost"
-                    type="number"
-                    value={formData.depreciation_cost}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Работа (₽)</Label>
-                  <Input
-                    name="labor_cost"
-                    type="number"
-                    value={formData.labor_cost}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
-                  <Label>Доп. расходы (₽)</Label>
-                  <Input
-                    name="additional_expenses"
-                    type="number"
-                    value={formData.additional_expenses}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-3">
-                <div className="space-y-2">
-                  <Label>Маржа (%)</Label>
-                  <Input
-                    name="margin_percent"
-                    type="number"
-                    value={formData.margin_percent}
-                    onChange={handleInputChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label>Примечания</Label>
-              <Textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleInputChange}
-                rows={3}
-              />
-            </div>
-          </div>
-
+          <OrderForm data={formData} onChange={handleFormChange} isEdit />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Отмена
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Отмена</Button>
+            <Button onClick={handleEdit} disabled={isMutating || !formData.name.trim()}>
+              {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Сохранить
             </Button>
-            <Button onClick={handleEditOrder}>Сохранить</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Диалог подтверждения удаления */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      {/* Диалог удаления */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Удаление заказа</DialogTitle>
             <DialogDescription>
-              Вы уверены, что хотите удалить заказ "{selectedOrder?.name}"? 
+              Вы уверены, что хотите удалить заказ «{selectedOrder?.name}»?
               Это действие нельзя отменить.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Отмена
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteOrder}>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Отмена</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isMutating}>
+              {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Удалить
             </Button>
           </DialogFooter>

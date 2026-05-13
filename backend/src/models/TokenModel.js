@@ -216,6 +216,16 @@ class TokenModel {
             client.release();
         }
     }
+
+    static async deleteByIdAndUserId(tokenId, userId) {
+    const query = `
+        DELETE FROM tokens
+        WHERE id = $1 AND user_id = $2
+        RETURNING id
+    `;
+    const result = await pool.query(query, [tokenId, userId]);
+    return result.rows[0] ?? null;
+}
 }
 
 // Экспортируем класс

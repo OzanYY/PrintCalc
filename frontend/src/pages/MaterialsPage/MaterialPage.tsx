@@ -202,10 +202,12 @@ export default function MaterialsPage() {
 
     // ─── Производные данные ───────────────────────────────────────────────────
     const filtered = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
-    const totalPrice = materials.reduce((s, m) => s + m.price_per_kg, 0)
+    // price_per_kg приходит из БД как строка — явно кастуем в число
+    const prices     = materials.map(m => Number(m.price_per_kg))
+    const totalPrice = prices.reduce((s, p) => s + p, 0)
     const avgPrice   = materials.length ? Math.round(totalPrice / materials.length) : 0
-    const minPrice   = materials.length ? Math.min(...materials.map(m => m.price_per_kg)) : 0
-    const maxPrice   = materials.length ? Math.max(...materials.map(m => m.price_per_kg)) : 0
+    const minPrice   = prices.length ? Math.min(...prices) : 0
+    const maxPrice   = prices.length ? Math.max(...prices) : 0
     const diameters  = [...new Set(materials.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
 
@@ -256,8 +258,10 @@ export default function MaterialsPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{materials.length}</div>
                         <p className="text-xs text-muted-foreground">
-                            {materials.filter(m => m.category === 'filament').length} филамент ·{' '}
-                            {materials.filter(m => m.category === 'resin').length} смола
+                            {materials.filter(m => m.category === 'filament').length} фил ·{' '}
+                            {materials.filter(m => m.category === 'resin').length} смол ·{' '}
+                            {materials.filter(m => m.category === 'powder').length} пор ·{' '}
+                            {materials.filter(m => m.category === 'other').length} др
                         </p>
                     </CardContent>
                 </Card>
@@ -413,20 +417,26 @@ export default function MaterialsPage() {
                                     </div>
                                 )}
 
-                                {Object.keys(material.settings).length > 0 && (
+                                {Object.keys(material.settings).filter(k => k !== '__labels__').length > 0 && (
                                     <>
                                         <Separator className="my-2" />
                                         <div>
                                             <span className="text-muted-foreground text-xs">Характеристики</span>
                                             <div className="grid grid-cols-2 gap-1 mt-1">
-                                                {Object.entries(material.settings).map(([key, value]) => (
-                                                    <div key={key} className="text-xs">
-                                                        <span className="text-muted-foreground">
-                                                            {SETTING_LABELS[key] ?? key}:
-                                                        </span>{' '}
-                                                        <span className="font-medium">{value}</span>
-                                                    </div>
-                                                ))}
+                                                {(() => {
+                                                    let labels: Record<string, string> = {}
+                                                    try { labels = JSON.parse(material.settings.__labels__ ?? '{}') } catch {}
+                                                    return Object.entries(material.settings)
+                                                        .filter(([key]) => key !== '__labels__')
+                                                        .map(([key, value]) => (
+                                                            <div key={key} className="text-xs">
+                                                                <span className="text-muted-foreground">
+                                                                    {labels[key] ?? SETTING_LABELS[key] ?? key}:
+                                                                </span>{' '}
+                                                                <span className="font-medium">{value}</span>
+                                                            </div>
+                                                        ))
+                                                })()}
                                             </div>
                                         </div>
                                     </>

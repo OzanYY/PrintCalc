@@ -80,14 +80,14 @@ class UserService {
         const fullUser = await UserModel.findByEmail(user.email);
 
         const isValid = await bcrypt.compare(oldPassword, fullUser.password_hash);
-        if (!isValid) throw new Error('Current password is incorrect');
+        if (!isValid) throw new Error('Пароль неверный');
 
-        if (newPassword.length < 6) throw new Error('New password must be at least 6 characters');
+        if (newPassword.length < 6) throw new Error('Новый пароль должен быть длинее 6 символов');
 
         const password_hash = await bcrypt.hash(newPassword, 10);
         await UserModel.updatePasswordHash(userId, password_hash);
 
-        return { message: 'Password changed successfully' };
+        return { message: 'Пароль успешно изменен' };
     }
 
     // ─── Обновление профиля ───────────────────────────────────────────────────

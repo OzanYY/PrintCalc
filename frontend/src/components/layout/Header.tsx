@@ -8,9 +8,17 @@ import {
 } from "@/components/ui/avatar"
 import { useAuth } from "@/context/AuthContext"
 
+const getInitials = (name: string) =>
+    name.split(/[\s_]/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
 export default function Header() {
     const navigate = useNavigate();
     const { user } = useAuth();
+
+    // ── Данные пользователя ───────────────────────────────────────────────────
+
+    const displayName = user?.username ?? user?.email ?? '—';
+    const displayEmail = user?.email ?? '—';
 
     return (
         <header className="flex justify-between p-2 rounded-xl bg-neutral-50">
@@ -71,18 +79,20 @@ export default function Header() {
                 :
                 <div className="flex">
                     <Button
-                        className="hover:bg-gray-300 bg-neutral-50"
+                        className="hover:bg-gray-300 bg-neutral-50 pl-1"
                         onClick={() => navigate('/profile')}  // ← на страницу профиля
                     >
                         <div className='flex'>
-                            <Avatar className="h-8 w-8 rounded-lg grayscale mr-2">
-                                <AvatarImage alt="user" />
-                                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                            <Avatar className="w-8 h-8 border border-primary/10 mr-3">
+                                <AvatarImage src={(user as any)?.avatar} alt={displayName} />
+                                <AvatarFallback className="bg-linear-to-br from-primary/20 to-primary/5">
+                                    {getInitials(displayName)}
+                                </AvatarFallback>
                             </Avatar>
                             <div className="grid flex-1 text-left text-sm leading-tight">
-                                <span className="truncate font-medium">user</span>
+                                <span className="truncate font-medium">{displayName}</span>
                                 <span className="truncate text-xs text-muted-foreground">
-                                    mail@mail.com
+                                    {displayEmail}
                                 </span>
                             </div>
                         </div>

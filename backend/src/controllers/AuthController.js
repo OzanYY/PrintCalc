@@ -1,26 +1,26 @@
 // controllers/AuthController.js
-const UserService  = require('../services/UserService');
+const UserService = require('../services/UserService');
 const TokenService = require('../services/TokenService');
-const TokenModel   = require('../models/TokenModel');
+const TokenModel = require('../models/TokenModel');
 
 class AuthController {
-    static ACCESS_MAX_AGE  = 15 * 60 * 1000;
+    static ACCESS_MAX_AGE = 15 * 60 * 1000;
     static REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
     // ─── Вспомогательный метод установки кук ─────────────────────────────────
     static #setCookies(res, accessToken, refreshToken) {
         const base = {
             httpOnly: true,
-            secure:   process.env.NODE_ENV === 'production',
+            secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
         };
-        res.cookie('accessToken',  accessToken,  { ...base, maxAge: AuthController.ACCESS_MAX_AGE });
+        res.cookie('accessToken', accessToken, { ...base, maxAge: AuthController.ACCESS_MAX_AGE });
         res.cookie('refreshToken', refreshToken, { ...base, maxAge: AuthController.REFRESH_MAX_AGE });
     }
 
     static #clearCookies(res) {
         const base = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' };
-        res.clearCookie('accessToken',  base);
+        res.clearCookie('accessToken', base);
         res.clearCookie('refreshToken', base);
     }
 
@@ -35,8 +35,8 @@ class AuthController {
             const result = await UserService.register({ username, email, password });
             const metadata = {
                 fingerprint: req.headers['x-fingerprint'],
-                userAgent:   req.headers['user-agent'],
-                ipAddress:   req.ip,
+                userAgent: req.headers['user-agent'],
+                ipAddress: req.ip,
             };
             const tokens = await TokenService.createAuthTokens(result.user, metadata);
             AuthController.#setCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -62,8 +62,8 @@ class AuthController {
             const user = await UserService.login(email, password);
             const metadata = {
                 fingerprint: req.headers['x-fingerprint'],
-                userAgent:   req.headers['user-agent'],
-                ipAddress:   req.ip,
+                userAgent: req.headers['user-agent'],
+                ipAddress: req.ip,
             };
             const tokens = await TokenService.createAuthTokens(user, metadata);
             AuthController.#setCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -131,29 +131,30 @@ class AuthController {
     static async status(req, res) {
         // accessToken валиден
         if (req.isAuth) {
-            console.log("access валиден")
-            return res.json({ isAuth: true, user: req.user, hasRefreshToken: false });
+            try {
+                const freshUser = await UserService.getProfile(req.user.id);
+                return res.json({ isAuth: true, user: freshUser, hasRefreshToken: false });
+            } catch {
+                // Юзер удалён из БД, но токен ещё валиден
+                AuthController.#clearCookies(res);
+                return res.json({ isAuth: false, user: null, hasRefreshToken: false });
+            }
         }
-        console.log("access не валиден")
 
         // accessToken невалиден — проверяем есть ли refreshToken в куке
         // Намеренно НЕ делаем refreshTokens здесь, чтобы избежать гонки с интерцептором
         const refreshToken = req.cookies.refreshToken;
         if (!refreshToken) {
-            console.log("refresh не найден")
             return res.json({ isAuth: false, user: null, hasRefreshToken: false });
         }
-        console.log("refresh найден")
 
         // Проверяем что JWT подпись валидна (без запроса в БД)
         const jwtPayload = TokenService.validateRefreshToken(refreshToken);
         if (!jwtPayload) {
-            console.log("refresh просрочен или подделан")
             // JWT просрочен или подделан — чистим куку
             AuthController.#clearCookies(res);
             return res.json({ isAuth: false, user: null, hasRefreshToken: false });
         }
-        console.log("refresh найден, нужен рефреш")
 
         // JWT валиден — сигнализируем фронту что нужен рефреш
         return res.json({ isAuth: false, user: null, hasRefreshToken: true });
@@ -255,6 +256,26 @@ class AuthController {
             res.status(500).json({ error: 'Failed to terminate sessions' });
         }
     }
+
+    static async terminateSession(req, res) {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ error: 'Session ID required' });
+        }
+ 
+        // Удаляем токен по id, но только если он принадлежит текущему пользователю
+        const deleted = await TokenService.removeTokenById(id, req.user.id);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Session not found or already terminated' });
+        }
+ 
+        res.json({ message: 'Session terminated successfully' });
+    } catch (error) {
+        console.error('Terminate session error:', error);
+        res.status(500).json({ error: 'Failed to terminate session' });
+    }
+}
 
     // ==================== УДАЛЕНИЕ АККАУНТА ====================
     static async deleteAccount(req, res) {

@@ -1,6 +1,7 @@
 // services/TokenService.js
 const jwt = require('jsonwebtoken');
 const TokenModel = require('../models/TokenModel');
+const pool = require('../config/database');
 
 class TokenService {
     // ─── Генерация пары токенов ───────────────────────────────────────────────
@@ -163,6 +164,18 @@ class TokenService {
         if (userAgent.includes('Edge')) return 'Edge';
         return 'Other';
     }
+
+    static async removeTokenById(tokenId, userId) {
+    // Удаляем строку из таблицы tokens только если она принадлежит userId —
+    // это защищает от удаления чужих сессий через перебор ID
+    const query = `
+        DELETE FROM tokens
+        WHERE id = $1 AND user_id = $2
+        RETURNING id
+    `;
+    const result = await pool.query(query, [tokenId, userId]);
+    return result.rows[0] ?? null; // null если не найдено / чужая сессия
+}
 
     // ─── Служебные ───────────────────────────────────────────────────────────
     static async cleanupExpiredTokens() {
