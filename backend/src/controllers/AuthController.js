@@ -235,7 +235,8 @@ class AuthController {
     // ==================== СЕССИИ ====================
     static async getSessions(req, res) {
         try {
-            const sessions = await TokenService.getUserSessions(req.user.id);
+            const currentRefreshToken = req.cookies.refreshToken ?? null;
+            const sessions = await TokenService.getUserSessions(req.user.id, currentRefreshToken);
             res.json({ sessions, total: sessions.length });
         } catch (error) {
             console.error('Get sessions error:', error);
@@ -245,7 +246,9 @@ class AuthController {
 
     static async terminateOtherSessions(req, res) {
         try {
-            const { refreshToken } = req.body;
+            // refreshToken хранится в httpOnly-куке — недоступен из JS на фронте.
+            // Читаем его здесь, на сервере.
+            const refreshToken = req.cookies.refreshToken ?? req.body.refreshToken;
             if (!refreshToken) {
                 return res.status(400).json({ error: 'Current refresh token required' });
             }

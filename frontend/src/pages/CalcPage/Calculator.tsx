@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Info } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -24,9 +24,12 @@ import {
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 import { ordersAPI, buildCreateOrderData } from "@/api/orders"
+import { PresetSmartInput, type PresetOption } from '@/components/ui/preset-smart-input'
 import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
+import { printersAPI } from "@/api/printers"
+import { materialsAPI } from "@/api/materials"
 
 // Генерирует базовое имя заказа по текущей дате и времени
 function generateOrderName(): string {
@@ -58,6 +61,65 @@ export default function Calc() {
     } = useCalculator()
 
     const { user } = useAuth()
+
+    // ─── Пресеты (принтеры и материалы) ──────────────────────────────────────
+    const [printerPresets, setPrinterPresets]   = useState<{
+        power: PresetOption[]
+        cost:  PresetOption[]
+        hours: PresetOption[]
+    }>({ power: [], cost: [], hours: [] })
+
+    const [materialPresets, setMaterialPresets] = useState<PresetOption[]>([])
+
+    const loadPresets = useCallback(async () => {
+        try {
+            const [pRes, mRes] = await Promise.all([
+                printersAPI.getAll(),
+                materialsAPI.getAll(),
+            ])
+            const printers  = pRes.data.data
+            const materials = mRes.data.data
+
+            setPrinterPresets({
+                power: printers.map(p => ({
+                    id:        p.id,
+                    label:     p.name,
+                    value:     Number(p.power_consumption),
+                    sublabel:  p.model ?? p.type,
+                    isDefault: p.is_default,
+                })),
+                cost: printers.map(p => ({
+                    id:        p.id,
+                    label:     p.name,
+                    value:     Number(p.purchase_price),
+                    sublabel:  p.model ?? p.type,
+                    isDefault: p.is_default,
+                })),
+                hours: printers.map(p => ({
+                    id:        p.id,
+                    label:     p.name,
+                    value:     Number(p.print_lifetime_hours),
+                    sublabel:  p.model ?? p.type,
+                    isDefault: p.is_default,
+                })),
+            })
+
+            setMaterialPresets(materials.map(m => ({
+                id:        m.id,
+                label:     m.name,
+                value:     Number(m.price_per_kg),
+                sublabel:  [m.brand, m.type.toUpperCase()].filter(Boolean).join(' · '),
+                color:     m.color ?? '',
+                isDefault: m.is_default,
+            })))
+        } catch {
+            // Тихая ошибка — пресеты необязательны
+        }
+    }, [])
+
+    useEffect(() => {
+        if (user) loadPresets()
+    }, [user, loadPresets])
 
     const [isLoading, setIsLoading]         = useState(false)
     const [serverError, setServerError]     = useState('')
@@ -434,18 +496,17 @@ export default function Calc() {
                                                     Цена филамента
                                                     <Badge variant="outline" className="ml-auto">₽/кг</Badge>
                                                 </Label>
-                                                <div className="relative">
-                                                    <SmartInput
-                                                        id="filamentPrice"
-                                                        min="0"
-                                                        step="10"
-                                                        value={materials.filamentPrice}
-                                                        onChange={(value) => handleMaterialsChange('filamentPrice', value)}
-                                                        className="pr-10"
-                                                        disabled={isLoading}
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽/кг</span>
-                                                </div>
+                                                <PresetSmartInput
+                                                    id="filamentPrice"
+                                                    min="0"
+                                                    step="10"
+                                                    value={materials.filamentPrice}
+                                                    onChange={(value) => handleMaterialsChange('filamentPrice', value)}
+                                                    unit="₽/кг"
+                                                    presets={materialPresets}
+                                                    showPresets={!!user}
+                                                    disabled={isLoading}
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -460,18 +521,17 @@ export default function Calc() {
                                                     Мощность принтера
                                                     <Badge variant="outline" className="ml-auto">Вт</Badge>
                                                 </Label>
-                                                <div className="relative">
-                                                    <SmartInput
-                                                        id="powerConsumption"
-                                                        min="0"
-                                                        step="10"
-                                                        value={electricity.powerConsumption}
-                                                        onChange={(value) => handleElectricityChange('powerConsumption', value)}
-                                                        className="pr-10"
-                                                        disabled={isLoading}
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Вт</span>
-                                                </div>
+                                                <PresetSmartInput
+                                                    id="powerConsumption"
+                                                    min="0"
+                                                    step="10"
+                                                    value={electricity.powerConsumption}
+                                                    onChange={(value) => handleElectricityChange('powerConsumption', value)}
+                                                    unit="Вт"
+                                                    presets={printerPresets.power}
+                                                    showPresets={!!user}
+                                                    disabled={isLoading}
+                                                />
                                             </div>
 
                                             <div className="space-y-2">
@@ -524,18 +584,17 @@ export default function Calc() {
                                                     Стоимость принтера
                                                     <Badge variant="outline" className="ml-auto">₽</Badge>
                                                 </Label>
-                                                <div className="relative">
-                                                    <SmartInput
-                                                        id="printerCost"
-                                                        min="0"
-                                                        step="1000"
-                                                        value={depreciation.printerCost}
-                                                        onChange={(value) => handleDepreciationChange('printerCost', value)}
-                                                        className="pr-10"
-                                                        disabled={isLoading}
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽</span>
-                                                </div>
+                                                <PresetSmartInput
+                                                    id="printerCost"
+                                                    min="0"
+                                                    step="1000"
+                                                    value={depreciation.printerCost}
+                                                    onChange={(value) => handleDepreciationChange('printerCost', value)}
+                                                    unit="₽"
+                                                    presets={printerPresets.cost}
+                                                    showPresets={!!user}
+                                                    disabled={isLoading}
+                                                />
                                             </div>
 
                                             <div className="space-y-2">
@@ -543,18 +602,17 @@ export default function Calc() {
                                                     Ресурс печати
                                                     <Badge variant="outline" className="ml-auto">часов</Badge>
                                                 </Label>
-                                                <div className="relative">
-                                                    <SmartInput
-                                                        id="printResource"
-                                                        min="0"
-                                                        step="100"
-                                                        value={depreciation.printResource}
-                                                        onChange={(value) => handleDepreciationChange('printResource', value)}
-                                                        className="pr-10"
-                                                        disabled={isLoading}
-                                                    />
-                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">часов</span>
-                                                </div>
+                                                <PresetSmartInput
+                                                    id="printResource"
+                                                    min="0"
+                                                    step="100"
+                                                    value={depreciation.printResource}
+                                                    onChange={(value) => handleDepreciationChange('printResource', value)}
+                                                    unit="ч"
+                                                    presets={printerPresets.hours}
+                                                    showPresets={!!user}
+                                                    disabled={isLoading}
+                                                />
                                             </div>
                                         </div>
                                     </div>

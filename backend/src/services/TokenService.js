@@ -220,17 +220,27 @@ class TokenService {
     }
 
     // ─── Сессии пользователя ──────────────────────────────────────────────────
-    static async getUserSessions(userId) {
+    static async getUserSessions(userId, currentRefreshToken = null) {
         const tokens = await TokenModel.findValidByUserId(userId);
+
+        // Если передан текущий refresh-токен — ищем совпадение по полю
+        // findValidByUserId не возвращает сам refresh_token (только метаданные),
+        // поэтому делаем отдельный запрос чтобы получить id текущей сессии.
+        let currentTokenId = null;
+        if (currentRefreshToken) {
+            const currentToken = await TokenModel.findValidToken(currentRefreshToken);
+            if (currentToken) currentTokenId = String(currentToken.id);
+        }
+
         return tokens.map(token => ({
             id: token.id,
             user_agent: token.user_agent,
             ip_address: token.ip_address,
             created_at: token.created_at,
-            // last_access_expires_at — время жизни последнего access токена,
-            // использум как прокси для "последней активности"
-            last_used_at: token.last_access_expires_at ?? token.created_at,
-            is_current: false,
+            // last_access_expires_at — время истечения последнего access-токена.
+            // Фронт вычтет ACCESS_TOKEN_TTL чтобы получить время последней активности.
+            last_used_at: token.last_access_expires_at ?? null,
+            is_current: currentTokenId !== null && String(token.id) === currentTokenId,
         }));
     }
 

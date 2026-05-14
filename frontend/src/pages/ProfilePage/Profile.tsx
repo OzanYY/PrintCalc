@@ -179,15 +179,14 @@ export default function UserPage() {
     // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleSaveProfile = async () => {
-        if (!editForm.username.trim() || !editForm.email.trim()) {
-            toast.error('Заполните все поля', { position: 'top-center', duration: 3000 });
+        if (!editForm.username.trim()) {
+            toast.error('Введите имя пользователя', { position: 'top-center', duration: 3000 });
             return;
         }
         setIsSavingProfile(true);
         try {
             const res = await authAPI.updateProfile({
                 username: editForm.username.trim(),
-                email:    editForm.email.trim(),
             });
             setUser(res.data.user ?? { ...user!, ...editForm });
             toast.success('Профиль обновлён', { position: 'top-center', duration: 3000 });
@@ -422,11 +421,12 @@ export default function UserPage() {
                             <Input
                                 id="edit-email"
                                 type="email"
-                                value={"СКОРО правда слово пацана даю"}
+                                value={editForm.email}
                                 onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
                                 placeholder="email@example.com"
                                 disabled
                             />
+                            <p className="text-xs text-muted-foreground">Изменение email будет доступно в ближайшем обновлении</p>
                         </div>
                         <div className="grid gap-2">
                             <Label>Аватар</Label>
@@ -444,7 +444,7 @@ export default function UserPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditOpen(false)}>Отмена</Button>
-                        <Button onClick={handleSaveProfile} disabled={isSavingProfile || !editForm.username.trim() || !editForm.email.trim()}>
+                        <Button onClick={handleSaveProfile} disabled={isSavingProfile || !editForm.username.trim()}>
                             {isSavingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Сохранить изменения
                         </Button>

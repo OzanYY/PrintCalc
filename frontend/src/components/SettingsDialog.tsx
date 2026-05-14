@@ -65,20 +65,26 @@ const getDeviceLabel = (userAgent: string) => {
     return os ? `${browser} · ${os}` : browser;
 };
 
-const formatSessionDate = (dateString: string) => {
-    if (!dateString) return '—';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
+// Бэкенд возвращает last_used_at = last_access_expires_at (время истечения access-токена).
+// Вычитаем типичный TTL access-токена (15 мин), чтобы получить время последней активности.
+const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-    if (diffMin < 1) return 'Только что';
-    if (diffMin < 60) return `${diffMin} мин. назад`;
-    if (diffHour < 24) return `${diffHour} ч. назад`;
-    if (diffDay < 7) return `${diffDay} д. назад`;
-    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+const formatSessionDate = (lastUsedAt: string | undefined, createdAt: string): string => {
+    if (lastUsedAt) {
+        const activityAt = new Date(lastUsedAt).getTime() - ACCESS_TOKEN_TTL_MS;
+        const diffMs = Date.now() - activityAt;
+        const diffMin = Math.floor(diffMs / 60000);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+
+        if (diffMin < 2) return 'Только что';
+        if (diffMin < 60) return `${diffMin} мин. назад`;
+        if (diffHour < 24) return `${diffHour} ч. назад`;
+        if (diffDay < 7) return `${diffDay} д. назад`;
+        return new Date(activityAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    }
+    if (!createdAt) return '—';
+    return new Date(createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 // ─── Компонент ────────────────────────────────────────────────────────────────
@@ -396,7 +402,7 @@ interface SessionCardProps {
 function SessionCard({ session, isCurrent, isTerminating, onTerminate }: SessionCardProps) {
     const DeviceIcon = getDeviceIcon(session.user_agent);
     const label = getDeviceLabel(session.user_agent);
-    const date = formatSessionDate(session.last_used_at ?? session.created_at);
+    const date = formatSessionDate(session.last_used_at, session.created_at);
 
     return (
         <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
