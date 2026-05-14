@@ -1,13 +1,16 @@
 // services/TokenService.js
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 const TokenModel = require('../models/TokenModel');
 const pool = require('../config/database');
 
 class TokenService {
     // ─── Генерация пары токенов ───────────────────────────────────────────────
     static generateTokens(payload) {
+        const jti = uuidv4(); // уникальный id access токена — нужен для denylist
+
         const accessToken = jwt.sign(
-            payload,
+            { ...payload, jti },
             process.env.JWT_ACCESS_SECRET,
             { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' }
         );
@@ -43,9 +46,20 @@ class TokenService {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
 
-        // Сначала чистим старые сессии, потом сохраняем новый токен
         await TokenModel.deleteOldTokens(userId, 5);
         return TokenModel.create(userId, refreshToken, expiresAt, metadata);
+    }
+
+    // ─── Сохранение jti последнего выданного access токена ───────────────────
+    // Вызывается после каждой выдачи/обновления токенов.
+    // Позволяет при удалении сессии знать какой jti заблокировать.
+    static async updateLastAccessJti(refreshToken, jti, accessExpiresAt) {
+        const query = `
+            UPDATE tokens
+            SET last_access_jti = $1, last_access_expires_at = $2
+            WHERE refresh_token = $3
+        `;
+        await pool.query(query, [jti, accessExpiresAt, refreshToken]);
     }
 
     // ─── Удаление токенов ─────────────────────────────────────────────────────
@@ -54,12 +68,76 @@ class TokenService {
     }
 
     static async removeAllUserTokens(userId) {
+        // Блокируем все живые access токены пользователя, потом удаляем refresh
+        await this.#denyAllUserAccessTokens(userId);
         return TokenModel.deleteAllByUserId(userId);
     }
 
-    // Удалён дубликат terminateOtherSessions — используй этот метод
     static async removeOtherTokens(userId, currentRefreshToken) {
+        // Блокируем access токены всех сессий кроме текущей
+        await this.#denyAllUserAccessTokens(userId, currentRefreshToken);
         return TokenModel.deleteAllExcept(userId, currentRefreshToken);
+    }
+
+    // ─── Удаление одной сессии по id ─────────────────────────────────────────
+    static async removeTokenById(tokenId, userId) {
+        // Получаем jti последнего access токена этой сессии
+        const selectQuery = `
+            SELECT last_access_jti, last_access_expires_at
+            FROM tokens
+            WHERE id = $1 AND user_id = $2
+        `;
+        const selectResult = await pool.query(selectQuery, [tokenId, userId]);
+        const row = selectResult.rows[0];
+
+        if (!row) return null; // сессия не найдена или чужая
+
+        // Блокируем access токен если он ещё живой
+        if (row.last_access_jti && new Date(row.last_access_expires_at) > new Date()) {
+            await TokenModel.addToDenylist(row.last_access_jti, row.last_access_expires_at);
+        }
+
+        // Удаляем refresh токен из БД
+        const deleteQuery = `
+            DELETE FROM tokens
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+        `;
+        const deleteResult = await pool.query(deleteQuery, [tokenId, userId]);
+        return deleteResult.rows[0] ?? null;
+    }
+
+    // ─── Приватный: блокировка всех access токенов пользователя ──────────────
+    // exceptRefreshToken — refresh токен текущей сессии, которую не трогаем
+    static async #denyAllUserAccessTokens(userId, exceptRefreshToken = null) {
+        const query = exceptRefreshToken
+            ? `SELECT last_access_jti, last_access_expires_at
+               FROM tokens
+               WHERE user_id = $1
+                 AND refresh_token != $2
+                 AND last_access_jti IS NOT NULL
+                 AND last_access_expires_at > NOW()`
+            : `SELECT last_access_jti, last_access_expires_at
+               FROM tokens
+               WHERE user_id = $1
+                 AND last_access_jti IS NOT NULL
+                 AND last_access_expires_at > NOW()`;
+
+        const params = exceptRefreshToken ? [userId, exceptRefreshToken] : [userId];
+        const result = await pool.query(query, params);
+
+        // INSERT всех jti одним запросом вместо N отдельных
+        if (result.rows.length > 0) {
+            const values = result.rows
+                .map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`)
+                .join(', ');
+            const flat = result.rows.flatMap(r => [r.last_access_jti, r.last_access_expires_at]);
+            await pool.query(
+                `INSERT INTO token_denylist (jti, expires_at) VALUES ${values}
+                 ON CONFLICT (jti) DO NOTHING`,
+                flat
+            );
+        }
     }
 
     // ─── Поиск токена ─────────────────────────────────────────────────────────
@@ -71,29 +149,11 @@ class TokenService {
     static async refreshTokens(refreshToken) {
         // 1. Валидируем JWT подпись
         const userData = this.validateRefreshToken(refreshToken);
-        console.log('[refresh] JWT valid:', !!userData);
-        if (!userData) {
-            throw new Error('Invalid refresh token');
-        }
+        if (!userData) throw new Error('Invalid refresh token');
 
-        // 2. Ищем токен в БД (findValidToken делает JOIN на users —
-        //    email и username приходят оттуда, а не из JWT)
+        // 2. Ищем токен в БД (findValidToken делает JOIN на users)
         const tokenFromDb = await TokenModel.findValidToken(refreshToken);
-        console.log('[refresh] Found in DB:', !!tokenFromDb);
-        console.log('[refresh] Token (first 20 chars):', refreshToken.slice(0, 20));
-
-        // добавь сюда:
-        console.log('[refresh] tokenFromDb fields:', {
-            user_id: tokenFromDb.user_id,
-            email: tokenFromDb.email,
-            username: tokenFromDb.username,
-            fingerprint: tokenFromDb.fingerprint,
-            user_agent: tokenFromDb.user_agent,
-            ip_address: tokenFromDb.ip_address,
-        });
-        if (!tokenFromDb) {
-            throw new Error('Refresh token not found or expired');
-        }
+        if (!tokenFromDb) throw new Error('Refresh token not found or expired');
 
         // 3. Генерируем новые токены
         const payload = {
@@ -103,7 +163,7 @@ class TokenService {
         };
         const tokens = this.generateTokens(payload);
 
-        // 4. Атомарно заменяем старый токен новым (транзакция в replaceToken)
+        // 4. Атомарно заменяем старый токен новым
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
 
@@ -117,6 +177,14 @@ class TokenService {
                 userAgent: tokenFromDb.user_agent,
                 ipAddress: tokenFromDb.ip_address,
             }
+        );
+
+        // 5. Сохраняем jti нового access токена
+        const decoded = jwt.decode(tokens.accessToken);
+        await this.updateLastAccessJti(
+            tokens.refreshToken,
+            decoded.jti,
+            new Date(decoded.exp * 1000)
         );
 
         return {
@@ -139,6 +207,15 @@ class TokenService {
 
         const tokens = this.generateTokens(payload);
         await this.saveToken(user.id, tokens.refreshToken, metadata);
+
+        // Сохраняем jti access токена рядом с refresh токеном
+        const decoded = jwt.decode(tokens.accessToken);
+        await this.updateLastAccessJti(
+            tokens.refreshToken,
+            decoded.jti,
+            new Date(decoded.exp * 1000)
+        );
+
         return tokens;
     }
 
@@ -147,12 +224,13 @@ class TokenService {
         const tokens = await TokenModel.findValidByUserId(userId);
         return tokens.map(token => ({
             id: token.id,
-            device: token.fingerprint || 'Unknown device',
-            browser: this.parseUserAgent(token.user_agent),
-            ip: token.ip_address,
-            createdAt: token.created_at,
-            expiresAt: token.expires_at,
-            isCurrent: false,
+            user_agent: token.user_agent,
+            ip_address: token.ip_address,
+            created_at: token.created_at,
+            // last_access_expires_at — время жизни последнего access токена,
+            // использум как прокси для "последней активности"
+            last_used_at: token.last_access_expires_at ?? token.created_at,
+            is_current: false,
         }));
     }
 
@@ -165,23 +243,12 @@ class TokenService {
         return 'Other';
     }
 
-    static async removeTokenById(tokenId, userId) {
-    // Удаляем строку из таблицы tokens только если она принадлежит userId —
-    // это защищает от удаления чужих сессий через перебор ID
-    const query = `
-        DELETE FROM tokens
-        WHERE id = $1 AND user_id = $2
-        RETURNING id
-    `;
-    const result = await pool.query(query, [tokenId, userId]);
-    return result.rows[0] ?? null; // null если не найдено / чужая сессия
-}
-
     // ─── Служебные ───────────────────────────────────────────────────────────
     static async cleanupExpiredTokens() {
-        const deletedCount = await TokenModel.deleteExpired();
-        console.log(`Cleaned up ${deletedCount} expired tokens`);
-        return deletedCount;
+        const deletedTokens = await TokenModel.deleteExpired();
+        const deletedDenylist = await TokenModel.cleanupDenylist();
+        console.log(`Cleaned up ${deletedTokens} expired tokens, ${deletedDenylist} denylist entries`);
+        return { deletedTokens, deletedDenylist };
     }
 
     static async getUserTokenStats(userId) {

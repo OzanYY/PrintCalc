@@ -401,20 +401,22 @@ function SessionCard({ session, isCurrent, isTerminating, onTerminate }: Session
     return (
         <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
             isCurrent
-                ? 'bg-primary/5 border-primary/20'
+                ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800'
                 : 'bg-muted/30 border-border'
         }`}>
             <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                isCurrent ? 'bg-primary/10' : 'bg-muted'
+                isCurrent ? 'bg-green-100 dark:bg-green-900/40' : 'bg-muted'
             }`}>
-                <DeviceIcon className={`h-4 w-4 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
+                <DeviceIcon className={`h-4 w-4 ${isCurrent ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
             </div>
 
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium truncate">{label}</span>
+                    <span className={`text-sm font-medium truncate ${isCurrent ? 'text-green-700 dark:text-green-400' : ''}`}>
+                        {label}
+                    </span>
                     {isCurrent && (
-                        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 dark:bg-green-950/30 text-[10px] px-1.5 py-0 h-4 shrink-0">
+                        <Badge variant="outline" className="text-green-600 border-green-300 bg-green-100 dark:bg-green-900/40 dark:border-green-700 text-[10px] px-1.5 py-0 h-4 shrink-0">
                             <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Текущая
                         </Badge>
                     )}
