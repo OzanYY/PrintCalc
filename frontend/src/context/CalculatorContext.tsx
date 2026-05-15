@@ -1,5 +1,5 @@
 // contexts/CalculatorContext.tsx
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
 interface MaterialsState {
   modelWeight: number
@@ -28,6 +28,8 @@ interface AdditionalState {
   marginPercent: number
 }
 
+export type SelectedPresetsState = Record<string, number | string | null>
+
 interface CalculatorContextType {
   materials: MaterialsState
   setMaterials: (value: MaterialsState | ((prev: MaterialsState) => MaterialsState)) => void
@@ -41,6 +43,8 @@ interface CalculatorContextType {
   setAdditional: (value: AdditionalState | ((prev: AdditionalState) => AdditionalState)) => void
   hasCalculated: boolean
   setHasCalculated: (value: boolean) => void
+  selectedPresets: SelectedPresetsState
+  setSelectedPreset: (field: string, id: number | string | null) => void
   resetToDefaults: () => void
   resetAll: () => void // Новая функция для полного сброса
 }
@@ -70,6 +74,13 @@ const defaultLabor: LaborState = {
 const defaultAdditional: AdditionalState = {
   additionalExpensesPercent: 15,
   marginPercent: 30,
+}
+
+const defaultSelectedPresets: SelectedPresetsState = {
+  filamentPrice:    null,
+  powerConsumption: null,
+  printerCost:      null,
+  printResource:    null,
 }
 
 const CalculatorContext = createContext<CalculatorContextType | undefined>(undefined)
@@ -107,66 +118,109 @@ export function CalculatorProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : false
   })
 
-  // Сохранение в localStorage при изменении
-  useEffect(() => {
-    localStorage.setItem('calculator_materials', JSON.stringify(materials))
-  }, [materials])
+  // Выбранные пресеты
+  const [selectedPresets, setSelectedPresets] = useState<SelectedPresetsState>(() => {
+    const saved = localStorage.getItem('calculator_selectedPresets')
+    return saved ? JSON.parse(saved) : defaultSelectedPresets
+  })
+  const setSelectedPreset = useCallback((field: string, id: number | string | null) => {
+    setSelectedPresets(prev => {
+      const next = { ...prev, [field]: id }
+      localStorage.setItem('calculator_selectedPresets', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('calculator_electricity', JSON.stringify(electricity))
-  }, [electricity])
+  // Обёртки над сеттерами — пишут в localStorage сразу при вызове
+  const updateMaterials = useCallback((value: MaterialsState | ((prev: MaterialsState) => MaterialsState)) => {
+    setMaterials(prev => {
+      const next = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('calculator_materials', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('calculator_depreciation', JSON.stringify(depreciation))
-  }, [depreciation])
+  const updateElectricity = useCallback((value: ElectricityState | ((prev: ElectricityState) => ElectricityState)) => {
+    setElectricity(prev => {
+      const next = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('calculator_electricity', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('calculator_labor', JSON.stringify(labor))
-  }, [labor])
+  const updateDepreciation = useCallback((value: DepreciationState | ((prev: DepreciationState) => DepreciationState)) => {
+    setDepreciation(prev => {
+      const next = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('calculator_depreciation', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('calculator_additional', JSON.stringify(additional))
-  }, [additional])
+  const updateLabor = useCallback((value: LaborState | ((prev: LaborState) => LaborState)) => {
+    setLabor(prev => {
+      const next = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('calculator_labor', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
-  useEffect(() => {
-    localStorage.setItem('calculator_hasCalculated', JSON.stringify(hasCalculated))
-  }, [hasCalculated])
+  const updateAdditional = useCallback((value: AdditionalState | ((prev: AdditionalState) => AdditionalState)) => {
+    setAdditional(prev => {
+      const next = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('calculator_additional', JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  const updateHasCalculated = useCallback((value: boolean) => {
+    setHasCalculated(value)
+    localStorage.setItem('calculator_hasCalculated', JSON.stringify(value))
+  }, [])
+
+  const updateSelectedPresets = useCallback((value: SelectedPresetsState) => {
+    setSelectedPresets(value)
+    localStorage.setItem('calculator_selectedPresets', JSON.stringify(value))
+  }, [])
 
   // Сброс только значений (сохраняет hasCalculated)
   const resetToDefaults = () => {
-    setMaterials(defaultMaterials)
-    setElectricity(defaultElectricity)
-    setDepreciation(defaultDepreciation)
-    setLabor(defaultLabor)
-    setAdditional(defaultAdditional)
+    updateMaterials(defaultMaterials)
+    updateElectricity(defaultElectricity)
+    updateDepreciation(defaultDepreciation)
+    updateLabor(defaultLabor)
+    updateAdditional(defaultAdditional)
+    updateSelectedPresets(defaultSelectedPresets)
     // Не сбрасываем hasCalculated здесь
   }
 
   // Полный сброс (включая статус расчета)
   const resetAll = () => {
-    setMaterials(defaultMaterials)
-    setElectricity(defaultElectricity)
-    setDepreciation(defaultDepreciation)
-    setLabor(defaultLabor)
-    setAdditional(defaultAdditional)
-    setHasCalculated(false)
+    updateMaterials(defaultMaterials)
+    updateElectricity(defaultElectricity)
+    updateDepreciation(defaultDepreciation)
+    updateLabor(defaultLabor)
+    updateAdditional(defaultAdditional)
+    updateSelectedPresets(defaultSelectedPresets)
+    updateHasCalculated(false)
   }
 
   return (
     <CalculatorContext.Provider
       value={{
         materials,
-        setMaterials,
+        setMaterials: updateMaterials,
         electricity,
-        setElectricity,
+        setElectricity: updateElectricity,
         depreciation,
-        setDepreciation,
+        setDepreciation: updateDepreciation,
         labor,
-        setLabor,
+        setLabor: updateLabor,
         additional,
-        setAdditional,
+        setAdditional: updateAdditional,
         hasCalculated,
-        setHasCalculated,
+        setHasCalculated: updateHasCalculated,
+        selectedPresets,
+        setSelectedPreset,
         resetToDefaults,
         resetAll,
       }}

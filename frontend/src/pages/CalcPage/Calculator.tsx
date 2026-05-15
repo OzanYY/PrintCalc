@@ -56,6 +56,8 @@ export default function Calc() {
         setAdditional,
         hasCalculated,
         setHasCalculated,
+        selectedPresets,
+        setSelectedPreset,
         resetToDefaults,
         resetAll,
     } = useCalculator()
@@ -506,6 +508,8 @@ export default function Calc() {
                                                     presets={materialPresets}
                                                     showPresets={!!user}
                                                     disabled={isLoading}
+                                                    selectedPresetId={selectedPresets.filamentPrice}
+                                                    onPresetChange={(id) => setSelectedPreset('filamentPrice', id)}
                                                 />
                                             </div>
                                         </div>
@@ -531,6 +535,8 @@ export default function Calc() {
                                                     presets={printerPresets.power}
                                                     showPresets={!!user}
                                                     disabled={isLoading}
+                                                    selectedPresetId={selectedPresets.powerConsumption}
+                                                    onPresetChange={(id) => setSelectedPreset('powerConsumption', id)}
                                                 />
                                             </div>
 
@@ -594,6 +600,8 @@ export default function Calc() {
                                                     presets={printerPresets.cost}
                                                     showPresets={!!user}
                                                     disabled={isLoading}
+                                                    selectedPresetId={selectedPresets.printerCost}
+                                                    onPresetChange={(id) => setSelectedPreset('printerCost', id)}
                                                 />
                                             </div>
 
@@ -612,6 +620,8 @@ export default function Calc() {
                                                     presets={printerPresets.hours}
                                                     showPresets={!!user}
                                                     disabled={isLoading}
+                                                    selectedPresetId={selectedPresets.printResource}
+                                                    onPresetChange={(id) => setSelectedPreset('printResource', id)}
                                                 />
                                             </div>
                                         </div>

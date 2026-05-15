@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { evaluateMathExpression, formatDisplayValue, roundToPrecision } from '@/lib/math-evaluator'
-import { ChevronDown, Check } from 'lucide-react'
+import { ChevronDown, Check, X } from 'lucide-react'
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,10 @@ interface PresetSmartInputProps
     presets?: PresetOption[]
     /** Показывать кнопку пресетов (только если user авторизован и presets переданы) */
     showPresets?: boolean
+    /** Внешнее управление выбранным пресетом (id) — для сохранения состояния при смене вкладок */
+    selectedPresetId?: number | string | null
+    /** Вызывается при изменении выбранного пресета (null = сброс) */
+    onPresetChange?: (id: number | string | null) => void
 }
 
 // ─── Компонент ────────────────────────────────────────────────────────────────
@@ -37,6 +41,8 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
             precision = 2,
             presets = [],
             showPresets = false,
+            selectedPresetId,
+            onPresetChange,
             className,
             disabled = false,
             step,
@@ -49,7 +55,15 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
         const [isEditing, setIsEditing]     = useState(false)
         const [showTooltip, setShowTooltip] = useState(false)
         const [open, setOpen]               = useState(false)
-        const [appliedId, setAppliedId]     = useState<number | string | null>(null)
+
+        // Если пришёл selectedPresetId снаружи — используем его, иначе внутренний стейт
+        const isControlled = selectedPresetId !== undefined
+        const [internalAppliedId, setInternalAppliedId] = useState<number | string | null>(null)
+        const appliedId    = isControlled ? (selectedPresetId ?? null) : internalAppliedId
+        const setAppliedId = useCallback((id: number | string | null) => {
+            if (!isControlled) setInternalAppliedId(id)
+            onPresetChange?.(id)
+        }, [isControlled, onPresetChange])
 
         const inputRef     = useRef<HTMLInputElement>(null)
         const dropdownRef  = useRef<HTMLDivElement>(null)
@@ -60,9 +74,10 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
             if (!isEditing) setInputValue(formatDisplayValue(Number(value)))
         }, [value, isEditing])
 
-        // Сброс «применено» если значение изменилось вручную
+        // Сброс «применено» если значение изменилось вручную.
+        // Пропускаем если presets пустой — они ещё не загрузились с сервера.
         useEffect(() => {
-            if (appliedId !== null) {
+            if (appliedId !== null && presets.length > 0) {
                 const preset = presets.find(p => p.id === appliedId)
                 if (!preset || preset.value !== value) setAppliedId(null)
             }
@@ -106,7 +121,6 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
         }, [inputValue, onChange, precision, step])
 
         const handleBlur = useCallback(() => {
-            // Небольшая задержка чтобы клик по элементу дропдауна успел обработаться
             setTimeout(() => commit(), 80)
         }, [commit])
 
@@ -137,16 +151,27 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
             setOpen(false)
         }
 
-        const hasExpression = inputValue && /[+\-*/()]/.test(inputValue)
-        const hasPresetBtn  = showPresets && presets.length > 0
+        const clearPreset = () => {
+            setAppliedId(null)
+        }
 
-        // Правый отступ инпута: unit + optionally preset button
+        const hasExpression    = inputValue && /[+\-*/()]/.test(inputValue)
+        const hasPresetBtn     = showPresets && presets.length > 0
+        const activePreset     = appliedId !== null ? presets.find(p => p.id === appliedId) : null
+        const isPresetSelected = activePreset != null
+
+        // Правый отступ инпута: крестик (если пресет) + кнопка пресета + unit
         const paddingRight = hasPresetBtn
-            ? unit ? 'pr-20' : 'pr-9'
+            ? unit
+                ? isPresetSelected ? 'pr-28' : 'pr-20'
+                : isPresetSelected ? 'pr-16' : 'pr-9'
             : unit ? 'pr-10' : ''
 
         return (
             <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                {/* Настоящий инпут — всегда в DOM, рисует border и держит значение.
+                    Когда пресет выбран — текст скрываем через color:transparent,
+                    border и фон остаются нетронутыми. */}
                 <input
                     {...props}
                     ref={inputRef}
@@ -156,35 +181,67 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                     onChange={handleChange}
                     onBlur={handleBlur}
                     onKeyDown={handleKeyDown}
-                    disabled={disabled}
+                    disabled={disabled || isPresetSelected}
                     className={cn(
-                        // Base — copied from Input component
                         'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none',
                         'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
                         'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-                        'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
                         '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                         'md:text-sm',
+                        isPresetSelected
+                            ? '[color:transparent] pointer-events-none select-none'
+                            : 'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
                         paddingRight,
                         className
                     )}
                 />
 
-                {/* Правая часть: unit + иконка формулы + кнопка пресета */}
+                {/* Оверлей — название пресета + muted значение поверх инпута */}
+                {isPresetSelected && (
+                    <div className={cn(
+                        'absolute inset-0 flex items-center px-3 pointer-events-none overflow-hidden rounded-md',
+                        paddingRight
+                    )}>
+                        <span className="text-sm font-medium text-foreground truncate leading-none">
+                            {activePreset!.label}
+                        </span>
+                        <span className="ml-1.5 text-sm text-muted-foreground shrink-0 leading-none">
+                            {formatDisplayValue(activePreset!.value)}{unit ? ` ${unit}` : ''}
+                        </span>
+                    </div>
+                )}
+
+                {/* Правая часть: unit + крестик + кнопка пресета */}
                 <div className="absolute right-0 top-0 h-full flex items-center pointer-events-none">
-                    {/* Индикатор вычисленной формулы */}
-                    {!isEditing && hasExpression && (
+                    {/* Индикатор вычисленной формулы (только если пресет не выбран) */}
+                    {!isPresetSelected && !isEditing && hasExpression && (
                         <span className="text-xs text-green-600 mr-1">✓</span>
                     )}
 
-                    {/* Единица измерения */}
-                    {unit && (
+                    {/* Единица измерения (скрывается когда пресет выбран — она уже в оверлее) */}
+                    {unit && !isPresetSelected && (
                         <span className={cn(
                             'text-sm text-muted-foreground select-none',
                             hasPresetBtn ? 'mr-9' : 'mr-3'
                         )}>
                             {unit}
                         </span>
+                    )}
+
+                    {/* Крестик — сброс пресета, виден только когда пресет выбран */}
+                    {isPresetSelected && (
+                        <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={clearPreset}
+                            className={cn(
+                                'pointer-events-auto h-full w-7 flex items-center justify-center',
+                                'transition-colors focus-visible:outline-none group'
+                            )}
+                            aria-label="Сбросить пресет"
+                        >
+                            <X className="h-3.5 w-3.5 text-muted-foreground group-hover:text-destructive transition-colors" />
+                        </button>
                     )}
 
                     {/* Кнопка открытия пресетов */}
@@ -212,7 +269,7 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                 </div>
 
                 {/* Тултип формулы */}
-                {showTooltip && !open && (
+                {showTooltip && !open && !isPresetSelected && (
                     <div className="absolute bottom-full left-0 mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded shadow-lg whitespace-nowrap z-50 pointer-events-none">
                         Пример: 500, 100+50, (200*1.5)/2
                         <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-gray-900" />
@@ -230,7 +287,6 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                             'overflow-hidden'
                         )}
                     >
-                        {/* Заголовок */}
                         <div className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide border-b border-border">
                             Пресеты
                         </div>
@@ -243,7 +299,6 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                                         key={preset.id}
                                         type="button"
                                         onMouseDown={e => {
-                                            // preventDefault чтобы инпут не потерял focus раньше applyPreset
                                             e.preventDefault()
                                             applyPreset(preset)
                                         }}
@@ -253,7 +308,6 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                                             isActive && 'bg-muted/60'
                                         )}
                                     >
-                                        {/* Цветовой кружок (для материалов) */}
                                         {preset.color !== undefined && (
                                             <span
                                                 className="shrink-0 w-3 h-3 rounded-full border border-border"
@@ -272,18 +326,16 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                                             )}
                                         </span>
 
-                                        {/* Значение */}
                                         <span className="shrink-0 text-xs text-muted-foreground font-mono">
                                             {formatDisplayValue(preset.value)}
                                         </span>
 
-                                        {/* Галочка если применено */}
                                         {isActive && (
                                             <Check className="shrink-0 h-3.5 w-3.5 text-green-500" />
                                         )}
                                     </button>
                                 )
-                            })}
+            })}
                         </div>
                     </div>
                 )}
