@@ -169,39 +169,17 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
 
         return (
             <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-                {/* Настоящий инпут — всегда в DOM, рисует border и держит значение.
-                    Когда пресет выбран — текст скрываем через color:transparent,
-                    border и фон остаются нетронутыми. */}
-                <input
-                    {...props}
-                    ref={inputRef}
-                    id={id}
-                    type="text"
-                    value={inputValue}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    onKeyDown={handleKeyDown}
-                    disabled={disabled || isPresetSelected}
-                    className={cn(
-                        'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none',
-                        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-                        'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-                        '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-                        'md:text-sm',
-                        isPresetSelected
-                            ? '[color:transparent] pointer-events-none select-none'
-                            : 'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-                        paddingRight,
-                        className
-                    )}
-                />
-
-                {/* Оверлей — название пресета + muted значение поверх инпута */}
-                {isPresetSelected && (
-                    <div className={cn(
-                        'absolute inset-0 flex items-center px-3 pointer-events-none overflow-hidden rounded-md',
-                        paddingRight
-                    )}>
+                {/* Когда пресет выбран — показываем div-заглушку вместо инпута,
+                    чтобы текст нельзя было выделить. Инпут при этом скрыт через hidden. */}
+                {isPresetSelected ? (
+                    <div
+                        className={cn(
+                            'file:text-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs',
+                            'md:text-sm flex items-center overflow-hidden',
+                            paddingRight,
+                            className
+                        )}
+                    >
                         <span className="text-sm font-medium text-foreground truncate leading-none">
                             {activePreset!.label}
                         </span>
@@ -209,6 +187,28 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                             {formatDisplayValue(activePreset!.value)}{unit ? ` ${unit}` : ''}
                         </span>
                     </div>
+                ) : (
+                    <input
+                        {...props}
+                        ref={inputRef}
+                        id={id}
+                        type="text"
+                        value={inputValue}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        onKeyDown={handleKeyDown}
+                        disabled={disabled}
+                        className={cn(
+                            'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none',
+                            'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+                            'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
+                            '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
+                            'md:text-sm',
+                            'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                            paddingRight,
+                            className
+                        )}
+                    />
                 )}
 
                 {/* Правая часть: unit + крестик + кнопка пресета */}
@@ -281,15 +281,12 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                     <div
                         ref={dropdownRef}
                         className={cn(
-                            'absolute z-50 top-full mt-1 w-full min-w-[200px]',
+                            'absolute z-50 top-full mt-1 w-full min-w-50',
                             'rounded-md border border-border bg-popover text-popover-foreground shadow-md',
                             'animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2',
                             'overflow-hidden'
                         )}
                     >
-                        <div className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide border-b border-border">
-                            Пресеты
-                        </div>
 
                         <div className="max-h-52 overflow-y-auto">
                             {presets.map(preset => {
