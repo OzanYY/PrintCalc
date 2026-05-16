@@ -113,14 +113,14 @@ export default function UserPage() {
                 const prevMonthData = o.monthly?.[o.monthly.length - 2];
 
                 const thisMonthOrders  = Number(monthData?.completed_count ?? 0);
-                const prevMonthOrders  = Number(prevMonthData?.completed_count ?? 1);
-                const orderTrend = prevMonthOrders
+                const prevMonthOrders  = Number(prevMonthData?.completed_count ?? 0);
+                const orderTrend = prevMonthOrders > 0
                     ? Math.round(((thisMonthOrders - prevMonthOrders) / prevMonthOrders) * 100)
                     : 0;
 
                 const thisMonthRevenue = Number(monthData?.revenue ?? 0);
-                const prevMonthRevenue = Number(prevMonthData?.revenue ?? 1);
-                const profitTrend = prevMonthRevenue
+                const prevMonthRevenue = Number(prevMonthData?.revenue ?? 0);
+                const profitTrend = prevMonthRevenue > 0
                     ? Math.round(((thisMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100)
                     : 0;
 

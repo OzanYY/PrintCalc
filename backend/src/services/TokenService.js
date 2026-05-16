@@ -219,26 +219,65 @@ class TokenService {
         return tokens;
     }
 
+    // ─── Кэш геолокации по IP ────────────────────────────────────────────────
+    static #geoCache = new Map(); // ip → { city, country, country_code }
+
+    static async #resolveLocation(ipAddress) {
+        if (!ipAddress) return null;
+
+        // Локальные / приватные адреса — не геолоцируем
+        if (
+            ipAddress === '::1' ||
+            ipAddress === '127.0.0.1' ||
+            ipAddress.startsWith('192.168.') ||
+            ipAddress.startsWith('10.') ||
+            ipAddress.startsWith('172.')
+        ) return { city: 'Локальная сеть', country: '', country_code: '' };
+
+        if (TokenService.#geoCache.has(ipAddress)) {
+            return TokenService.#geoCache.get(ipAddress);
+        }
+
+        try {
+            const res = await fetch(
+                'http://ip-api.com/json/' + ipAddress + '?fields=status,city,country,countryCode&lang=ru',
+                { signal: AbortSignal.timeout(3000) }
+            );
+            const data = await res.json();
+            if (data.status === 'success') {
+                const location = { city: data.city, country: data.country, country_code: data.countryCode };
+                TokenService.#geoCache.set(ipAddress, location);
+                return location;
+            }
+        } catch {
+            // Таймаут или сетевая ошибка — возвращаем null
+        }
+        return null;
+    }
+
     // ─── Сессии пользователя ──────────────────────────────────────────────────
     static async getUserSessions(userId, currentRefreshToken = null) {
         const tokens = await TokenModel.findValidByUserId(userId);
 
-        // Если передан текущий refresh-токен — ищем совпадение по полю
-        // findValidByUserId не возвращает сам refresh_token (только метаданные),
-        // поэтому делаем отдельный запрос чтобы получить id текущей сессии.
         let currentTokenId = null;
         if (currentRefreshToken) {
             const currentToken = await TokenModel.findValidToken(currentRefreshToken);
             if (currentToken) currentTokenId = String(currentToken.id);
         }
 
-        return tokens.map(token => ({
+        // Геолоцируем все IP параллельно
+        const locations = await Promise.all(
+            tokens.map(t => TokenService.#resolveLocation(t.ip_address))
+        );
+
+        return tokens.map((token, i) => ({
             id: token.id,
             user_agent: token.user_agent,
             ip_address: token.ip_address,
+            location: locations[i],
             created_at: token.created_at,
             // last_access_expires_at — время истечения последнего access-токена.
-            // Фронт вычтет ACCESS_TOKEN_TTL чтобы получить время последней активности.
+            // Фронт использует его чтобы определить «в сети» (< 15 мин назад).
             last_used_at: token.last_access_expires_at ?? null,
             is_current: currentTokenId !== null && String(token.id) === currentTokenId,
         }));

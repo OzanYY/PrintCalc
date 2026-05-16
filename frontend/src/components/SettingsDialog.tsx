@@ -14,7 +14,7 @@ import {
     AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
-    Monitor, Smartphone, Globe, Clock, Loader2,
+    Monitor, Smartphone, Globe, Clock, Loader2, MapPin,
     LogOut, ShieldAlert, Trash2, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,10 +23,17 @@ import { useAuth } from '@/context/AuthContext';
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 
+interface SessionLocation {
+    city: string;
+    country: string;
+    country_code: string;
+}
+
 interface Session {
     id: string;
     user_agent: string;
     ip_address: string;
+    location?: SessionLocation | null;
     created_at: string;
     last_used_at?: string;
     is_current?: boolean;
@@ -65,26 +72,27 @@ const getDeviceLabel = (userAgent: string) => {
     return os ? `${browser} · ${os}` : browser;
 };
 
-// Бэкенд возвращает last_used_at = last_access_expires_at (время истечения access-токена).
-// Вычитаем типичный TTL access-токена (15 мин), чтобы получить время последней активности.
+// TTL access-токена — 15 мин. last_used_at = expires_at access-токена.
+// Сессия считается «в сети» если access-токен ещё не истёк (last_used_at > now).
 const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-const formatSessionDate = (lastUsedAt: string | undefined, createdAt: string): string => {
-    if (lastUsedAt) {
-        const activityAt = new Date(lastUsedAt).getTime() - ACCESS_TOKEN_TTL_MS;
-        const diffMs = Date.now() - activityAt;
-        const diffMin = Math.floor(diffMs / 60000);
-        const diffHour = Math.floor(diffMin / 60);
-        const diffDay = Math.floor(diffHour / 24);
+const isOnline = (lastUsedAt: string | undefined): boolean => {
+    if (!lastUsedAt) return false;
+    return new Date(lastUsedAt).getTime() > Date.now();
+};
 
-        if (diffMin < 2) return 'Только что';
-        if (diffMin < 60) return `${diffMin} мин. назад`;
-        if (diffHour < 24) return `${diffHour} ч. назад`;
-        if (diffDay < 7) return `${diffDay} д. назад`;
-        return new Date(activityAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-    }
+const formatSessionDate = (createdAt: string): string => {
     if (!createdAt) return '—';
-    return new Date(createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    const d = new Date(createdAt);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `Сегодня в ${time}`;
+    if (isYesterday) return `Вчера в ${time}`;
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) + ` в ${time}`;
 };
 
 // ─── Компонент ────────────────────────────────────────────────────────────────
@@ -305,10 +313,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                         {/* ── Опасная зона ── */}
                         <section className="space-y-2">
-                            <h3 className="text-sm font-semibold text-red-600">Опасная зона</h3>
-                            <p className="text-xs text-muted-foreground">
-                                Удаление аккаунта необратимо. Все данные будут уничтожены.
-                            </p>
                             <Button
                                 variant="outline"
                                 className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 border-red-200 dark:border-red-900"
@@ -317,6 +321,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Удалить аккаунт
                             </Button>
+                            <p className="text-xs text-muted-foreground">
+                                Удаление аккаунта необратимо. Все данные будут уничтожены.
+                            </p>
                         </section>
                     </div>
 
@@ -402,7 +409,14 @@ interface SessionCardProps {
 function SessionCard({ session, isCurrent, isTerminating, onTerminate }: SessionCardProps) {
     const DeviceIcon = getDeviceIcon(session.user_agent);
     const label = getDeviceLabel(session.user_agent);
-    const date = formatSessionDate(session.last_used_at, session.created_at);
+    const online = isOnline(session.last_used_at);
+    const date = formatSessionDate(session.created_at);
+
+    const locationStr = session.location
+        ? [session.location.city, session.location.country].filter(Boolean).join(', ')
+        : null;
+
+    const statusOnline = isCurrent && online;
 
     return (
         <div className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
@@ -410,13 +424,20 @@ function SessionCard({ session, isCurrent, isTerminating, onTerminate }: Session
                 ? 'bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800'
                 : 'bg-muted/30 border-border'
         }`}>
-            <div className={`mt-0.5 shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                isCurrent ? 'bg-green-100 dark:bg-green-900/40' : 'bg-muted'
-            }`}>
-                <DeviceIcon className={`h-4 w-4 ${isCurrent ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+            {/* Иконка устройства с индикатором онлайн */}
+            <div className="relative mt-0.5 shrink-0">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                    isCurrent ? 'bg-green-100 dark:bg-green-900/40' : 'bg-muted'
+                }`}>
+                    <DeviceIcon className={`h-4 w-4 ${isCurrent ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+                </div>
+                {statusOnline && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-background" />
+                )}
             </div>
 
             <div className="flex-1 min-w-0">
+                {/* Строка 1: название устройства + бейдж */}
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-sm font-medium truncate ${isCurrent ? 'text-green-700 dark:text-green-400' : ''}`}>
                         {label}
@@ -427,13 +448,28 @@ function SessionCard({ session, isCurrent, isTerminating, onTerminate }: Session
                         </Badge>
                     )}
                 </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                    {session.ip_address && (
-                        <span className="text-xs text-muted-foreground">{session.ip_address}</span>
+
+                {/* Строка 2: локация */}
+                {locationStr && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground truncate">{locationStr}</span>
+                    </div>
+                )}
+
+                {/* Строка 3: статус / время входа */}
+                <div className="flex items-center gap-1 mt-0.5">
+                    {statusOnline ? (
+                        <>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+                            <span className="text-xs font-medium text-green-600 dark:text-green-400">в сети</span>
+                        </>
+                    ) : (
+                        <>
+                            <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+                            <span className="text-xs text-muted-foreground">{date}</span>
+                        </>
                     )}
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />{date}
-                    </span>
                 </div>
             </div>
 
