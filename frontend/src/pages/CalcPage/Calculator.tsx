@@ -58,6 +58,7 @@ export default function Calc() {
         setHasCalculated,
         selectedPresets,
         setSelectedPreset,
+        setSelectedPrinter,
         resetToDefaults,
         resetAll,
     } = useCalculator()
@@ -123,6 +124,25 @@ export default function Calc() {
         if (user) loadPresets()
     }, [user, loadPresets])
 
+    /**
+     * Когда пресеты загружены и уже выбран принтер (из localStorage) —
+     * синхронизируем все три значения из пресета.
+     * Это нужно при первом рендере после перезагрузки страницы.
+     */
+    useEffect(() => {
+        const printerId = selectedPresets.powerConsumption
+        if (printerId == null) return
+
+        const power = printerPresets.power.find(p => p.id === printerId)
+        const cost  = printerPresets.cost.find(p  => p.id === printerId)
+        const hours = printerPresets.hours.find(p => p.id === printerId)
+
+        if (power) handleElectricityChange('powerConsumption', power.value)
+        if (cost)  handleDepreciationChange('printerCost', cost.value)
+        if (hours) handleDepreciationChange('printResource', hours.value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [printerPresets])
+
     const [isLoading, setIsLoading]         = useState(false)
     const [serverError, setServerError]     = useState('')
     const [successMessage, setSuccessMessage] = useState('')
@@ -173,6 +193,28 @@ export default function Calc() {
     const handleDepreciationChange = (field: string, value: number) => setDepreciation(prev => ({ ...prev, [field]: value }))
     const handleLaborChange        = (field: string, value: number) => setLabor(prev => ({ ...prev, [field]: value }))
     const handleAdditionalChange   = (field: string, value: number) => setAdditional(prev => ({ ...prev, [field]: value }))
+
+    /**
+     * При выборе пресета принтера в любом из полей — синхронизируем все три поля
+     * (powerConsumption, printerCost, printResource) сразу из пресетов.
+     */
+    const handlePrinterPresetChange = (
+        id: number | string | null,
+    ) => {
+        // Синхронизируем selectedPreset для всех трёх полей принтера
+        setSelectedPrinter(id)
+
+        if (id == null) return
+
+        // Находим принтер в каждом массиве пресетов и обновляем все три значения
+        const power = printerPresets.power.find(p => p.id === id)
+        const cost  = printerPresets.cost.find(p  => p.id === id)
+        const hours = printerPresets.hours.find(p => p.id === id)
+
+        if (power) handleElectricityChange('powerConsumption', power.value)
+        if (cost)  handleDepreciationChange('printerCost', cost.value)
+        if (hours) handleDepreciationChange('printResource', hours.value)
+    }
 
     // ─── Расчёт ───────────────────────────────────────────────────────────────
     const calculateCost = async () => {
@@ -242,6 +284,14 @@ export default function Calc() {
                 depreciation,
                 labor,
                 additional,
+                {
+                    printer_id:  selectedPresets.powerConsumption != null
+                        ? Number(selectedPresets.powerConsumption)
+                        : null,
+                    material_id: selectedPresets.filamentPrice != null
+                        ? Number(selectedPresets.filamentPrice)
+                        : null,
+                },
             )
 
             await ordersAPI.create(orderData)
@@ -536,7 +586,7 @@ export default function Calc() {
                                                     showPresets={!!user}
                                                     disabled={isLoading}
                                                     selectedPresetId={selectedPresets.powerConsumption}
-                                                    onPresetChange={(id) => setSelectedPreset('powerConsumption', id)}
+                                                    onPresetChange={(id) => handlePrinterPresetChange(id)}
                                                 />
                                             </div>
 
@@ -601,7 +651,7 @@ export default function Calc() {
                                                     showPresets={!!user}
                                                     disabled={isLoading}
                                                     selectedPresetId={selectedPresets.printerCost}
-                                                    onPresetChange={(id) => setSelectedPreset('printerCost', id)}
+                                                    onPresetChange={(id) => handlePrinterPresetChange(id)}
                                                 />
                                             </div>
 
@@ -621,7 +671,7 @@ export default function Calc() {
                                                     showPresets={!!user}
                                                     disabled={isLoading}
                                                     selectedPresetId={selectedPresets.printResource}
-                                                    onPresetChange={(id) => setSelectedPreset('printResource', id)}
+                                                    onPresetChange={(id) => handlePrinterPresetChange(id)}
                                                 />
                                             </div>
                                         </div>

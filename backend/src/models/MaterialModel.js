@@ -194,8 +194,8 @@ class MaterialModel {
                 price_per_kg = COALESCE($6, price_per_kg),
                 density = COALESCE($7, density),
                 diameter = CASE 
-                    WHEN $8 IS NOT NULL AND category = 'filament' THEN $8
-                    WHEN $8 IS NULL AND category = 'filament' THEN diameter
+                    WHEN $8::NUMERIC IS NOT NULL AND category = 'filament' THEN $8::NUMERIC
+                    WHEN $8::NUMERIC IS NULL AND category = 'filament' THEN diameter
                     ELSE NULL 
                 END,
                 is_default = COALESCE($9, is_default),

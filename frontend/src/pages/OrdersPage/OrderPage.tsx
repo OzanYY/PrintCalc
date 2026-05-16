@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Printer,
@@ -58,10 +58,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOrders } from '@/hooks/useOrders';
 import type { Order, CreateOrderData } from '@/api/orders';
+import { toast } from 'sonner';
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
 
@@ -116,13 +116,6 @@ const formatTime = (minutes: number) => {
 const formatMoney = (value: number) =>
   value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
 
-const getProgressValue = (order: Order): number => {
-  if (order.status === 'completed') return 100;
-  if (order.status === 'cancelled') return 0;
-  const created = new Date(order.created_at).getTime();
-  const daysDiff = (Date.now() - created) / (1000 * 60 * 60 * 24);
-  return Math.min(Math.round(daysDiff * 20), 90);
-};
 
 // ─── Форма заказа ─────────────────────────────────────────────────────────────
 
@@ -491,6 +484,13 @@ export default function OrdersPage() {
     refresh,
   } = useOrders({ autoFetch: true });
 
+  // Показываем ошибки через toast
+  useEffect(() => {
+    if (error) {
+      toast.error(error, { position: 'top-center', duration: 5000 });
+    }
+  }, [error]);
+
   // Локальные фильтры (поиск — только клиентский)
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
@@ -715,12 +715,17 @@ export default function OrdersPage() {
             const printTime  = getPrintTimeMinutes(order);
 
             return (
-              <Card key={order.id} className="hover:shadow-lg transition-shadow">
+              <Card key={order.id} className="hover:shadow-lg transition-shadow flex flex-col">
                 <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div className="min-w-0">
-                      <CardTitle className="text-lg truncate">{order.name}</CardTitle>
-                      <CardDescription>Заказ #{order.id}</CardDescription>
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle
+                        className="text-base leading-snug line-clamp-2 wrap-break-word"
+                        title={order.name}
+                      >
+                        {order.name}
+                      </CardTitle>
+                      <CardDescription>Заказ #{order.id} · {formatDate(order.created_at)}</CardDescription>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -767,18 +772,11 @@ export default function OrdersPage() {
                   </div>
                 </CardHeader>
 
-                <CardContent>
+                <CardContent className="flex-1">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
+                    <div>
                       <StatusBadge status={order.status} />
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(order.created_at)}
-                      </span>
                     </div>
-
-                    {order.status === 'in_progress' && (
-                      <Progress value={getProgressValue(order)} className="h-2" />
-                    )}
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="flex items-center gap-2">
@@ -866,7 +864,7 @@ export default function OrdersPage() {
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="font-medium">#{order.id}</TableCell>
-                    <TableCell className="max-w-[180px] truncate">{order.name}</TableCell>
+                    <TableCell className="max-w-45 truncate">{order.name}</TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>
                     <TableCell>{order.printer_name ?? '—'}</TableCell>
                     <TableCell>{order.material_name ?? '—'}</TableCell>

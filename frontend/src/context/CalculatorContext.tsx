@@ -45,6 +45,8 @@ interface CalculatorContextType {
   setHasCalculated: (value: boolean) => void
   selectedPresets: SelectedPresetsState
   setSelectedPreset: (field: string, id: number | string | null) => void
+  /** Выбрать принтер сразу во всех трёх полях (powerConsumption, printerCost, printResource) */
+  setSelectedPrinter: (id: number | string | null) => void
   resetToDefaults: () => void
   resetAll: () => void // Новая функция для полного сброса
 }
@@ -126,6 +128,23 @@ export function CalculatorProvider({ children }: { children: ReactNode }) {
   const setSelectedPreset = useCallback((field: string, id: number | string | null) => {
     setSelectedPresets(prev => {
       const next = { ...prev, [field]: id }
+      localStorage.setItem('calculator_selectedPresets', JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  /**
+   * Синхронизирует выбор принтера сразу во всех трёх пресетных полях.
+   * Вызывается при выборе принтера в любой из вкладок.
+   */
+  const setSelectedPrinter = useCallback((id: number | string | null) => {
+    setSelectedPresets(prev => {
+      const next = {
+        ...prev,
+        powerConsumption: id,
+        printerCost:      id,
+        printResource:    id,
+      }
       localStorage.setItem('calculator_selectedPresets', JSON.stringify(next))
       return next
     })
@@ -221,6 +240,7 @@ export function CalculatorProvider({ children }: { children: ReactNode }) {
         setHasCalculated: updateHasCalculated,
         selectedPresets,
         setSelectedPreset,
+        setSelectedPrinter,
         resetToDefaults,
         resetAll,
       }}

@@ -236,7 +236,8 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
       try {
         const res = await ordersAPI.clone(id);
         const cloned = res.data.data;
-        prependOrder(cloned);
+        // Перезагружаем список и статистику, чтобы все счётчики были актуальны
+        await Promise.all([fetchOrders(), fetchStats()]);
         return cloned;
       } catch (err: any) {
         const msg = err?.response?.data?.message ?? err?.message ?? 'Ошибка клонирования заказа';
@@ -246,7 +247,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
         setIsMutating(false);
       }
     },
-    [prependOrder],
+    [fetchOrders, fetchStats],
   );
 
   // ─── Status helpers ─────────────────────────────────────────────────────────

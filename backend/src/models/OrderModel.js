@@ -309,8 +309,8 @@ class OrderModel {
 
         const query = `
             UPDATE orders
-            SET status       = $1,
-                completed_at = CASE WHEN $1 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+            SET status       = $1::VARCHAR,
+                completed_at = CASE WHEN $1::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
                 updated_at   = CURRENT_TIMESTAMP
             WHERE id = $2 AND user_id = $3
             RETURNING *
