@@ -73,11 +73,9 @@ class UserService {
 
     // ─── Смена пароля ─────────────────────────────────────────────────────────
     static async changePassword(userId, oldPassword, newPassword) {
-        const user = await UserModel.findById(userId);
-        if (!user) throw new Error('User not found');
-
-        // findById не возвращает password_hash — делаем отдельный запрос
-        const fullUser = await UserModel.findByEmail(user.email);
+        // findByIdWithHash возвращает запись включая password_hash — один запрос вместо двух
+        const fullUser = await UserModel.findByIdWithHash(userId);
+        if (!fullUser) throw new Error('User not found');
 
         const isValid = await bcrypt.compare(oldPassword, fullUser.password_hash);
         if (!isValid) throw new Error('Пароль неверный');

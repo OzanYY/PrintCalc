@@ -226,28 +226,28 @@ class OrderService {
     // ─── Массовое обновление статусов ────────────────────────────────────────────
     static async bulkUpdateStatus(userId, orderIds, newStatus) {
         try {
-            const results = [];
-            const errors  = [];
-
-            for (const orderId of orderIds) {
-                try {
-                    const result = await this.updateOrderStatus(orderId, userId, newStatus);
-                    results.push({ orderId, success: true, message: result.message });
-                } catch (error) {
-                    errors.push({ orderId, success: false, error: error.message });
-                }
+            const validStatuses = ['in_progress', 'completed', 'cancelled'];
+            if (!validStatuses.includes(newStatus)) {
+                throw new Error(`Недопустимый статус. Допустимые значения: ${validStatuses.join(', ')}`);
             }
 
+            // Один батч-запрос вместо N последовательных
+            const updated = await OrderModel.bulkUpdateStatus(userId, orderIds, newStatus);
+            const updatedCount = updated.length;
+            const failedCount  = orderIds.length - updatedCount;
+
+            const completedAt = newStatus === 'completed' ? new Date() : null;
+
             return {
-                success: errors.length === 0,
+                success: failedCount === 0,
                 data: {
-                    successful:       results,
-                    failed:           errors,
+                    successful:       updated.map(o => ({ orderId: o.id, success: true })),
+                    failed:           [],
                     total:            orderIds.length,
-                    successful_count: results.length,
-                    failed_count:     errors.length
+                    successful_count: updatedCount,
+                    failed_count:     failedCount,
                 },
-                message: `Обновлено ${results.length} из ${orderIds.length} заказов`
+                message: `Обновлено ${updatedCount} из ${orderIds.length} заказов`
             };
         } catch (error) {
             console.error('Ошибка при массовом обновлении статусов:', error);

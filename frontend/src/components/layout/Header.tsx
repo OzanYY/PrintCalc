@@ -21,36 +21,36 @@ export default function Header() {
     const displayEmail = user?.email ?? '—';
 
     return (
-        <header className="flex justify-between p-2 rounded-xl bg-neutral-50">
+        <header className="flex justify-between p-2 rounded-xl bg-card border">
             {user ?
                 <div className="flex">
                     <Button
-                        className="hover:bg-gray-300 bg-neutral-50"
+                        className="hover:bg-accent bg-transparent text-foreground"
                         onClick={() => navigate('/')}  // ← на главную
                     >
                         <Sigma />PrintCalc
                     </Button>
                     <div>
                         <Button
-                            className="hover:bg-gray-300 bg-neutral-50"
+                            className="hover:bg-accent bg-transparent text-foreground"
                             onClick={() => navigate('/printers')}
                         >
                             Принтеры
                         </Button>
                         <Button
-                            className="hover:bg-gray-300 bg-neutral-50"
+                            className="hover:bg-accent bg-transparent text-foreground"
                             onClick={() => navigate('/materials')}
                         >
                             Материалы
                         </Button>
                         <Button
-                            className="hover:bg-gray-300 bg-neutral-50"
+                            className="hover:bg-accent bg-transparent text-foreground"
                             onClick={() => navigate('/orders')}
                         >
                             Заказы
                         </Button>
                         <Button
-                            className="hover:bg-gray-300 bg-neutral-50"
+                            className="hover:bg-accent bg-transparent text-foreground"
                             onClick={() => navigate('/dashboard')}
                         >
                             Статистика
@@ -60,7 +60,7 @@ export default function Header() {
                 :
                 <div className="flex">
                     <Button
-                        className="hover:bg-gray-300 bg-neutral-50"
+                        className="hover:bg-accent bg-transparent text-foreground"
                         onClick={() => navigate('/')}  // ← на главную
                     >
                         <Sigma />PrintCalc
@@ -70,7 +70,7 @@ export default function Header() {
             {!user ?
                 <div className="flex">
                     <Button
-                        className="hover:bg-gray-300 bg-neutral-50"
+                        className="hover:bg-accent bg-transparent text-foreground"
                         onClick={() => navigate('/login')}  // ← на страницу авторизации
                     >
                         <User />
@@ -79,7 +79,7 @@ export default function Header() {
                 :
                 <div className="flex">
                     <Button
-                        className="hover:bg-gray-300 bg-neutral-50 pl-1"
+                        className="hover:bg-accent bg-transparent text-foreground pl-1"
                         onClick={() => navigate('/profile')}  // ← на страницу профиля
                     >
                         <div className='flex'>

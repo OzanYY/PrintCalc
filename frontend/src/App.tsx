@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from "@/components/ui/sonner"
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
@@ -28,6 +28,9 @@ function App() {
             <Route path="/materials" element={<ProtectedRoute> <MaterialsPage /> </ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute> <OrdersPage /> </ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute> <StatisticsPage /> </ProtectedRoute>} />
+
+            {/* Редирект для неизвестных маршрутов */}
+            <Route path="*" element={<Navigate to="/" replace />} />
 
           </Routes>
           <Toaster />

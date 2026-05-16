@@ -221,6 +221,7 @@ class TokenService {
 
     // ─── Кэш геолокации по IP ────────────────────────────────────────────────
     static #geoCache = new Map(); // ip → { city, country, country_code }
+    static #GEO_CACHE_MAX = 1000; // Максимум записей (защита от утечки памяти)
 
     static async #resolveLocation(ipAddress) {
         if (!ipAddress) return null;
@@ -246,6 +247,11 @@ class TokenService {
             const data = await res.json();
             if (data.status === 'success') {
                 const location = { city: data.city, country: data.country, country_code: data.countryCode };
+                // Простой LRU: при переполнении удаляем первый (самый старый) ключ
+                if (TokenService.#geoCache.size >= TokenService.#GEO_CACHE_MAX) {
+                    const firstKey = TokenService.#geoCache.keys().next().value;
+                    TokenService.#geoCache.delete(firstKey);
+                }
                 TokenService.#geoCache.set(ipAddress, location);
                 return location;
             }

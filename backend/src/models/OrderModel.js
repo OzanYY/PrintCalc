@@ -464,6 +464,25 @@ class OrderModel {
         const result = await pool.query(query, [userId]);
         return result.rows[0];
     }
+
+    // ─── Массовое обновление статусов (один запрос) ───────────────────────────────
+    static async bulkUpdateStatus(userId, orderIds, newStatus) {
+        if (!orderIds.length) return [];
+        // Параметры: $1=userId, $2=status, $3...=ids
+        const idPlaceholders = orderIds.map((_, i) => `${i + 3}`).join(', ');
+        const completedAt = newStatus === 'completed' ? 'CURRENT_TIMESTAMP' : 'NULL';
+        const query = `
+            UPDATE orders
+            SET status = $2,
+                completed_at = ${completedAt},
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+              AND id IN (${idPlaceholders})
+            RETURNING id, status, updated_at
+        `;
+        const result = await pool.query(query, [userId, newStatus, ...orderIds]);
+        return result.rows;
+    }
 }
 
 module.exports = OrderModel;

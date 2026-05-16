@@ -68,6 +68,13 @@ class UserModel {
         return result.rows[0];
     }
 
+    // Поиск пользователя по ID с хешем пароля (для смены пароля)
+    static async findByIdWithHash(id) {
+        const query = 'SELECT * FROM users WHERE id = $1';
+        const result = await pool.query(query, [id]);
+        return result.rows[0];
+    }
+
     // Поиск по ссылке активации
     static async findByActivationLink(link) {
         const query = 'SELECT * FROM users WHERE activation_link = $1';

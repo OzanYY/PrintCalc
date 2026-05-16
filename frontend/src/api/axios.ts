@@ -2,7 +2,7 @@ import axios from "axios";
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from "axios";
 import { authRefreshBridge } from "@/utils/authRefreshBridge";
 
-const API_URL = "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
 const api: AxiosInstance = axios.create({
     baseURL: API_URL,
@@ -50,15 +50,7 @@ export async function performRefresh(): Promise<void> {
 }
 
 api.interceptors.response.use(
-    (response) => {
-    // Логирование успешных ответов
-    console.log(`✅ ${response.config.method?.toUpperCase()} ${response.config.url}`, {
-      status: response.status,
-      data: response.data,
-      headers: response.headers,
-    });
-    return response;
-  },
+    (response) => response,
     async (error: AxiosError) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 

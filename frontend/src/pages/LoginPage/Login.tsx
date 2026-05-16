@@ -13,10 +13,9 @@ import { authAPI } from '@/api/auth';
 import { toast } from "sonner"
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from "@/context/AuthContext"
-import { type AuthStatusResponse } from '@/context/AuthContext'
 import { PasswordInput } from '@/components/ui/password-input';
 
-export default function sign() {
+export default function LoginPage() {
     return (
         <div className="pt-4 md:pt-8">
             <div className="flex justify-between">
@@ -61,10 +60,6 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
     useEffect(() => {
         if (successMessage) toast.success(successMessage, { position: "top-center" });
     }, [successMessage]);
-
-    useEffect(() => {
-        if (isLoading) toast("Загрузка...", { position: "top-center" });
-    }, [isLoading]);
 
     const validateName = (name: string) => {
         if (!name) return '';
@@ -149,8 +144,8 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
 
         try {
             const { confirmPassword, ...registerData } = formData;
-            const response: AuthStatusResponse = (await authAPI.register(registerData)).data;
-            setUser(response.user);
+            const response = (await authAPI.register(registerData)).data;
+            if (response.user) setUser(response.user);
             setSuccessMessage('Регистрация успешна!');
             setFormData({ name: '', email: '', password: '', confirmPassword: '' });
             setTimeout(() => navigate('/profile'), 1000);
@@ -259,10 +254,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
         if (successMessage) toast.success(successMessage, { position: "top-center" });
     }, [successMessage]);
 
-    useEffect(() => {
-        if (isLoading) toast("Загрузка...", { position: "top-center" });
-    }, [isLoading]);
-
     const validateEmail = (email: string) => {
         if (!email) return '';
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -272,7 +263,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
 
     const validatePassword = (password: string) => {
         if (!password) return '';
-        if (password.length < 8) return 'Пароль должен содержать минимум 8 символов';
+        if (password.length < 6) return 'Пароль должен содержать минимум 6 символов';
         return '';
     };
 
