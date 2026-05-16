@@ -720,7 +720,7 @@ export default function OrdersPage() {
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <CardTitle
-                        className="text-base leading-snug line-clamp-2 wrap-break-word"
+                        className="text-base leading-snug line-clamp-2 break-words"
                         title={order.name}
                       >
                         {order.name}
