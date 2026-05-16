@@ -313,8 +313,13 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                                         )}
 
                                         <span className="flex-1 min-w-0">
-                                            <span className="block truncate font-medium leading-tight">
-                                                {preset.label}
+                                            <span className="flex items-center gap-1.5 truncate font-medium leading-tight">
+                                                <span className="truncate">{preset.label}</span>
+                                                {preset.isDefault && (
+                                                    <span className="shrink-0 inline-flex items-center rounded px-1 py-0 text-[10px] font-medium leading-4 bg-secondary text-secondary-foreground border border-border">
+                                                        основной
+                                                    </span>
+                                                )}
                                             </span>
                                             {preset.sublabel && (
                                                 <span className="block truncate text-[11px] text-muted-foreground leading-tight">

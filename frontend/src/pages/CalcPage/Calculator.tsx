@@ -115,10 +115,47 @@ export default function Calc() {
                 color:     m.color ?? '',
                 isDefault: m.is_default,
             })))
+
+            // ── Автоприменение дефолтных пресетов при первом входе ────────────
+            // Применяем только если пользователь ещё ничего не выбирал (null).
+            const defaultPrinter  = printers.find(p => p.is_default)
+            const defaultMaterial = materials.find(m => m.is_default)
+
+            // Читаем актуальный selectedPresets напрямую из localStorage,
+            // чтобы не зависеть от замыкания на стейт (он ещё не обновился).
+            const savedPresets = localStorage.getItem('calculator_selectedPresets')
+            const currentPresets = savedPresets ? JSON.parse(savedPresets) : {}
+
+            if (defaultPrinter && currentPresets.powerConsumption == null) {
+                setSelectedPrinter(defaultPrinter.id)
+                setElectricity(e => {
+                    const updated = { ...e, powerConsumption: Number(defaultPrinter.power_consumption) }
+                    localStorage.setItem('calculator_electricity', JSON.stringify(updated))
+                    return updated
+                })
+                setDepreciation(d => {
+                    const updated = {
+                        ...d,
+                        printerCost:   Number(defaultPrinter.purchase_price),
+                        printResource: Number(defaultPrinter.print_lifetime_hours),
+                    }
+                    localStorage.setItem('calculator_depreciation', JSON.stringify(updated))
+                    return updated
+                })
+            }
+
+            if (defaultMaterial && currentPresets.filamentPrice == null) {
+                setSelectedPreset('filamentPrice', defaultMaterial.id)
+                setMaterials(m => {
+                    const updated = { ...m, filamentPrice: Number(defaultMaterial.price_per_kg) }
+                    localStorage.setItem('calculator_materials', JSON.stringify(updated))
+                    return updated
+                })
+            }
         } catch {
             // Тихая ошибка — пресеты необязательны
         }
-    }, [])
+    }, [setSelectedPrinter, setSelectedPreset, setElectricity, setDepreciation, setMaterials])
 
     useEffect(() => {
         if (user) loadPresets()
@@ -310,6 +347,7 @@ export default function Calc() {
     // ─── Сброс ────────────────────────────────────────────────────────────────
     const resetValues = () => {
         resetAll()
+        loadPresets()
         setResults(null)
         setServerError('')
         setSuccessMessage('')
