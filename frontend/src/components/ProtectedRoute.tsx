@@ -1,18 +1,23 @@
+// components/ProtectedRoute.tsx
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../features/auth/context/AuthContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface ProtectedRouteProps {
-    children: React.ReactNode;
+  children: React.ReactNode;
+  requiredRole?: string; // опционально для проверки ролей
 }
 
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-    const { user } = useAuth();
-    
-    if (!user) {
-        // Если пользователь не авторизован, перенаправляем на логин
-        return <Navigate to="/login" replace />;
-    }
-    
-    // Если авторизован, показываем защищенный контент
-    return <>{children}</>;
+export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Проверка роли (опционально)
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 }
