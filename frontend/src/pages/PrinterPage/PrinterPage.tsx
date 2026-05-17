@@ -253,8 +253,8 @@ export default function PrintersPage() {
     }
 
     const filteredPrinters  = activeTab === 'all' ? printers : printers.filter(p => p.type === activeTab)
-    const totalLifetimeHours = printers.reduce((s, p) => s + p.print_lifetime_hours, 0)
-    const totalInvestment    = printers.reduce((s, p) => s + p.purchase_price, 0)
+    const totalLifetimeHours = printers.reduce((s, p) => s + Number(p.print_lifetime_hours), 0)
+    const totalInvestment    = printers.reduce((s, p) => s + Number(p.purchase_price), 0)
     const defaultPrinter     = printers.find(p => p.is_default)
 
     if (isLoading) {
@@ -522,19 +522,19 @@ function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: P
                         <span className="text-muted-foreground flex items-center gap-1">
                             <Clock className="h-3 w-3" /> Ресурс
                         </span>
-                        <span className="font-medium">{printer.print_lifetime_hours} ч</span>
+                        <span className="font-medium">{Number(printer.print_lifetime_hours)} ч</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <span className="text-muted-foreground flex items-center gap-1">
                             <Zap className="h-3 w-3" /> Мощность
                         </span>
-                        <span className="font-medium">{printer.power_consumption} Вт</span>
+                        <span className="font-medium">{Number(printer.power_consumption)} Вт</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <span className="text-muted-foreground flex items-center gap-1">
                             <DollarSign className="h-3 w-3" /> Стоимость
                         </span>
-                        <span className="font-medium">{printer.purchase_price.toLocaleString()} ₽</span>
+                        <span className="font-medium">{Number(printer.purchase_price).toLocaleString()} ₽</span>
                     </div>
                 </div>
 
