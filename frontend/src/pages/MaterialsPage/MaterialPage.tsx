@@ -1,9 +1,8 @@
-// pages/MaterialsPage.tsx
 import { useState } from 'react'
 import {
     Plus, Package, Edit, Trash2, MoreVertical, Star,
     Copy, Droplet, Ruler, Weight, Award, CircleDot,
-    Beaker, Loader2, RefreshCw,
+    Beaker, Loader2, RefreshCw, X, PlusCircle, Settings2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,7 +31,7 @@ import {
 } from '@/api/materials'
 import { useMaterials } from '@/hooks/useMaterials'
 
-// ─── Типы формы ───────────────────────────────────────────────────────────────
+// ─── Типы ─────────────────────────────────────────────────────────────────────
 
 interface MaterialFormData {
     name: string
@@ -47,45 +46,124 @@ interface MaterialFormData {
     settings: Record<string, string>
 }
 
+interface SettingEntry {
+    id: string
+    key: string
+    value: string
+    suggested?: boolean
+}
+
+interface SuggestedParam {
+    key: string
+    label: string
+    placeholder: string
+    textarea?: boolean
+}
+
+// ─── Предложения по умолчанию ────────────────────────────────────────────────
+
+const SUGGESTED_PARAMS: Record<MaterialCategory, SuggestedParam[]> = {
+    filament: [
+        { key: 'recommended_temp', label: 'Температура печати (°C)', placeholder: '200-220' },
+        { key: 'bed_temp',         label: 'Температура стола (°C)',  placeholder: '60'      },
+        { key: 'drying_temp',      label: 'Температура сушки (°C)',  placeholder: '45'      },
+        { key: 'drying_time',      label: 'Время сушки (ч)',         placeholder: '4'       },
+    ],
+    resin: [
+        { key: 'recommended_temp', label: 'Рабочая температура (°C)', placeholder: '25-35'   },
+        { key: 'viscosity',        label: 'Вязкость (cPs)',           placeholder: '200-300' },
+        { key: 'wavelength',       label: 'Длина волны (нм)',         placeholder: '405'     },
+        { key: 'exposure_time',    label: 'Время экспозиции (с)',     placeholder: '2.5'     },
+    ],
+    powder: [
+        { key: 'particle_size',    label: 'Размер частиц (мкм)',      placeholder: '50-80'   },
+        { key: 'melting_point',    label: 'Температура плавления (°C)',placeholder: '178'     },
+        { key: 'recommended_temp', label: 'Температура печати (°C)',  placeholder: '170-180' },
+        { key: 'layer_thickness',  label: 'Толщина слоя (мм)',        placeholder: '0.1'     },
+    ],
+    other: [
+        { key: 'storage_temp', label: 'Температура хранения (°C)', placeholder: '20-25' },
+        { key: 'shelf_life',   label: 'Срок годности (мес)',        placeholder: '12'    },
+        { key: 'notes',        label: 'Примечания',                 placeholder: 'Дополнительная информация', textarea: true },
+    ],
+}
+
+// Читаемые метки для карточки
+const PARAM_LABELS: Record<string, string> = {
+    recommended_temp: 'Температура',
+    bed_temp:         'Стол',
+    drying_temp:      'Сушка',
+    drying_time:      'Время сушки',
+    viscosity:        'Вязкость',
+    wavelength:       'Длина волны',
+    exposure_time:    'Экспозиция',
+    particle_size:    'Частицы',
+    melting_point:    'Плавление',
+    layer_thickness:  'Слой',
+    notes:            'Заметки',
+    storage_temp:     'Хранение',
+    shelf_life:       'Срок',
+}
+
+function getParamLabel(key: string): string {
+    return PARAM_LABELS[key] ?? key
+}
+
+// ─── entries <-> settings ─────────────────────────────────────────────────────
+
+let _idCounter = 0
+function uid() { return String(++_idCounter) }
+
+function settingsToEntries(settings: Record<string, string>): SettingEntry[] {
+    return Object.entries(settings).map(([key, value]) => ({ id: uid(), key, value }))
+}
+
+function getEmptySuggestions(category: MaterialCategory): SettingEntry[] {
+    return SUGGESTED_PARAMS[category].map(p => ({
+        id: uid(), key: p.key, value: '', suggested: true,
+    }))
+}
+
+function entriesToSettings(entries: SettingEntry[]): Record<string, string> {
+    const result: Record<string, string> = {}
+    for (const e of entries) {
+        const k = e.key.trim()
+        const v = e.value.trim()
+        if (k && v) result[k] = v
+    }
+    return result
+}
+
+// ─── Прочие утилиты ───────────────────────────────────────────────────────────
+
 const EMPTY_FORM: MaterialFormData = {
     name: '', category: 'filament', type: 'pla',
     brand: '', color: '#000000',
     price_per_kg: '', density: '', diameter: '1.75',
-    is_default: false, settings: getDefaultSettings('filament'),
-}
-
-function getDefaultSettings(category: MaterialCategory): Record<string, string> {
-    switch (category) {
-        case 'filament': return { recommended_temp: '200-220', bed_temp: '60', drying_temp: '45', drying_time: '4' }
-        case 'resin':    return { recommended_temp: '25-35', viscosity: '200-300', wavelength: '405', exposure_time: '2.5' }
-        case 'powder':   return { particle_size: '50-80', melting_point: '178', recommended_temp: '170-180', layer_thickness: '0.1' }
-        case 'other':    return { notes: '', storage_temp: '20-25', shelf_life: '12' }
-    }
+    is_default: false, settings: {},
 }
 
 function formToApiData(form: MaterialFormData): CreateMaterialData {
     return {
-        name:        form.name,
-        category:    form.category,
-        type:        form.type,
-        brand:       form.brand   || undefined,
-        color:       form.color   || undefined,
+        name:         form.name,
+        category:     form.category,
+        type:         form.type,
+        brand:        form.brand    || undefined,
+        color:        form.color    || undefined,
         price_per_kg: parseFloat(form.price_per_kg) || 0,
-        density:     form.density  ? parseFloat(form.density)  : undefined,
-        diameter:    form.diameter ? parseFloat(form.diameter) : undefined,
-        is_default:  form.is_default,
-        settings:    form.settings,
+        density:      form.density  ? parseFloat(form.density)  : undefined,
+        diameter:     form.diameter ? parseFloat(form.diameter) : undefined,
+        is_default:   form.is_default,
+        settings:     form.settings,
     }
 }
-
-// ─── Вспомогательные функции ──────────────────────────────────────────────────
 
 function getCategoryIcon(category: MaterialCategory) {
     switch (category) {
         case 'filament': return <CircleDot className="h-3 w-3" />
-        case 'resin':    return <Droplet className="h-3 w-3" />
-        case 'powder':   return <Beaker className="h-3 w-3" />
-        case 'other':    return <Package className="h-3 w-3" />
+        case 'resin':    return <Droplet   className="h-3 w-3" />
+        case 'powder':   return <Beaker    className="h-3 w-3" />
+        case 'other':    return <Package   className="h-3 w-3" />
     }
 }
 
@@ -98,22 +176,6 @@ function getCategoryColor(category: MaterialCategory) {
     }
 }
 
-const SETTING_LABELS: Record<string, string> = {
-    recommended_temp: 'Температура',
-    bed_temp:         'Стол',
-    drying_temp:      'Сушка',
-    drying_time:      'Время сушки',
-    viscosity:        'Вязкость',
-    wavelength:       'Длина волны',
-    exposure_time:    'Экспозиция',
-    particle_size:    'Частицы',
-    melting_point:    'Плавление',
-    layer_thickness:  'Слой',
-    notes:            'Примечания',
-    storage_temp:     'Хранение',
-    shelf_life:       'Срок',
-}
-
 // ─── Страница ─────────────────────────────────────────────────────────────────
 
 export default function MaterialsPage() {
@@ -123,14 +185,15 @@ export default function MaterialsPage() {
         setDefaultMaterial, duplicateMaterial,
     } = useMaterials()
 
-    const [activeTab, setActiveTab]             = useState<MaterialCategory | 'all'>('all')
-    const [formData, setFormData]               = useState<MaterialFormData>(EMPTY_FORM)
-    const [isAddOpen, setIsAddOpen]             = useState(false)
-    const [isEditOpen, setIsEditOpen]           = useState(false)
-    const [isDeleteOpen, setIsDeleteOpen]       = useState(false)
+    const [activeTab, setActiveTab]               = useState<MaterialCategory | 'all'>('all')
+    const [formData, setFormData]                 = useState<MaterialFormData>(EMPTY_FORM)
+    const [settingEntries, setSettingEntries]     = useState<SettingEntry[]>([])
+    const [isAddOpen, setIsAddOpen]               = useState(false)
+    const [isEditOpen, setIsEditOpen]             = useState(false)
+    const [isDeleteOpen, setIsDeleteOpen]         = useState(false)
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
-    const [isSaving, setIsSaving]               = useState(false)
-    const [isDeleting, setIsDeleting]           = useState(false)
+    const [isSaving, setIsSaving]                 = useState(false)
+    const [isDeleting, setIsDeleting]             = useState(false)
 
     // ─── Форма ────────────────────────────────────────────────────────────────
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,19 +207,25 @@ export default function MaterialsPage() {
             category: value,
             type:     MATERIAL_TYPES[value][0],
             diameter: value === 'filament' ? '1.75' : '',
-            settings: getDefaultSettings(value),
         }))
+        setSettingEntries(getEmptySuggestions(value))
     }
 
     const handleTypeChange = (value: string) => {
         setFormData(prev => ({ ...prev, type: value }))
     }
 
-    const handleSettingChange = (key: string, value: string) => {
-        setFormData(prev => ({ ...prev, settings: { ...prev.settings, [key]: value } }))
+    const resetForm = () => {
+        setFormData(EMPTY_FORM)
+        setSettingEntries([])
+        setSelectedMaterial(null)
     }
 
-    const resetForm = () => { setFormData(EMPTY_FORM); setSelectedMaterial(null) }
+    const openAddDialog = () => {
+        resetForm()
+        setSettingEntries(getEmptySuggestions('filament'))
+        setIsAddOpen(true)
+    }
 
     const openEditDialog = (material: Material) => {
         setSelectedMaterial(material)
@@ -172,14 +241,35 @@ export default function MaterialsPage() {
             is_default:   material.is_default,
             settings:     { ...material.settings },
         })
+        const existing = settingsToEntries(material.settings)
+        const existingKeys = new Set(existing.map(e => e.key))
+        const extra = SUGGESTED_PARAMS[material.category]
+            .filter(p => !existingKeys.has(p.key))
+            .map(p => ({ id: uid(), key: p.key, value: '', suggested: true }))
+        setSettingEntries([...existing, ...extra])
         setIsEditOpen(true)
     }
+
+    // ─── Entries ──────────────────────────────────────────────────────────────
+    const handleEntryKeyChange   = (id: string, key: string) =>
+        setSettingEntries(prev => prev.map(e => e.id === id ? { ...e, key, suggested: false } : e))
+    const handleEntryValueChange = (id: string, value: string) =>
+        setSettingEntries(prev => prev.map(e => e.id === id ? { ...e, value } : e))
+    const handleEntryRemove      = (id: string) =>
+        setSettingEntries(prev => prev.filter(e => e.id !== id))
+    const handleEntryAdd         = () =>
+        setSettingEntries(prev => [...prev, { id: uid(), key: '', value: '', suggested: false }])
+
+    const buildFormWithSettings = (): MaterialFormData => ({
+        ...formData,
+        settings: entriesToSettings(settingEntries),
+    })
 
     // ─── Действия ─────────────────────────────────────────────────────────────
     const handleAdd = async () => {
         if (!formData.name.trim()) return
         setIsSaving(true)
-        const ok = await createMaterial(formToApiData(formData))
+        const ok = await createMaterial(formToApiData(buildFormWithSettings()))
         setIsSaving(false)
         if (ok) { setIsAddOpen(false); resetForm() }
     }
@@ -187,7 +277,7 @@ export default function MaterialsPage() {
     const handleEdit = async () => {
         if (!selectedMaterial) return
         setIsSaving(true)
-        const ok = await updateMaterial(selectedMaterial.id, formToApiData(formData))
+        const ok = await updateMaterial(selectedMaterial.id, formToApiData(buildFormWithSettings()))
         setIsSaving(false)
         if (ok) { setIsEditOpen(false); resetForm() }
     }
@@ -201,8 +291,7 @@ export default function MaterialsPage() {
     }
 
     // ─── Производные данные ───────────────────────────────────────────────────
-    const filtered = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
-    // price_per_kg приходит из БД как строка — явно кастуем в число
+    const filtered   = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
     const prices     = materials.map(m => Number(m.price_per_kg))
     const totalPrice = prices.reduce((s, p) => s + p, 0)
     const avgPrice   = materials.length ? Math.round(totalPrice / materials.length) : 0
@@ -211,7 +300,6 @@ export default function MaterialsPage() {
     const diameters  = [...new Set(materials.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
 
-    // ─── Скелетон ─────────────────────────────────────────────────────────────
     if (isLoading) {
         return (
             <div className="container mx-auto p-6 max-w-7xl">
@@ -231,7 +319,7 @@ export default function MaterialsPage() {
 
     return (
         <div className="container mx-auto p-6 max-w-7xl">
-            {/* ─── Заголовок ─────────────────────────────────────────────────── */}
+            {/* Заголовок */}
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Материалы для печати</h1>
@@ -241,14 +329,14 @@ export default function MaterialsPage() {
                     <Button variant="outline" size="icon" onClick={() => fetchMaterials()} title="Обновить">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button onClick={() => { resetForm(); setIsAddOpen(true) }}>
+                    <Button onClick={openAddDialog}>
                         <Plus className="mr-2 h-4 w-4" />
                         Добавить материал
                     </Button>
                 </div>
             </div>
 
-            {/* ─── Статистика ────────────────────────────────────────────────── */}
+            {/* Статистика */}
             <div className="grid gap-4 md:grid-cols-4 mb-6">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -265,7 +353,6 @@ export default function MaterialsPage() {
                         </p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Средняя цена</CardTitle>
@@ -278,7 +365,6 @@ export default function MaterialsPage() {
                         </p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Диаметры</CardTitle>
@@ -291,7 +377,6 @@ export default function MaterialsPage() {
                         <p className="text-xs text-muted-foreground">Доступные диаметры филамента</p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Основной материал</CardTitle>
@@ -306,7 +391,7 @@ export default function MaterialsPage() {
                 </Card>
             </div>
 
-            {/* ─── Фильтр ────────────────────────────────────────────────────── */}
+            {/* Фильтр */}
             <Tabs defaultValue="all" className="mb-6" onValueChange={v => setActiveTab(v as MaterialCategory | 'all')}>
                 <TabsList>
                     <TabsTrigger value="all">Все</TabsTrigger>
@@ -316,15 +401,18 @@ export default function MaterialsPage() {
                 </TabsList>
             </Tabs>
 
-            {/* ─── Пустое состояние ──────────────────────────────────────────── */}
+            {/* Пустое состояние */}
             {filtered.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <Package className="h-12 w-12 text-muted-foreground/30 mb-4" />
                     <p className="text-muted-foreground">
-                        {activeTab === 'all' ? 'Материалы не добавлены' : `Нет материалов категории «${CATEGORY_LABELS[activeTab as MaterialCategory]}»`}
+                        {activeTab === 'all'
+                            ? 'Материалы не добавлены'
+                            : `Нет материалов категории «${CATEGORY_LABELS[activeTab as MaterialCategory]}»`
+                        }
                     </p>
                     {activeTab === 'all' && (
-                        <Button className="mt-4" onClick={() => { resetForm(); setIsAddOpen(true) }}>
+                        <Button className="mt-4" onClick={openAddDialog}>
                             <Plus className="mr-2 h-4 w-4" />
                             Добавить первый материал
                         </Button>
@@ -332,129 +420,21 @@ export default function MaterialsPage() {
                 </div>
             )}
 
-            {/* ─── Карточки ──────────────────────────────────────────────────── */}
+            {/* Карточки */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filtered.map(material => (
-                    <Card key={material.id} className={material.is_default ? 'border-primary' : ''}>
-                        <CardHeader className="pb-3">
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-1 min-w-0 pr-2">
-                                    <CardTitle className="flex items-center gap-2 flex-wrap">
-                                        {material.color && (
-                                            <div className="w-4 h-4 rounded-full shrink-0 border border-border"
-                                                style={{ backgroundColor: material.color }} />
-                                        )}
-                                        <span className="truncate">{material.name}</span>
-                                        {material.is_default && (
-                                            <Badge variant="default">
-                                                <Star className="h-3 w-3 mr-1 fill-current" />
-                                                Основной
-                                            </Badge>
-                                        )}
-                                    </CardTitle>
-                                    <CardDescription>
-                                        {[material.brand, material.type.toUpperCase()].filter(Boolean).join(' · ')}
-                                    </CardDescription>
-                                </div>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="shrink-0">
-                                            <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => openEditDialog(material)}>
-                                            <Edit className="mr-2 h-4 w-4" />
-                                            Редактировать
-                                        </DropdownMenuItem>
-                                        {!material.is_default && (
-                                            <DropdownMenuItem onClick={() => setDefaultMaterial(material.id)}>
-                                                <Star className="mr-2 h-4 w-4" />
-                                                Сделать основным
-                                            </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuItem onClick={() => duplicateMaterial(material)}>
-                                            <Copy className="mr-2 h-4 w-4" />
-                                            Дублировать
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            className="text-destructive"
-                                            onClick={() => { setSelectedMaterial(material); setIsDeleteOpen(true) }}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            Удалить
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </CardHeader>
-
-                        <CardContent className="pb-3">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Badge className={getCategoryColor(material.category)}>
-                                    {getCategoryIcon(material.category)}
-                                    <span className="ml-1">{CATEGORY_LABELS[material.category]}</span>
-                                </Badge>
-                            </div>
-
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Цена</span>
-                                    <span className="font-medium">{material.price_per_kg.toLocaleString()} ₽/кг</span>
-                                </div>
-                                {material.density && (
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Плотность</span>
-                                        <span className="font-medium">{material.density} г/см³</span>
-                                    </div>
-                                )}
-                                {material.diameter && (
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Диаметр</span>
-                                        <span className="font-medium">{material.diameter} мм</span>
-                                    </div>
-                                )}
-
-                                {Object.keys(material.settings).filter(k => k !== '__labels__').length > 0 && (
-                                    <>
-                                        <Separator className="my-2" />
-                                        <div>
-                                            <span className="text-muted-foreground text-xs">Характеристики</span>
-                                            <div className="grid grid-cols-2 gap-1 mt-1">
-                                                {(() => {
-                                                    let labels: Record<string, string> = {}
-                                                    try { labels = JSON.parse(material.settings.__labels__ ?? '{}') } catch {}
-                                                    return Object.entries(material.settings)
-                                                        .filter(([key]) => key !== '__labels__')
-                                                        .map(([key, value]) => (
-                                                            <div key={key} className="text-xs">
-                                                                <span className="text-muted-foreground">
-                                                                    {labels[key] ?? SETTING_LABELS[key] ?? key}:
-                                                                </span>{' '}
-                                                                <span className="font-medium">{value}</span>
-                                                            </div>
-                                                        ))
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </CardContent>
-
-                        <CardFooter className="text-xs text-muted-foreground border-t pt-3">
-                            <div className="flex justify-between w-full">
-                                <span>Добавлен: {new Date(material.created_at).toLocaleDateString('ru-RU')}</span>
-                                <span>ID: {material.id}</span>
-                            </div>
-                        </CardFooter>
-                    </Card>
+                    <MaterialCard
+                        key={material.id}
+                        material={material}
+                        onEdit={() => openEditDialog(material)}
+                        onDelete={() => { setSelectedMaterial(material); setIsDeleteOpen(true) }}
+                        onSetDefault={() => setDefaultMaterial(material.id)}
+                        onDuplicate={() => duplicateMaterial(material)}
+                    />
                 ))}
             </div>
 
-            {/* ─── Диалог добавления ─────────────────────────────────────────── */}
+            {/* Диалог добавления */}
             <Dialog open={isAddOpen} onOpenChange={open => { setIsAddOpen(open); if (!open) resetForm() }}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -463,11 +443,15 @@ export default function MaterialsPage() {
                     </DialogHeader>
                     <MaterialForm
                         formData={formData}
+                        settingEntries={settingEntries}
                         onInputChange={handleInputChange}
                         onCategoryChange={handleCategoryChange}
                         onTypeChange={handleTypeChange}
-                        onSettingChange={handleSettingChange}
                         onDefaultChange={checked => setFormData(prev => ({ ...prev, is_default: checked }))}
+                        onEntryKeyChange={handleEntryKeyChange}
+                        onEntryValueChange={handleEntryValueChange}
+                        onEntryRemove={handleEntryRemove}
+                        onEntryAdd={handleEntryAdd}
                     />
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSaving}>Отмена</Button>
@@ -478,7 +462,7 @@ export default function MaterialsPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ─── Диалог редактирования ─────────────────────────────────────── */}
+            {/* Диалог редактирования */}
             <Dialog open={isEditOpen} onOpenChange={open => { setIsEditOpen(open); if (!open) resetForm() }}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -487,11 +471,15 @@ export default function MaterialsPage() {
                     </DialogHeader>
                     <MaterialForm
                         formData={formData}
+                        settingEntries={settingEntries}
                         onInputChange={handleInputChange}
                         onCategoryChange={handleCategoryChange}
                         onTypeChange={handleTypeChange}
-                        onSettingChange={handleSettingChange}
                         onDefaultChange={checked => setFormData(prev => ({ ...prev, is_default: checked }))}
+                        onEntryKeyChange={handleEntryKeyChange}
+                        onEntryValueChange={handleEntryValueChange}
+                        onEntryRemove={handleEntryRemove}
+                        onEntryAdd={handleEntryAdd}
                     />
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSaving}>Отмена</Button>
@@ -502,7 +490,7 @@ export default function MaterialsPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ─── Диалог удаления ───────────────────────────────────────────── */}
+            {/* Диалог удаления */}
             <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
                 <DialogContent>
                     <DialogHeader>
@@ -524,18 +512,154 @@ export default function MaterialsPage() {
     )
 }
 
+// ─── Карточка материала ───────────────────────────────────────────────────────
+
+interface MaterialCardProps {
+    material: Material
+    onEdit: () => void
+    onDelete: () => void
+    onSetDefault: () => void
+    onDuplicate: () => void
+}
+
+function MaterialCard({ material, onEdit, onDelete, onSetDefault, onDuplicate }: MaterialCardProps) {
+    const settingsEntries = Object.entries(material.settings)
+    const hasSettings = settingsEntries.length > 0
+
+    return (
+        <Card className={material.is_default ? 'border-primary' : ''}>
+            <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                    <div className="space-y-1 min-w-0 pr-2">
+                        <CardTitle className="flex items-center gap-2 flex-wrap">
+                            {material.color && (
+                                <div
+                                    className="w-4 h-4 rounded-full shrink-0 border border-border"
+                                    style={{ backgroundColor: material.color }}
+                                />
+                            )}
+                            <span className="truncate">{material.name}</span>
+                            {material.is_default && (
+                                <Badge variant="default">
+                                    <Star className="h-3 w-3 mr-1 fill-current" />
+                                    Основной
+                                </Badge>
+                            )}
+                        </CardTitle>
+                        <CardDescription>
+                            {[material.brand, material.type.toUpperCase()].filter(Boolean).join(' · ')}
+                        </CardDescription>
+                    </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="shrink-0">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={onEdit}>
+                                <Edit className="mr-2 h-4 w-4" />Редактировать
+                            </DropdownMenuItem>
+                            {!material.is_default && (
+                                <DropdownMenuItem onClick={onSetDefault}>
+                                    <Star className="mr-2 h-4 w-4" />Сделать основным
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={onDuplicate}>
+                                <Copy className="mr-2 h-4 w-4" />Дублировать
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                                <Trash2 className="mr-2 h-4 w-4" />Удалить
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </CardHeader>
+
+            <CardContent className="pb-3">
+                <div className="flex items-center gap-2 mb-3">
+                    <Badge className={getCategoryColor(material.category)}>
+                        {getCategoryIcon(material.category)}
+                        <span className="ml-1">{CATEGORY_LABELS[material.category]}</span>
+                    </Badge>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Цена</span>
+                        <span className="font-medium">{Number(material.price_per_kg).toLocaleString()} ₽/кг</span>
+                    </div>
+                    {material.density && (
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Плотность</span>
+                            <span className="font-medium">{material.density} г/см³</span>
+                        </div>
+                    )}
+                    {material.diameter && (
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Диаметр</span>
+                            <span className="font-medium">{material.diameter} мм</span>
+                        </div>
+                    )}
+                </div>
+
+                {hasSettings && (
+                    <>
+                        <Separator className="my-3" />
+                        <div className="flex items-center gap-1 mb-2 text-xs text-muted-foreground">
+                            <Settings2 className="h-3 w-3" />
+                            <span>Характеристики</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {settingsEntries.map(([key, value]) => (
+                                <div
+                                    key={key}
+                                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
+                                    title={key}
+                                >
+                                    <span className="text-muted-foreground">{getParamLabel(key)}:</span>
+                                    <span className="font-medium">{value}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </CardContent>
+
+            <CardFooter className="text-xs text-muted-foreground border-t pt-3">
+                <div className="flex justify-between w-full">
+                    <span>Добавлен: {new Date(material.created_at).toLocaleDateString('ru-RU')}</span>
+                    <span>ID: {material.id}</span>
+                </div>
+            </CardFooter>
+        </Card>
+    )
+}
+
 // ─── Форма материала ──────────────────────────────────────────────────────────
 
 interface MaterialFormProps {
     formData: MaterialFormData
+    settingEntries: SettingEntry[]
     onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void
     onCategoryChange: (v: MaterialCategory) => void
     onTypeChange: (v: string) => void
-    onSettingChange: (key: string, value: string) => void
     onDefaultChange: (checked: boolean) => void
+    onEntryKeyChange: (id: string, key: string) => void
+    onEntryValueChange: (id: string, value: string) => void
+    onEntryRemove: (id: string) => void
+    onEntryAdd: () => void
 }
 
-function MaterialForm({ formData, onInputChange, onCategoryChange, onTypeChange, onSettingChange, onDefaultChange }: MaterialFormProps) {
+function MaterialForm({
+    formData, settingEntries,
+    onInputChange, onCategoryChange, onTypeChange, onDefaultChange,
+    onEntryKeyChange, onEntryValueChange, onEntryRemove, onEntryAdd,
+}: MaterialFormProps) {
+    const suggestions = SUGGESTED_PARAMS[formData.category]
+
     return (
         <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -614,48 +738,81 @@ function MaterialForm({ formData, onInputChange, onCategoryChange, onTypeChange,
 
             <Separator />
 
+            {/* Секция характеристик */}
             <div>
-                <Label className="mb-3 block">Технические характеристики</Label>
-                <div className="grid grid-cols-2 gap-4">
-                    {formData.category === 'filament' && (
-                        <>
-                            <SettingField label="Температура печати (°C)" id="recommended_temp" value={formData.settings.recommended_temp} placeholder="200-220" onChange={v => onSettingChange('recommended_temp', v)} />
-                            <SettingField label="Температура стола (°C)"  id="bed_temp"          value={formData.settings.bed_temp}          placeholder="60"      onChange={v => onSettingChange('bed_temp', v)} />
-                            <SettingField label="Температура сушки (°C)"  id="drying_temp"      value={formData.settings.drying_temp}       placeholder="45"      onChange={v => onSettingChange('drying_temp', v)} />
-                            <SettingField label="Время сушки (ч)"         id="drying_time"      value={formData.settings.drying_time}       placeholder="4"       onChange={v => onSettingChange('drying_time', v)} />
-                        </>
-                    )}
-                    {formData.category === 'resin' && (
-                        <>
-                            <SettingField label="Температура (°C)"        id="recommended_temp" value={formData.settings.recommended_temp} placeholder="25-35"   onChange={v => onSettingChange('recommended_temp', v)} />
-                            <SettingField label="Вязкость (cPs)"          id="viscosity"        value={formData.settings.viscosity}        placeholder="200-300" onChange={v => onSettingChange('viscosity', v)} />
-                            <SettingField label="Длина волны (нм)"        id="wavelength"       value={formData.settings.wavelength}       placeholder="405"     onChange={v => onSettingChange('wavelength', v)} />
-                            <SettingField label="Время экспозиции (с)"    id="exposure_time"    value={formData.settings.exposure_time}    placeholder="2.5"     onChange={v => onSettingChange('exposure_time', v)} />
-                        </>
-                    )}
-                    {formData.category === 'powder' && (
-                        <>
-                            <SettingField label="Размер частиц (мкм)"     id="particle_size"    value={formData.settings.particle_size}    placeholder="50-80"   onChange={v => onSettingChange('particle_size', v)} />
-                            <SettingField label="Температура плавления"   id="melting_point"    value={formData.settings.melting_point}    placeholder="178"     onChange={v => onSettingChange('melting_point', v)} />
-                            <SettingField label="Температура печати (°C)" id="recommended_temp" value={formData.settings.recommended_temp} placeholder="170-180" onChange={v => onSettingChange('recommended_temp', v)} />
-                            <SettingField label="Толщина слоя (мм)"       id="layer_thickness"  value={formData.settings.layer_thickness}  placeholder="0.1"     onChange={v => onSettingChange('layer_thickness', v)} />
-                        </>
-                    )}
-                    {formData.category === 'other' && (
-                        <>
-                            <div className="space-y-2 col-span-2">
-                                <Label htmlFor="notes">Примечания</Label>
-                                <Textarea
-                                    id="notes"
-                                    value={formData.settings.notes ?? ''}
-                                    onChange={e => onSettingChange('notes', e.target.value)}
-                                    placeholder="Дополнительная информация о материале"
-                                />
+                <div className="flex items-center justify-between mb-1">
+                    <div>
+                        <Label className="block">Технические характеристики</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Необязательно. Незаполненные строки не сохраняются.
+                        </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={onEntryAdd}>
+                        <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                        Добавить
+                    </Button>
+                </div>
+
+                {settingEntries.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded-md mt-3">
+                        Нет характеристик. Нажмите «Добавить» для создания.
+                    </p>
+                )}
+
+                <div className="space-y-2 mt-3">
+                    {settingEntries.map(entry => {
+                        const hint = suggestions.find(s => s.key === entry.key)
+                        const isTextarea = hint?.textarea && entry.suggested
+
+                        return (
+                            <div key={entry.id} className="flex items-start gap-2">
+                                {/* Ключ */}
+                                <div className="w-[45%]">
+                                    {entry.suggested && hint ? (
+                                        <div className="flex h-9 items-center rounded-md border border-dashed bg-muted/30 px-3 text-sm text-muted-foreground select-none">
+                                            {hint.label}
+                                        </div>
+                                    ) : (
+                                        <Input
+                                            value={entry.key}
+                                            placeholder="название"
+                                            onChange={e => onEntryKeyChange(entry.id, e.target.value)}
+                                        />
+                                    )}
+                                </div>
+
+                                {/* Значение */}
+                                <div className="flex-1">
+                                    {isTextarea ? (
+                                        <Textarea
+                                            value={entry.value}
+                                            placeholder={hint?.placeholder ?? 'значение'}
+                                            className="min-h-[36px] resize-none"
+                                            rows={2}
+                                            onChange={e => onEntryValueChange(entry.id, e.target.value)}
+                                        />
+                                    ) : (
+                                        <Input
+                                            value={entry.value}
+                                            placeholder={hint?.placeholder ?? 'значение'}
+                                            onChange={e => onEntryValueChange(entry.id, e.target.value)}
+                                        />
+                                    )}
+                                </div>
+
+                                {/* Удалить */}
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="shrink-0 text-muted-foreground hover:text-destructive mt-0"
+                                    onClick={() => onEntryRemove(entry.id)}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
                             </div>
-                            <SettingField label="Температура хранения (°C)" id="storage_temp" value={formData.settings.storage_temp} placeholder="20-25" onChange={v => onSettingChange('storage_temp', v)} />
-                            <SettingField label="Срок годности (мес)"       id="shelf_life"   value={formData.settings.shelf_life}   placeholder="12"    onChange={v => onSettingChange('shelf_life', v)} />
-                        </>
-                    )}
+                        )
+                    })}
                 </div>
             </div>
 
@@ -663,17 +820,6 @@ function MaterialForm({ formData, onInputChange, onCategoryChange, onTypeChange,
                 <Switch id="is_default" checked={formData.is_default} onCheckedChange={onDefaultChange} />
                 <Label htmlFor="is_default">Сделать основным материалом</Label>
             </div>
-        </div>
-    )
-}
-
-function SettingField({ label, id, value, placeholder, onChange }: {
-    label: string; id: string; value?: string; placeholder: string; onChange: (v: string) => void
-}) {
-    return (
-        <div className="space-y-2">
-            <Label htmlFor={id}>{label}</Label>
-            <Input id={id} value={value ?? ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
         </div>
     )
 }

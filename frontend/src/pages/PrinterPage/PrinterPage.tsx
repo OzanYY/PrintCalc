@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
     Plus, Printer, Edit, Trash2, MoreVertical,
     Clock, Zap, DollarSign, Copy, Star, Loader2, RefreshCw,
+    X, PlusCircle, Settings2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,8 +27,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { PRINTER_TYPES, type Printer as PrinterType_, type CreatePrinterData } from '@/api/printers'
 import { usePrinters } from '@/hooks/usePrinters'
 
-// ─── Типы ─────────────────────────────────────────────────────────────────────
-
 type PrinterTech = typeof PRINTER_TYPES[number]
 
 interface PrinterFormData {
@@ -41,19 +40,91 @@ interface PrinterFormData {
     settings: Record<string, string>
 }
 
+interface SettingEntry {
+    id: string
+    key: string
+    value: string
+    suggested?: boolean
+}
+
+interface SuggestedParam {
+    key: string
+    label: string
+    placeholder: string
+}
+
+const SUGGESTED_PARAMS: Record<PrinterTech, SuggestedParam[]> = {
+    FDM: [
+        { key: 'nozzle_size',       label: 'Диаметр сопла (мм)',    placeholder: '0.4'         },
+        { key: 'max_temp',          label: 'Макс. температура (°C)', placeholder: '260'         },
+        { key: 'build_volume',      label: 'Область построения',     placeholder: '220x220x250' },
+        { key: 'filament_diameter', label: 'Диаметр филамента (мм)', placeholder: '1.75'        },
+    ],
+    SLA: [
+        { key: 'layer_height',  label: 'Высота слоя (мм)',     placeholder: '0.05'        },
+        { key: 'exposure_time', label: 'Время экспозиции (с)', placeholder: '2.5'         },
+        { key: 'build_volume',  label: 'Область построения',   placeholder: '192x120x245' },
+        { key: 'resolution',    label: 'Разрешение',           placeholder: '4K'          },
+    ],
+    SLS: [
+        { key: 'laser_power',     label: 'Мощность лазера (Вт)', placeholder: '10'          },
+        { key: 'layer_thickness', label: 'Толщина слоя (мм)',    placeholder: '0.1'         },
+        { key: 'build_volume',    label: 'Область построения',   placeholder: '165x165x300' },
+        { key: 'material',        label: 'Материал',             placeholder: 'Nylon'       },
+    ],
+    PolyJet: [
+        { key: 'resolution',      label: 'Разрешение',           placeholder: '16μ'         },
+        { key: 'material_count',  label: 'Кол-во материалов',    placeholder: '2'           },
+        { key: 'build_volume',    label: 'Область построения',   placeholder: '300x200x150' },
+        { key: 'layer_thickness', label: 'Толщина слоя (мм)',    placeholder: '0.016'       },
+    ],
+}
+
+const PARAM_LABELS: Record<string, string> = {
+    nozzle_size:       'Сопло',
+    max_temp:          'Макс. t°',
+    build_volume:      'Область',
+    filament_diameter: 'Филамент',
+    layer_height:      'Слой',
+    exposure_time:     'Экспозиция',
+    resolution:        'Разрешение',
+    laser_power:       'Лазер',
+    layer_thickness:   'Слой',
+    material:          'Материал',
+    material_count:    'Материалов',
+}
+
+function getParamLabel(key: string): string {
+    return PARAM_LABELS[key] ?? key
+}
+
+let _idCounter = 0
+function uid() { return String(++_idCounter) }
+
+function settingsToEntries(settings: Record<string, string>): SettingEntry[] {
+    return Object.entries(settings).map(([key, value]) => ({ id: uid(), key, value }))
+}
+
+function getEmptySuggestions(type: PrinterTech): SettingEntry[] {
+    return SUGGESTED_PARAMS[type].map(p => ({
+        id: uid(), key: p.key, value: '', suggested: true,
+    }))
+}
+
+function entriesToSettings(entries: SettingEntry[]): Record<string, string> {
+    const result: Record<string, string> = {}
+    for (const e of entries) {
+        const k = e.key.trim()
+        const v = e.value.trim()
+        if (k && v) result[k] = v
+    }
+    return result
+}
+
 const EMPTY_FORM: PrinterFormData = {
     name: '', type: 'FDM', model: '',
     purchase_price: '', print_lifetime_hours: '', power_consumption: '',
-    is_default: false, settings: getDefaultSettings('FDM'),
-}
-
-function getDefaultSettings(type: PrinterTech): Record<string, string> {
-    switch (type) {
-        case 'FDM':     return { nozzle_size: '0.4', max_temp: '260', build_volume: '220x220x250', filament_diameter: '1.75' }
-        case 'SLA':     return { layer_height: '0.05', exposure_time: '2.5', build_volume: '192x120x245', resolution: '2K' }
-        case 'SLS':     return { laser_power: '10', layer_thickness: '0.1', build_volume: '165x165x300', material: 'Nylon' }
-        case 'PolyJet': return { resolution: '16μ', material_count: '2', build_volume: '300x200x150', layer_thickness: '0.016' }
-    }
+    is_default: false, settings: {},
 }
 
 function getTypeColor(type: PrinterTech) {
@@ -78,8 +149,6 @@ function formToApiData(form: PrinterFormData): CreatePrinterData {
     }
 }
 
-// ─── Страница ─────────────────────────────────────────────────────────────────
-
 export default function PrintersPage() {
     const {
         printers, isLoading, fetchPrinters,
@@ -87,32 +156,36 @@ export default function PrintersPage() {
         setDefaultPrinter, duplicatePrinter,
     } = usePrinters()
 
-    const [activeTab, setActiveTab]               = useState('all')
-    const [formData, setFormData]                 = useState<PrinterFormData>(EMPTY_FORM)
-    const [isAddOpen, setIsAddOpen]               = useState(false)
-    const [isEditOpen, setIsEditOpen]             = useState(false)
-    const [isDeleteOpen, setIsDeleteOpen]         = useState(false)
-    const [selectedPrinter, setSelectedPrinter]   = useState<PrinterType_ | null>(null)
-    const [isSaving, setIsSaving]                 = useState(false)
-    const [isDeleting, setIsDeleting]             = useState(false)
+    const [activeTab, setActiveTab]             = useState('all')
+    const [formData, setFormData]               = useState<PrinterFormData>(EMPTY_FORM)
+    const [settingEntries, setSettingEntries]   = useState<SettingEntry[]>([])
+    const [isAddOpen, setIsAddOpen]             = useState(false)
+    const [isEditOpen, setIsEditOpen]           = useState(false)
+    const [isDeleteOpen, setIsDeleteOpen]       = useState(false)
+    const [selectedPrinter, setSelectedPrinter] = useState<PrinterType_ | null>(null)
+    const [isSaving, setIsSaving]               = useState(false)
+    const [isDeleting, setIsDeleting]           = useState(false)
 
-    // ─── Форма ────────────────────────────────────────────────────────────────
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target
         setFormData(prev => ({ ...prev, [name]: value }))
     }
 
     const handleTypeChange = (value: PrinterTech) => {
-        setFormData(prev => ({ ...prev, type: value, settings: getDefaultSettings(value) }))
-    }
-
-    const handleSettingChange = (key: string, value: string) => {
-        setFormData(prev => ({ ...prev, settings: { ...prev.settings, [key]: value } }))
+        setFormData(prev => ({ ...prev, type: value }))
+        setSettingEntries(getEmptySuggestions(value))
     }
 
     const resetForm = () => {
         setFormData(EMPTY_FORM)
+        setSettingEntries([])
         setSelectedPrinter(null)
+    }
+
+    const openAddDialog = () => {
+        resetForm()
+        setSettingEntries(getEmptySuggestions('FDM'))
+        setIsAddOpen(true)
     }
 
     const openEditDialog = (printer: PrinterType_) => {
@@ -127,6 +200,12 @@ export default function PrintersPage() {
             is_default:           printer.is_default,
             settings:             { ...printer.settings },
         })
+        const existing = settingsToEntries(printer.settings)
+        const existingKeys = new Set(existing.map(e => e.key))
+        const extra = SUGGESTED_PARAMS[printer.type]
+            .filter(p => !existingKeys.has(p.key))
+            .map(p => ({ id: uid(), key: p.key, value: '', suggested: true }))
+        setSettingEntries([...existing, ...extra])
         setIsEditOpen(true)
     }
 
@@ -135,11 +214,24 @@ export default function PrintersPage() {
         setIsDeleteOpen(true)
     }
 
-    // ─── Действия ─────────────────────────────────────────────────────────────
+    const handleEntryKeyChange   = (id: string, key: string) =>
+        setSettingEntries(prev => prev.map(e => e.id === id ? { ...e, key, suggested: false } : e))
+    const handleEntryValueChange = (id: string, value: string) =>
+        setSettingEntries(prev => prev.map(e => e.id === id ? { ...e, value } : e))
+    const handleEntryRemove      = (id: string) =>
+        setSettingEntries(prev => prev.filter(e => e.id !== id))
+    const handleEntryAdd         = () =>
+        setSettingEntries(prev => [...prev, { id: uid(), key: '', value: '', suggested: false }])
+
+    const buildFormWithSettings = (): PrinterFormData => ({
+        ...formData,
+        settings: entriesToSettings(settingEntries),
+    })
+
     const handleAdd = async () => {
         if (!formData.name.trim()) return
         setIsSaving(true)
-        const ok = await createPrinter(formToApiData(formData))
+        const ok = await createPrinter(formToApiData(buildFormWithSettings()))
         setIsSaving(false)
         if (ok) { setIsAddOpen(false); resetForm() }
     }
@@ -147,7 +239,7 @@ export default function PrintersPage() {
     const handleEdit = async () => {
         if (!selectedPrinter) return
         setIsSaving(true)
-        const ok = await updatePrinter(selectedPrinter.id, formToApiData(formData))
+        const ok = await updatePrinter(selectedPrinter.id, formToApiData(buildFormWithSettings()))
         setIsSaving(false)
         if (ok) { setIsEditOpen(false); resetForm() }
     }
@@ -160,16 +252,11 @@ export default function PrintersPage() {
         if (ok) { setIsDeleteOpen(false); setSelectedPrinter(null) }
     }
 
-    // ─── Производные данные ───────────────────────────────────────────────────
-    const filteredPrinters = activeTab === 'all'
-        ? printers
-        : printers.filter(p => p.type === activeTab)
-
+    const filteredPrinters  = activeTab === 'all' ? printers : printers.filter(p => p.type === activeTab)
     const totalLifetimeHours = printers.reduce((s, p) => s + p.print_lifetime_hours, 0)
     const totalInvestment    = printers.reduce((s, p) => s + p.purchase_price, 0)
     const defaultPrinter     = printers.find(p => p.is_default)
 
-    // ─── Скелетон ─────────────────────────────────────────────────────────────
     if (isLoading) {
         return (
             <div className="container mx-auto p-6 max-w-7xl">
@@ -181,14 +268,10 @@ export default function PrintersPage() {
                     <Skeleton className="h-10 w-40" />
                 </div>
                 <div className="grid gap-4 md:grid-cols-4 mb-6">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton key={i} className="h-24 rounded-lg" />
-                    ))}
+                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
                 </div>
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-64 rounded-lg" />
-                    ))}
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-64 rounded-lg" />)}
                 </div>
             </div>
         )
@@ -196,26 +279,22 @@ export default function PrintersPage() {
 
     return (
         <div className="container mx-auto p-6 max-w-7xl">
-            {/* ─── Заголовок ─────────────────────────────────────────────────── */}
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">3D Принтеры</h1>
-                    <p className="text-muted-foreground">
-                        Управляйте вашими 3D принтерами и их настройками
-                    </p>
+                    <p className="text-muted-foreground">Управляйте вашими 3D принтерами и их настройками</p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" size="icon" onClick={fetchPrinters} title="Обновить">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button onClick={() => { resetForm(); setIsAddOpen(true) }}>
+                    <Button onClick={openAddDialog}>
                         <Plus className="mr-2 h-4 w-4" />
                         Добавить принтер
                     </Button>
                 </div>
             </div>
 
-            {/* ─── Статистика ────────────────────────────────────────────────── */}
             <div className="grid gap-4 md:grid-cols-4 mb-6">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -225,12 +304,10 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{printers.length}</div>
                         <p className="text-xs text-muted-foreground">
-                            {printers.filter(p => p.type === 'FDM').length} FDM ·{' '}
-                            {printers.filter(p => p.type === 'SLA').length} SLA
+                            {printers.filter(p => p.type === 'FDM').length} FDM · {printers.filter(p => p.type === 'SLA').length} SLA
                         </p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Общий ресурс</CardTitle>
@@ -239,53 +316,41 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{totalLifetimeHours} ч</div>
                         <p className="text-xs text-muted-foreground">
-                            Среднее:{' '}
-                            {printers.length ? Math.round(totalLifetimeHours / printers.length) : 0} ч/принтер
+                            Среднее: {printers.length ? Math.round(totalLifetimeHours / printers.length) : 0} ч/принтер
                         </p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Общие инвестиции</CardTitle>
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{(totalInvestment - 0).toLocaleString()} ₽</div>
+                        <div className="text-2xl font-bold">{totalInvestment.toLocaleString()} ₽</div>
                         <p className="text-xs text-muted-foreground">
-                            Средняя:{' '}
-                            {printers.length ? Math.round(totalInvestment / printers.length).toLocaleString() : 0} ₽
+                            Средняя: {printers.length ? Math.round(totalInvestment / printers.length).toLocaleString() : 0} ₽
                         </p>
                     </CardContent>
                 </Card>
-
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Основной принтер</CardTitle>
                         <Star className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold truncate">
-                            {defaultPrinter?.name ?? 'Не выбран'}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            {defaultPrinter?.type ?? 'Установите основной принтер'}
-                        </p>
+                        <div className="text-2xl font-bold truncate">{defaultPrinter?.name ?? 'Не выбран'}</div>
+                        <p className="text-xs text-muted-foreground">{defaultPrinter?.type ?? 'Установите основной принтер'}</p>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* ─── Фильтр по типу ────────────────────────────────────────────── */}
             <Tabs defaultValue="all" className="mb-6" onValueChange={setActiveTab}>
                 <TabsList>
                     <TabsTrigger value="all">Все</TabsTrigger>
-                    {PRINTER_TYPES.map(type => (
-                        <TabsTrigger key={type} value={type}>{type}</TabsTrigger>
-                    ))}
+                    {PRINTER_TYPES.map(type => <TabsTrigger key={type} value={type}>{type}</TabsTrigger>)}
                 </TabsList>
             </Tabs>
 
-            {/* ─── Пустое состояние ──────────────────────────────────────────── */}
             {filteredPrinters.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                     <Printer className="h-12 w-12 text-muted-foreground/30 mb-4" />
@@ -293,7 +358,7 @@ export default function PrintersPage() {
                         {activeTab === 'all' ? 'Принтеры не добавлены' : `Нет принтеров типа ${activeTab}`}
                     </p>
                     {activeTab === 'all' && (
-                        <Button className="mt-4" onClick={() => { resetForm(); setIsAddOpen(true) }}>
+                        <Button className="mt-4" onClick={openAddDialog}>
                             <Plus className="mr-2 h-4 w-4" />
                             Добавить первый принтер
                         </Button>
@@ -301,113 +366,20 @@ export default function PrintersPage() {
                 </div>
             )}
 
-            {/* ─── Карточки принтеров ────────────────────────────────────────── */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredPrinters.map(printer => (
-                    <Card key={printer.id} className={printer.is_default ? 'border-primary' : ''}>
-                        <CardHeader className="pb-3">
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-1 min-w-0 pr-2">
-                                    <CardTitle className="flex items-center gap-2 flex-wrap">
-                                        <span className="truncate">{printer.name}</span>
-                                        {printer.is_default && (
-                                            <Badge variant="default">
-                                                <Star className="h-3 w-3 mr-1 fill-current" />
-                                                Основной
-                                            </Badge>
-                                        )}
-                                    </CardTitle>
-                                    <CardDescription>{printer.model ?? '—'}</CardDescription>
-                                </div>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="shrink-0">
-                                            <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => openEditDialog(printer)}>
-                                            <Edit className="mr-2 h-4 w-4" />
-                                            Редактировать
-                                        </DropdownMenuItem>
-                                        {!printer.is_default && (
-                                            <DropdownMenuItem onClick={() => setDefaultPrinter(printer.id)}>
-                                                <Star className="mr-2 h-4 w-4" />
-                                                Сделать основным
-                                            </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuItem onClick={() => duplicatePrinter(printer)}>
-                                            <Copy className="mr-2 h-4 w-4" />
-                                            Дублировать
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                            className="text-destructive"
-                                            onClick={() => openDeleteDialog(printer)}
-                                        >
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                            Удалить
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </CardHeader>
-
-                        <CardContent className="pb-3">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Badge className={getTypeColor(printer.type)}>{printer.type}</Badge>
-                            </div>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground flex items-center gap-1">
-                                        <Clock className="h-3 w-3" /> Ресурс
-                                    </span>
-                                    <span className="font-medium">{printer.print_lifetime_hours} ч</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground flex items-center gap-1">
-                                        <Zap className="h-3 w-3" /> Энергопотребление
-                                    </span>
-                                    <span className="font-medium">{printer.power_consumption} Вт</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground flex items-center gap-1">
-                                        <DollarSign className="h-3 w-3" /> Цена
-                                    </span>
-                                    <span className="font-medium">{printer.purchase_price.toLocaleString()} ₽</span>
-                                </div>
-
-                                {Object.keys(printer.settings).length > 0 && (
-                                    <>
-                                        <Separator className="my-2" />
-                                        <div>
-                                            <span className="text-muted-foreground text-xs">Настройки</span>
-                                            <div className="grid grid-cols-2 gap-1 mt-1">
-                                                {Object.entries(printer.settings).map(([key, value]) => (
-                                                    <div key={key} className="text-xs">
-                                                        <span className="text-muted-foreground">{key}:</span>{' '}
-                                                        <span className="font-medium">{value}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </CardContent>
-
-                        <CardFooter className="text-xs text-muted-foreground border-t pt-3">
-                            <div className="flex justify-between w-full">
-                                <span>Добавлен: {new Date(printer.created_at).toLocaleDateString('ru-RU')}</span>
-                                <span>ID: {printer.id}</span>
-                            </div>
-                        </CardFooter>
-                    </Card>
+                    <PrinterCard
+                        key={printer.id}
+                        printer={printer}
+                        onEdit={() => openEditDialog(printer)}
+                        onDelete={() => openDeleteDialog(printer)}
+                        onSetDefault={() => setDefaultPrinter(printer.id)}
+                        onDuplicate={() => duplicatePrinter(printer)}
+                    />
                 ))}
             </div>
 
-            {/* ─── Диалог добавления ─────────────────────────────────────────── */}
+            {/* Диалог добавления */}
             <Dialog open={isAddOpen} onOpenChange={open => { setIsAddOpen(open); if (!open) resetForm() }}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -416,15 +388,17 @@ export default function PrintersPage() {
                     </DialogHeader>
                     <PrinterForm
                         formData={formData}
+                        settingEntries={settingEntries}
                         onInputChange={handleInputChange}
                         onTypeChange={handleTypeChange}
-                        onSettingChange={handleSettingChange}
                         onDefaultChange={checked => setFormData(prev => ({ ...prev, is_default: checked }))}
+                        onEntryKeyChange={handleEntryKeyChange}
+                        onEntryValueChange={handleEntryValueChange}
+                        onEntryRemove={handleEntryRemove}
+                        onEntryAdd={handleEntryAdd}
                     />
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSaving}>
-                            Отмена
-                        </Button>
+                        <Button variant="outline" onClick={() => setIsAddOpen(false)} disabled={isSaving}>Отмена</Button>
                         <Button onClick={handleAdd} disabled={isSaving || !formData.name.trim()}>
                             {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Сохранение...</> : 'Добавить'}
                         </Button>
@@ -432,7 +406,7 @@ export default function PrintersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ─── Диалог редактирования ─────────────────────────────────────── */}
+            {/* Диалог редактирования */}
             <Dialog open={isEditOpen} onOpenChange={open => { setIsEditOpen(open); if (!open) resetForm() }}>
                 <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
@@ -441,15 +415,17 @@ export default function PrintersPage() {
                     </DialogHeader>
                     <PrinterForm
                         formData={formData}
+                        settingEntries={settingEntries}
                         onInputChange={handleInputChange}
                         onTypeChange={handleTypeChange}
-                        onSettingChange={handleSettingChange}
                         onDefaultChange={checked => setFormData(prev => ({ ...prev, is_default: checked }))}
+                        onEntryKeyChange={handleEntryKeyChange}
+                        onEntryValueChange={handleEntryValueChange}
+                        onEntryRemove={handleEntryRemove}
+                        onEntryAdd={handleEntryAdd}
                     />
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSaving}>
-                            Отмена
-                        </Button>
+                        <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSaving}>Отмена</Button>
                         <Button onClick={handleEdit} disabled={isSaving || !formData.name.trim()}>
                             {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Сохранение...</> : 'Сохранить'}
                         </Button>
@@ -457,20 +433,17 @@ export default function PrintersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ─── Диалог удаления ───────────────────────────────────────────── */}
+            {/* Диалог удаления */}
             <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Удалить принтер</DialogTitle>
                         <DialogDescription>
-                            Вы уверены, что хотите удалить принтер «{selectedPrinter?.name}»?
-                            Это действие нельзя отменить.
+                            Вы уверены, что хотите удалить принтер «{selectedPrinter?.name}»? Это действие нельзя отменить.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={isDeleting}>
-                            Отмена
-                        </Button>
+                        <Button variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={isDeleting}>Отмена</Button>
                         <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
                             {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Удаление...</> : 'Удалить'}
                         </Button>
@@ -481,17 +454,144 @@ export default function PrintersPage() {
     )
 }
 
+// ─── Карточка принтера ────────────────────────────────────────────────────────
+
+interface PrinterCardProps {
+    printer: PrinterType_
+    onEdit: () => void
+    onDelete: () => void
+    onSetDefault: () => void
+    onDuplicate: () => void
+}
+
+function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: PrinterCardProps) {
+    const settingsEntries = Object.entries(printer.settings)
+    const hasSettings = settingsEntries.length > 0
+
+    return (
+        <Card className={printer.is_default ? 'border-primary' : ''}>
+            <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                    <div className="space-y-1 min-w-0 pr-2">
+                        <CardTitle className="flex items-center gap-2 flex-wrap">
+                            <span className="truncate">{printer.name}</span>
+                            {printer.is_default && (
+                                <Badge variant="default">
+                                    <Star className="h-3 w-3 mr-1 fill-current" />
+                                    Основной
+                                </Badge>
+                            )}
+                        </CardTitle>
+                        <CardDescription>{printer.model ?? '—'}</CardDescription>
+                    </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="shrink-0">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={onEdit}>
+                                <Edit className="mr-2 h-4 w-4" />Редактировать
+                            </DropdownMenuItem>
+                            {!printer.is_default && (
+                                <DropdownMenuItem onClick={onSetDefault}>
+                                    <Star className="mr-2 h-4 w-4" />Сделать основным
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={onDuplicate}>
+                                <Copy className="mr-2 h-4 w-4" />Дублировать
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                                <Trash2 className="mr-2 h-4 w-4" />Удалить
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </CardHeader>
+
+            <CardContent className="pb-3">
+                <div className="flex items-center gap-2 mb-3">
+                    <Badge className={getTypeColor(printer.type)}>{printer.type}</Badge>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> Ресурс
+                        </span>
+                        <span className="font-medium">{printer.print_lifetime_hours} ч</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                            <Zap className="h-3 w-3" /> Мощность
+                        </span>
+                        <span className="font-medium">{printer.power_consumption} Вт</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                            <DollarSign className="h-3 w-3" /> Стоимость
+                        </span>
+                        <span className="font-medium">{printer.purchase_price.toLocaleString()} ₽</span>
+                    </div>
+                </div>
+
+                {hasSettings && (
+                    <>
+                        <Separator className="my-3" />
+                        <div className="flex items-center gap-1 mb-2 text-xs text-muted-foreground">
+                            <Settings2 className="h-3 w-3" />
+                            <span>Параметры</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {settingsEntries.map(([key, value]) => (
+                                <div
+                                    key={key}
+                                    className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
+                                    title={key}
+                                >
+                                    <span className="text-muted-foreground">{getParamLabel(key)}:</span>
+                                    <span className="font-medium">{value}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </CardContent>
+
+            <CardFooter className="text-xs text-muted-foreground border-t pt-3">
+                <div className="flex justify-between w-full">
+                    <span>Добавлен: {new Date(printer.created_at).toLocaleDateString('ru-RU')}</span>
+                    <span>ID: {printer.id}</span>
+                </div>
+            </CardFooter>
+        </Card>
+    )
+}
+
 // ─── Форма принтера ───────────────────────────────────────────────────────────
 
 interface PrinterFormProps {
     formData: PrinterFormData
+    settingEntries: SettingEntry[]
     onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void
     onTypeChange: (value: PrinterTech) => void
-    onSettingChange: (key: string, value: string) => void
     onDefaultChange: (checked: boolean) => void
+    onEntryKeyChange: (id: string, key: string) => void
+    onEntryValueChange: (id: string, value: string) => void
+    onEntryRemove: (id: string) => void
+    onEntryAdd: () => void
 }
 
-function PrinterForm({ formData, onInputChange, onTypeChange, onSettingChange, onDefaultChange }: PrinterFormProps) {
+function PrinterForm({
+    formData, settingEntries,
+    onInputChange, onTypeChange, onDefaultChange,
+    onEntryKeyChange, onEntryValueChange, onEntryRemove, onEntryAdd,
+}: PrinterFormProps) {
+    const suggestions = SUGGESTED_PARAMS[formData.type]
+
     return (
         <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -532,41 +632,67 @@ function PrinterForm({ formData, onInputChange, onTypeChange, onSettingChange, o
 
             <Separator />
 
+            {/* Секция параметров */}
             <div>
-                <Label className="mb-3 block">Настройки принтера</Label>
-                <div className="grid grid-cols-2 gap-4">
-                    {formData.type === 'FDM' && (
-                        <>
-                            <SettingField label="Диаметр сопла (мм)"    id="nozzle_size"       value={formData.settings.nozzle_size}       placeholder="0.4"        onChange={v => onSettingChange('nozzle_size', v)} />
-                            <SettingField label="Макс. температура (°C)" id="max_temp"          value={formData.settings.max_temp}          placeholder="260"        onChange={v => onSettingChange('max_temp', v)} />
-                            <SettingField label="Область построения (мм)"id="build_volume"      value={formData.settings.build_volume}      placeholder="220x220x250"onChange={v => onSettingChange('build_volume', v)} />
-                            <SettingField label="Диаметр филамента (мм)" id="filament_diameter" value={formData.settings.filament_diameter} placeholder="1.75"       onChange={v => onSettingChange('filament_diameter', v)} />
-                        </>
-                    )}
-                    {formData.type === 'SLA' && (
-                        <>
-                            <SettingField label="Высота слоя (мм)"       id="layer_height"   value={formData.settings.layer_height}   placeholder="0.05"       onChange={v => onSettingChange('layer_height', v)} />
-                            <SettingField label="Время экспозиции (с)"   id="exposure_time"  value={formData.settings.exposure_time}  placeholder="2.5"        onChange={v => onSettingChange('exposure_time', v)} />
-                            <SettingField label="Область построения (мм)"id="build_volume"   value={formData.settings.build_volume}   placeholder="192x120x245"onChange={v => onSettingChange('build_volume', v)} />
-                            <SettingField label="Разрешение"             id="resolution"     value={formData.settings.resolution}     placeholder="4K"         onChange={v => onSettingChange('resolution', v)} />
-                        </>
-                    )}
-                    {formData.type === 'SLS' && (
-                        <>
-                            <SettingField label="Мощность лазера (Вт)"  id="laser_power"      value={formData.settings.laser_power}      placeholder="10"         onChange={v => onSettingChange('laser_power', v)} />
-                            <SettingField label="Толщина слоя (мм)"     id="layer_thickness"  value={formData.settings.layer_thickness}  placeholder="0.1"        onChange={v => onSettingChange('layer_thickness', v)} />
-                            <SettingField label="Область построения (мм)"id="build_volume"    value={formData.settings.build_volume}    placeholder="165x165x300"onChange={v => onSettingChange('build_volume', v)} />
-                            <SettingField label="Материал"              id="material"         value={formData.settings.material}         placeholder="Nylon"      onChange={v => onSettingChange('material', v)} />
-                        </>
-                    )}
-                    {formData.type === 'PolyJet' && (
-                        <>
-                            <SettingField label="Разрешение"             id="resolution"      value={formData.settings.resolution}      placeholder="16μ"        onChange={v => onSettingChange('resolution', v)} />
-                            <SettingField label="Кол-во материалов"     id="material_count"  value={formData.settings.material_count}  placeholder="2"          onChange={v => onSettingChange('material_count', v)} />
-                            <SettingField label="Область построения (мм)"id="build_volume"   value={formData.settings.build_volume}   placeholder="300x200x150"onChange={v => onSettingChange('build_volume', v)} />
-                            <SettingField label="Толщина слоя (мм)"     id="layer_thickness" value={formData.settings.layer_thickness} placeholder="0.016"      onChange={v => onSettingChange('layer_thickness', v)} />
-                        </>
-                    )}
+                <div className="flex items-center justify-between mb-1">
+                    <div>
+                        <Label className="block">Параметры принтера</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Необязательно. Незаполненные строки не сохраняются.
+                        </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={onEntryAdd}>
+                        <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+                        Добавить
+                    </Button>
+                </div>
+
+                {settingEntries.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded-md mt-3">
+                        Нет параметров. Нажмите «Добавить» для создания.
+                    </p>
+                )}
+
+                <div className="space-y-2 mt-3">
+                    {settingEntries.map(entry => {
+                        const hint = suggestions.find(s => s.key === entry.key)
+                        return (
+                            <div key={entry.id} className="flex items-center gap-2">
+                                {/* Ключ */}
+                                <div className="w-[45%]">
+                                    {entry.suggested && hint ? (
+                                        <div className="flex h-9 items-center rounded-md border border-dashed bg-muted/30 px-3 text-sm text-muted-foreground select-none">
+                                            {hint.label}
+                                        </div>
+                                    ) : (
+                                        <Input
+                                            value={entry.key}
+                                            placeholder="название параметра"
+                                            onChange={e => onEntryKeyChange(entry.id, e.target.value)}
+                                        />
+                                    )}
+                                </div>
+                                {/* Значение */}
+                                <div className="flex-1">
+                                    <Input
+                                        value={entry.value}
+                                        placeholder={hint?.placeholder ?? 'значение'}
+                                        onChange={e => onEntryValueChange(entry.id, e.target.value)}
+                                    />
+                                </div>
+                                {/* Удалить */}
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                                    onClick={() => onEntryRemove(entry.id)}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        )
+                    })}
                 </div>
             </div>
 
@@ -574,19 +700,6 @@ function PrinterForm({ formData, onInputChange, onTypeChange, onSettingChange, o
                 <Switch id="is_default" checked={formData.is_default} onCheckedChange={onDefaultChange} />
                 <Label htmlFor="is_default">Сделать основным принтером</Label>
             </div>
-        </div>
-    )
-}
-
-// ─── Мини-компонент поля настройки ────────────────────────────────────────────
-
-function SettingField({ label, id, value, placeholder, onChange }: {
-    label: string; id: string; value?: string; placeholder: string; onChange: (v: string) => void
-}) {
-    return (
-        <div className="space-y-2">
-            <Label htmlFor={id}>{label}</Label>
-            <Input id={id} value={value ?? ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
         </div>
     )
 }
