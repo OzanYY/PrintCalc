@@ -2,216 +2,383 @@
 
 import * as React from "react"
 import {
-  Area, AreaChart, Bar, BarChart, Pie, PieChart,
-  CartesianGrid, XAxis, YAxis, Cell, ResponsiveContainer,
+  Area, AreaChart, Bar, BarChart, Pie, PieChart, Line, LineChart,
+  CartesianGrid, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip, Legend,
+  RadialBarChart, RadialBar,
 } from "recharts"
 import {
-  Printer, Package, ShoppingCart, DollarSign, Clock,
-  TrendingUp, Calendar, Download, RefreshCw, Award,
-  CheckCircle2, Timer, Loader2,
+  Printer, Package, ShoppingCart, DollarSign, Clock, TrendingUp,
+  TrendingDown, Calendar, Download, RefreshCw, Award, CheckCircle2,
+  Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
+  Layers, ArrowUpRight, ArrowDownRight, Minus, Info, Star, Cpu,
+  Box, FlaskConical, Hash, Percent,
 } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle, CardAction,
-} from "@/components/ui/card"
-import {
-  ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig,
-} from "@/components/ui/chart"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 
 import { ordersAPI, downloadOrdersCSV } from "@/api/orders"
-import type { OrderStatsResponse } from "@/api/orders"
-import { useOrders } from "@/hooks/useOrders"
+import type { OrderStatsResponse, Order } from "@/api/orders"
+import { printersAPI } from "@/api/printers"
+import type { Printer as PrinterType } from "@/api/printers"
+import { materialsAPI } from "@/api/materials"
+import type { Material } from "@/api/materials"
 
-// ─── Типы ─────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 type Period = "all" | "week" | "month" | "year"
 
-// ─── Утилиты ──────────────────────────────────────────────────────────────────
+interface PrinterStat {
+  id: number
+  name: string
+  type: string
+  purchase_price: number
+  print_lifetime_hours: number
+  power_consumption: number
+  orders: number
+  revenue: number
+  profit: number
+  total_print_time_minutes: number
+  total_weight_grams: number
+}
 
-const formatCurrency = (value: number) =>
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+const fmt = (v: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value)
+  }).format(v)
 
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat("ru-RU").format(value)
+const fmtNum = (v: number) => new Intl.NumberFormat("ru-RU").format(v)
 
-const formatHours = (totalHours: number) => {
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  if (days === 0) return `${hours}ч`
-  return `${days}д ${hours}ч`
+const fmtHours = (minutes: number) => {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}м`
+  if (m === 0) return `${h}ч`
+  return `${h}ч ${m}м`
 }
+
+const fmtWeight = (grams: number) =>
+  grams >= 1000 ? `${(grams / 1000).toFixed(2)} кг` : `${grams.toFixed(0)} г`
 
 const toNum = (v: unknown) => {
   const n = Number(v)
   return isFinite(n) ? n : 0
 }
 
-// ─── Конфигурация графиков ────────────────────────────────────────────────────
+const median = (arr: number[]) => {
+  if (!arr.length) return 0
+  const sorted = [...arr].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
 
-const chartConfig = {
-  orders_count: { label: "Заказы",   color: "hsl(var(--chart-1))" },
-  revenue:      { label: "Выручка",  color: "hsl(var(--chart-2))" },
-  completed:    { label: "Завершены",color: "hsl(var(--chart-3))" },
-  cancelled:    { label: "Отменены", color: "hsl(var(--chart-5))" },
+// ─── Delta badge ───────────────────────────────────────────────────────────────
+
+const Delta = ({ value, suffix = "" }: { value: number; suffix?: string }) => {
+  if (value === 0) return <span className="text-xs text-muted-foreground flex items-center gap-0.5"><Minus className="h-3 w-3" /> 0{suffix}</span>
+  const positive = value > 0
+  return (
+    <span className={`text-xs flex items-center gap-0.5 font-medium ${positive ? "text-emerald-600" : "text-red-500"}`}>
+      {positive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      {Math.abs(value).toFixed(1)}{suffix}
+    </span>
+  )
+}
+
+// ─── Stat Card ─────────────────────────────────────────────────────────────────
+
+interface StatCardProps {
+  title: string
+  value: string
+  sub?: string
+  icon: React.ElementType
+  iconColor?: string
+  delta?: { value: number; suffix?: string }
+  loading?: boolean
+  accent?: string
+}
+
+const StatCard = ({ title, value, sub, icon: Icon, iconColor = "text-muted-foreground", delta, loading, accent }: StatCardProps) => {
+  if (loading) return (
+    <Card>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="h-4 w-4 rounded" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-7 w-32 mb-1.5" />
+        <Skeleton className="h-3 w-20" />
+      </CardContent>
+    </Card>
+  )
+  return (
+    <Card className={accent ? `border-l-4 ${accent}` : ""}>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tracking-tight">{value}</div>
+        <div className="flex items-center gap-2 mt-1">
+          {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+          {delta && <Delta value={delta.value} suffix={delta.suffix} />}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Chart configs ─────────────────────────────────────────────────────────────
+
+const monthlyChartConfig = {
+  orders_count: { label: "Заказы", color: "hsl(var(--chart-1))" },
+  revenue: { label: "Выручка", color: "hsl(var(--chart-2))" },
+  profit: { label: "Прибыль", color: "hsl(var(--chart-3))" },
+  filament_used: { label: "Филамент (г)", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig
 
 const STATUS_COLORS: Record<string, string> = {
-  completed:   "#10b981",
+  completed: "#10b981",
   in_progress: "#3b82f6",
-  cancelled:   "#ef4444",
+  cancelled: "#ef4444",
 }
 const STATUS_LABELS: Record<string, string> = {
-  completed:   "Завершены",
-  in_progress: "В процессе",
-  cancelled:   "Отменены",
+  completed: "Завершены",
+  in_progress: "В работе",
+  cancelled: "Отменены",
 }
+const MONTH_NAMES = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
 
-// ─── Скелетон-карточка ────────────────────────────────────────────────────────
-
-const StatCardSkeleton = () => (
-  <Card>
-    <CardHeader className="pb-2">
-      <Skeleton className="h-4 w-28" />
-    </CardHeader>
-    <CardContent>
-      <Skeleton className="h-8 w-36 mb-2" />
-      <Skeleton className="h-3 w-24" />
-    </CardContent>
-  </Card>
-)
-
-// ─── Компонент страницы ───────────────────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function StatisticsPage() {
   const [period, setPeriod] = React.useState<Period>("month")
   const [activeTab, setActiveTab] = React.useState("overview")
   const [statsData, setStatsData] = React.useState<OrderStatsResponse | null>(null)
-  const [isStatsLoading, setIsStatsLoading] = React.useState(false)
+  const [allOrders, setAllOrders] = React.useState<Order[]>([])
+  const [printers, setPrinters] = React.useState<PrinterType[]>([])
+  const [materials, setMaterials] = React.useState<Material[]>([])
+  const [isLoading, setIsLoading] = React.useState(false)
 
-  // Последние заказы берём из useOrders
-  const { orders: recentOrders, isLoading: isOrdersLoading } = useOrders({
-    autoFetch: true,
-    pageSize: 5,
-  })
-
-  // ─── Загрузка статистики ──────────────────────────────────────────────────
-  const fetchStats = React.useCallback(async (p: Period) => {
-    setIsStatsLoading(true)
+  // ─── Data loading ──────────────────────────────────────────────────────────
+  const fetchAll = React.useCallback(async (p: Period) => {
+    setIsLoading(true)
     try {
-      const res = await ordersAPI.getStats(p)
-      setStatsData(res.data.data)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Ошибка загрузки статистики", {
-        position: "top-center",
-        duration: 5000,
-      })
+      const [statsRes, ordersRes, printersRes, materialsRes] = await Promise.allSettled([
+        ordersAPI.getStats(p),
+        ordersAPI.getAll({ limit: 1000 }),
+        printersAPI.getAll(),
+        materialsAPI.getAll(),
+      ])
+
+      if (statsRes.status === "fulfilled") setStatsData(statsRes.value.data.data)
+      if (ordersRes.status === "fulfilled") setAllOrders((ordersRes.value.data as any).data ?? [])
+      if (printersRes.status === "fulfilled") setPrinters((printersRes.value.data as any).data ?? [])
+      if (materialsRes.status === "fulfilled") setMaterials((materialsRes.value.data as any).data ?? [])
+    } catch {
+      toast.error("Ошибка загрузки данных", { position: "top-center" })
     } finally {
-      setIsStatsLoading(false)
+      setIsLoading(false)
     }
   }, [])
 
-  React.useEffect(() => {
-    fetchStats(period)
-  }, [period, fetchStats])
+  React.useEffect(() => { fetchAll(period) }, [period, fetchAll])
 
-  // ─── Производные данные ───────────────────────────────────────────────────
-  const summary = statsData?.summary
+  // ─── Computed: summary ────────────────────────────────────────────────────
+  const s = statsData?.summary
+  const totalOrders = toNum(s?.total_orders)
+  const inProgress = toNum(s?.in_progress_orders)
+  const completed = toNum(s?.completed_orders)
+  const cancelled = toNum(s?.cancelled_orders)
+  const totalRevenue = toNum(s?.total_revenue)
+  const totalProfit = toNum(s?.total_profit)
+  const totalExpenses = toNum(s?.total_expenses)
+  const totalFilament = toNum(s?.total_filament_used)
+  const totalPrintTime = toNum(s?.total_print_time)
+  const avgOrderValue = toNum(s?.avg_order_value)
 
-  const totalOrders    = toNum(summary?.total_orders)
-  const inProgress     = toNum(summary?.in_progress_orders)
-  const completed      = toNum(summary?.completed_orders)
-  const cancelled      = toNum(summary?.cancelled_orders)
-  const totalRevenue   = toNum(summary?.total_revenue)
-  const totalProfit    = toNum(summary?.total_profit)
-  const totalExpenses  = toNum(summary?.total_expenses)
-  const totalFilament  = toNum(summary?.total_filament_used)
-  const totalPrintTime = toNum(summary?.total_print_time) // минуты
-  const avgOrderValue  = toNum(summary?.avg_order_value)
+  const cancellationRate = totalOrders > 0 ? (cancelled / totalOrders) * 100 : 0
+  const completionRate = totalOrders > 0 ? (completed / totalOrders) * 100 : 0
+  const conversionRate = toNum(statsData?.analytics?.conversion_rate)
+  const avgMargin = toNum(statsData?.analytics?.average_profit_margin)
+  const avgCostPerGram = toNum(statsData?.analytics?.average_cost_per_gram)
+  const grossMarginPct = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100) : 0
 
-  const marginPercent = totalRevenue > 0
-    ? ((totalProfit / totalRevenue) * 100).toFixed(1)
-    : "0"
+  // ─── Computed: orders-based analytics ─────────────────────────────────────
+  const completedOrders = React.useMemo(
+    () => allOrders.filter(o => o.status === "completed"),
+    [allOrders]
+  )
 
-  const conversionRate    = statsData?.analytics?.conversion_rate    ?? "0"
-  const avgProfitMargin   = statsData?.analytics?.average_profit_margin ?? "0"
-  const avgCostPerGram    = statsData?.analytics?.average_cost_per_gram ?? "0"
+  const prices = completedOrders.map(o => toNum(o.final_price))
+  const medianPrice = median(prices)
 
-  // Данные для кольцевой диаграммы статусов
+  const avgCompletionDays = React.useMemo(() => {
+    const withDates = completedOrders.filter(o => o.completed_at && o.created_at)
+    if (!withDates.length) return 0
+    const total = withDates.reduce((sum, o) => {
+      const diff = new Date(o.completed_at!).getTime() - new Date(o.created_at).getTime()
+      return sum + diff / (1000 * 60 * 60 * 24)
+    }, 0)
+    return total / withDates.length
+  }, [completedOrders])
+
+  // ─── Computed: printer analytics ─────────────────────────────────────────
+  const printerStats: PrinterStat[] = React.useMemo(() => {
+    return printers.map(p => {
+      const printerOrders = allOrders.filter(o => o.printer_id === p.id)
+      const doneOrders = printerOrders.filter(o => o.status === "completed")
+      const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
+      const cost = doneOrders.reduce((s, o) => s + toNum(o.total_cost), 0)
+      const printTime = printerOrders.reduce((s, o) => s + toNum(o.print_time_minutes), 0)
+      const weight = doneOrders.reduce((s, o) => s + toNum(o.total_weight_grams), 0)
+      return {
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        purchase_price: p.purchase_price,
+        print_lifetime_hours: p.print_lifetime_hours,
+        power_consumption: p.power_consumption,
+        orders: printerOrders.length,
+        revenue,
+        profit: revenue - cost,
+        total_print_time_minutes: printTime,
+        total_weight_grams: weight,
+      }
+    })
+  }, [printers, allOrders])
+
+  const usedHours = React.useMemo(
+    () => printerStats.reduce((s, p) => s + p.total_print_time_minutes / 60, 0),
+    [printerStats]
+  )
+  const totalLifetime = printers.reduce((s, p) => s + p.print_lifetime_hours, 0)
+  const avgWearPct = totalLifetime > 0 ? (usedHours / totalLifetime) * 100 : 0
+  const unusedPrinters = printerStats.filter(p => p.orders === 0)
+  const busiestPrinter = [...printerStats].sort((a, b) => b.orders - a.orders)[0]
+
+  // Electricity costs from orders
+  const totalElectricityCost = React.useMemo(() => {
+    return allOrders.reduce((sum, o) => {
+      const elec = (o.calc_result as any)?.electricity?.value ?? 0
+      return sum + toNum(elec)
+    }, 0)
+  }, [allOrders])
+
+  // ─── Computed: material analytics ────────────────────────────────────────
+  const materialStats = React.useMemo(() => {
+    return materials.map(m => {
+      const matOrders = allOrders.filter(o => o.material_id === m.id)
+      const doneOrders = matOrders.filter(o => o.status === "completed")
+      const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
+      const weightUsed = doneOrders.reduce((s, o) => s + toNum(o.total_weight_grams), 0)
+      const cost = (weightUsed / 1000) * m.price_per_kg
+      return {
+        id: m.id,
+        name: m.name,
+        category: m.category,
+        type: m.type,
+        price_per_kg: m.price_per_kg,
+        quantity: m.quantity,
+        orders: matOrders.length,
+        revenue,
+        weight_used_g: weightUsed,
+        material_cost: cost,
+      }
+    })
+  }, [materials, allOrders])
+
+  // Monthly filament forecast
+  const monthlyFilamentAvg = React.useMemo(() => {
+    if (!statsData?.monthly?.length) return 0
+    const months = statsData.monthly
+    const total = months.reduce((s, m) => s + toNum(m.filament_used), 0)
+    return total / months.length
+  }, [statsData])
+
+  // When material runs out
+  const materialRunout = React.useMemo(() => {
+    if (!monthlyFilamentAvg) return null
+    const total = materials.reduce((s, m) => s + m.quantity * 1000, 0) // grams
+    if (!total) return null
+    const months = total / monthlyFilamentAvg
+    return months
+  }, [materials, monthlyFilamentAvg])
+
+  // ─── Chart data ────────────────────────────────────────────────────────────
+  const monthlyData = React.useMemo(() => {
+    if (!statsData?.monthly?.length) return []
+    return statsData.monthly.map(m => ({
+      month: MONTH_NAMES[(toNum(m.month) - 1)] ?? `М${m.month}`,
+      orders_count: toNum(m.orders_count),
+      revenue: toNum(m.revenue),
+      profit: toNum(m.revenue) - (toNum(m.revenue) * (1 - avgMargin / 100)),
+      filament_used: toNum(m.filament_used),
+      completed: toNum(m.completed_count),
+      cancelled: toNum(m.cancelled_count),
+    }))
+  }, [statsData, avgMargin])
+
   const pieData = React.useMemo(() => {
     if (!statsData?.by_status?.length) return []
     return statsData.by_status.map(s => ({
-      name:   STATUS_LABELS[s.status] ?? s.status,
-      value:  toNum(s.count),
-      color:  STATUS_COLORS[s.status] ?? "#94a3b8",
+      name: STATUS_LABELS[s.status] ?? s.status,
+      value: toNum(s.count),
+      color: STATUS_COLORS[s.status] ?? "#94a3b8",
       status: s.status,
-      total_value: toNum(s.total_value),
     }))
   }, [statsData])
 
-  // Данные для барного графика по месяцам
-  const monthlyData = React.useMemo(() => {
-    if (!statsData?.monthly?.length) return []
-    const monthNames = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"]
-    return statsData.monthly.map(m => ({
-      month:         monthNames[(toNum(m.month) - 1)] ?? `М${m.month}`,
-      orders_count:  toNum(m.orders_count),
-      revenue:       toNum(m.revenue),
-      completed:     toNum(m.completed_count),
-      cancelled:     toNum(m.cancelled_count),
-      filament_used: toNum(m.filament_used),
-    }))
-  }, [statsData])
+  const printerTypeData = React.useMemo(() => {
+    const map: Record<string, number> = {}
+    printers.forEach(p => { map[p.type] = (map[p.type] ?? 0) + 1 })
+    return Object.entries(map).map(([type, count]) => ({ type, count }))
+  }, [printers])
 
-  // ─── Экспорт ──────────────────────────────────────────────────────────────
-  const handleExport = async () => {
-    const id = "stats-export"
-    toast.loading("Подготовка экспорта...", { position: "top-center", id })
-    const result = await downloadOrdersCSV()
-    if (result.success) {
-      toast.success("CSV скачан", { position: "top-center", duration: 3000, id })
-    } else {
-      toast.error("Ошибка экспорта", { position: "top-center", duration: 5000, id })
-    }
-  }
+  const materialCatData = React.useMemo(() => {
+    const map: Record<string, { orders: number; revenue: number }> = {}
+    materialStats.forEach(m => {
+      if (!map[m.category]) map[m.category] = { orders: 0, revenue: 0 }
+      map[m.category].orders += m.orders
+      map[m.category].revenue += m.revenue
+    })
+    return Object.entries(map).map(([cat, v]) => ({ cat, ...v }))
+  }, [materialStats])
 
   const periodLabel: Record<Period, string> = {
-    all:   "За всё время",
-    week:  "За неделю",
+    all: "За всё время",
+    week: "За неделю",
     month: "За месяц",
-    year:  "За год",
+    year: "За год",
   }
 
-  // ─── Рендер ───────────────────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
+    <div className="container mx-auto p-4 md:p-6 max-w-7xl space-y-6">
 
-      {/* Заголовок */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Статистика производства</h1>
-          <p className="text-muted-foreground">
-            Аналитика и мониторинг всех показателей 3D-печати
-          </p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Аналитика производства</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Полная статистика по заказам, принтерам и материалам</p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           <Select value={period} onValueChange={v => setPeriod(v as Period)}>
             <SelectTrigger className="w-40">
-              <Calendar className="h-4 w-4 mr-2" />
+              <Calendar className="h-4 w-4 mr-2 shrink-0" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -221,369 +388,218 @@ export default function StatisticsPage() {
               <SelectItem value="all">За всё время</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Экспорт
+          <Button variant="outline" size="sm" onClick={() => downloadOrdersCSV()}>
+            <Download className="h-4 w-4 mr-2" />Экспорт
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => fetchStats(period)}
-            disabled={isStatsLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isStatsLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="icon" onClick={() => fetchAll(period)} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
-      {/* KPI-карточки */}
-      {isStatsLoading && !statsData ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Всего заказов</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(totalOrders)}</div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                <Badge variant="outline" className="text-blue-600 border-blue-200">
-                  {inProgress} в работе
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Выручка</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
-              <div className="flex items-center text-xs text-muted-foreground mt-1">
-                <span>Средний чек: {formatCurrency(avgOrderValue)}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Прибыль</CardTitle>
-              <Award className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalProfit)}</div>
-              <div className="flex items-center text-xs text-green-600 mt-1">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                <span>Маржа {marginPercent}%</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Время печати</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatHours(Math.floor(totalPrintTime / 60))}
-              </div>
-              <div className="flex items-center text-xs text-muted-foreground mt-1">
-                <Timer className="h-3 w-3 mr-1" />
-                <span>
-                  {completed > 0
-                    ? `~${Math.round(totalPrintTime / 60 / completed)} ч/заказ`
-                    : "—"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Аналитика — вторая строка KPI */}
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Конверсия</CardTitle>
-            <CardDescription>Завершённые / все заказы</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isStatsLoading && !statsData
-              ? <Skeleton className="h-8 w-24" />
-              : <>
-                  <div className="text-2xl font-bold">{conversionRate}%</div>
-                  <Progress value={toNum(conversionRate)} className="h-2 mt-2" />
-                </>
-            }
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Средняя маржа</CardTitle>
-            <CardDescription>По завершённым заказам</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isStatsLoading && !statsData
-              ? <Skeleton className="h-8 w-24" />
-              : <div className="text-2xl font-bold text-green-600">{avgProfitMargin}%</div>
-            }
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Расход филамента</CardTitle>
-            <CardDescription>По завершённым заказам</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isStatsLoading && !statsData
-              ? <Skeleton className="h-8 w-24" />
-              : <>
-                  <div className="text-2xl font-bold">
-                    {totalFilament >= 1000
-                      ? `${(totalFilament / 1000).toFixed(2)} кг`
-                      : `${totalFilament.toFixed(0)} г`}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    ~{avgCostPerGram} ₽/г средняя стоимость
-                  </div>
-                </>
-            }
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Табы с графиками */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
-        <TabsList className="grid w-full grid-cols-2 mb-4">
+      {/* ── TABS ── */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex flex-wrap h-auto gap-1 mb-2">
           <TabsTrigger value="overview">Обзор</TabsTrigger>
-          <TabsTrigger value="monthly">По месяцам</TabsTrigger>
+          <TabsTrigger value="finance">Финансы</TabsTrigger>
+          <TabsTrigger value="orders">Заказы</TabsTrigger>
+          <TabsTrigger value="printers">Принтеры</TabsTrigger>
+          <TabsTrigger value="materials">Материалы</TabsTrigger>
         </TabsList>
 
-        {/* Обзор — статусы + расходы */}
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+        {/* ══════════════════════════════ OVERVIEW ══════════════════════════════ */}
+        <TabsContent value="overview" className="space-y-6">
 
-            {/* Пирог статусов */}
+          {/* KPI row 1 */}
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} sub={`${inProgress} в работе`}
+              icon={ShoppingCart} loading={isLoading} accent="border-blue-400" />
+            <StatCard title="Выручка" value={fmt(totalRevenue)} sub={`Ср. чек ${fmt(avgOrderValue)}`}
+              icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" />
+            <StatCard title="Прибыль" value={fmt(totalProfit)} sub={`Маржа ${grossMarginPct.toFixed(1)}%`}
+              icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400"
+              delta={{ value: grossMarginPct - 30, suffix: "% vs 30%" }} />
+            <StatCard title="Себестоимость" value={fmt(totalExpenses)} sub={`${avgCostPerGram} ₽/г`}
+              icon={Package} loading={isLoading} />
+          </div>
+
+          {/* KPI row 2 */}
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed"
+              icon={Target} loading={isLoading} />
+            <StatCard title="Завершено" value={`${completionRate.toFixed(1)}%`} sub={`${completed} заказов`}
+              icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} />
+            <StatCard title="Отменено" value={`${cancellationRate.toFixed(1)}%`} sub={`${cancelled} заказов`}
+              icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} />
+            <StatCard title="Время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))} / заказ` : "—"}
+              icon={Clock} loading={isLoading} />
+          </div>
+
+          {/* Charts row */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Status pie */}
             <Card>
               <CardHeader>
-                <CardTitle>Статусы заказов</CardTitle>
+                <CardTitle className="text-base">Статусы заказов</CardTitle>
                 <CardDescription>{periodLabel[period]}</CardDescription>
               </CardHeader>
               <CardContent>
-                {isStatsLoading && !statsData ? (
-                  <div className="flex justify-center items-center h-[250px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : pieData.length === 0 ? (
-                  <div className="flex justify-center items-center h-[250px] text-muted-foreground text-sm">
-                    Нет данных
-                  </div>
-                ) : (
-                  <>
-                    <ChartContainer config={chartConfig} className="aspect-square h-[220px] w-full">
+                {isLoading ? <div className="h-52 flex items-center justify-center"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div> :
+                  pieData.length === 0 ? <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">Нет данных</div> : (
+                    <ChartContainer config={{}} className="h-52 w-full">
                       <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={80}
-                          paddingAngle={2}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={index} fill={entry.color} />
-                          ))}
+                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value">
+                          {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
                         </Pie>
-                        <ChartTooltip
-                          content={
-                            <ChartTooltipContent
-                              formatter={(value, name) => [`${value} заказов`, name]}
-                            />
-                          }
-                        />
+                        <Tooltip formatter={(v, n) => [`${v} заказов`, n]} />
                       </PieChart>
                     </ChartContainer>
-                    <div className="flex flex-wrap justify-center gap-3 mt-2">
-                      {pieData.map(s => (
-                        <div key={s.status} className="flex items-center gap-1.5 text-xs">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                          <span className="text-muted-foreground">{s.name}:</span>
-                          <span className="font-medium">{s.value}</span>
+                  )}
+                <div className="flex flex-wrap justify-center gap-3 mt-2">
+                  {pieData.map(s => (
+                    <div key={s.status} className="flex items-center gap-1.5 text-xs">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
+                      <span className="text-muted-foreground">{s.name}:</span>
+                      <span className="font-semibold">{s.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Finance bars */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Финансовый итог</CardTitle>
+                <CardDescription>{periodLabel[period]}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isLoading ? <div className="space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div> : (
+                  <>
+                    {[
+                      { label: "Выручка", value: totalRevenue, pct: 100, color: "bg-blue-500" },
+                      { label: "Себестоимость", value: totalExpenses, pct: totalRevenue > 0 ? (totalExpenses / totalRevenue) * 100 : 0, color: "bg-orange-400" },
+                      { label: "Прибыль", value: totalProfit, pct: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0, color: "bg-emerald-500" },
+                    ].map(({ label, value, pct, color }) => (
+                      <div key={label}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-semibold">{fmt(value)}</span>
                         </div>
-                      ))}
+                        <div className="h-2 w-full rounded-full bg-muted">
+                          <div className={`h-2 rounded-full transition-all duration-700 ${color}`} style={{ width: `${Math.min(pct, 100).toFixed(1)}%` }} />
+                        </div>
+                        <div className="text-xs text-muted-foreground text-right mt-0.5">{pct.toFixed(1)}% от выручки</div>
+                      </div>
+                    ))}
+                    <div className="pt-3 border-t grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between"><span className="text-muted-foreground">Электроэнергия</span><span className="font-medium">{fmt(totalElectricityCost)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Средняя маржа</span><span className="font-medium text-emerald-600">{avgMargin}%</span></div>
                     </div>
                   </>
                 )}
               </CardContent>
             </Card>
-
-            {/* Разбивка расходов */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Финансовый итог</CardTitle>
-                <CardDescription>{periodLabel[period]}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isStatsLoading && !statsData ? (
-                  <div className="space-y-4">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <Skeleton key={i} className="h-10 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {[
-                      { label: "Выручка",     value: totalRevenue,  color: "bg-chart-2", pct: 100 },
-                      { label: "Себестоимость", value: totalExpenses, color: "bg-chart-5",
-                        pct: totalRevenue > 0 ? (totalExpenses / totalRevenue) * 100 : 0 },
-                      { label: "Прибыль",     value: totalProfit,   color: "bg-chart-3",
-                        pct: totalRevenue > 0 ? (totalProfit  / totalRevenue) * 100 : 0 },
-                    ].map(({ label, value, color, pct }) => (
-                      <div key={label}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-medium">{formatCurrency(value)}</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className={`${color} h-2 rounded-full transition-all duration-500`}
-                            style={{ width: `${Math.min(pct, 100).toFixed(1)}%` }}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5 text-right">
-                          {pct.toFixed(1)}% от выручки
-                        </div>
-                      </div>
-                    ))}
-
-                    <div className="pt-2 border-t space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Завершено заказов</span>
-                        <span className="font-medium text-green-600">{completed}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Отменено заказов</span>
-                        <span className="font-medium text-red-500">{cancelled}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
-        </TabsContent>
 
-        {/* График по месяцам */}
-        <TabsContent value="monthly" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Динамика по месяцам</CardTitle>
-              <CardDescription>Заказы и выручка</CardDescription>
-            </CardHeader>
-            <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
-              {isStatsLoading && !statsData ? (
-                <div className="flex justify-center items-center h-[300px]">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : monthlyData.length === 0 ? (
-                <div className="flex justify-center items-center h-[300px] text-muted-foreground text-sm">
-                  Нет данных за выбранный период
-                </div>
-              ) : (
-                <ChartContainer config={chartConfig} className="aspect-auto h-[300px] w-full">
-                  <BarChart data={monthlyData} barGap={4}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                      dataKey="month"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                    />
-                    <YAxis
-                      yAxisId="orders"
-                      orientation="left"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      width={35}
-                    />
-                    <YAxis
-                      yAxisId="revenue"
-                      orientation="right"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      width={70}
-                      tickFormatter={v => `${(v / 1000).toFixed(0)}к`}
-                    />
-                    <ChartTooltip
-                      content={
-                        <ChartTooltipContent
-                          formatter={(value, name) => {
-                            if (name === "revenue") return [formatCurrency(Number(value)), "Выручка"]
-                            return [value, name === "orders_count" ? "Заказы" : name]
-                          }}
-                        />
-                      }
-                    />
-                    <Bar
-                      yAxisId="orders"
-                      dataKey="orders_count"
-                      fill="var(--color-orders_count)"
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={40}
-                    />
-                    <Bar
-                      yAxisId="revenue"
-                      dataKey="revenue"
-                      fill="var(--color-revenue)"
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={40}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Таблица по месяцам */}
+          {/* Monthly trend */}
           {monthlyData.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Детали по месяцам</CardTitle>
+                <CardTitle className="text-base">Динамика выручки и заказов</CardTitle>
+                <CardDescription>По месяцам</CardDescription>
               </CardHeader>
+              <CardContent>
+                <ChartContainer config={monthlyChartConfig} className="h-64 w-full">
+                  <BarChart data={monthlyData} barGap={4}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={12} />
+                    <YAxis yAxisId="orders" orientation="left" tickLine={false} axisLine={false} width={30} fontSize={11} />
+                    <YAxis yAxisId="revenue" orientation="right" tickLine={false} axisLine={false} width={65} fontSize={11}
+                      tickFormatter={v => `${(v / 1000).toFixed(0)}к`} />
+                    <ChartTooltip content={<ChartTooltipContent formatter={(v, n) =>
+                      n === "revenue" ? [fmt(Number(v)), "Выручка"] :
+                      n === "profit" ? [fmt(Number(v)), "Прибыль"] :
+                      [v, "Заказы"]} />} />
+                    <Bar yAxisId="orders" dataKey="orders_count" fill="var(--color-orders_count)" radius={[3,3,0,0]} maxBarSize={36} />
+                    <Bar yAxisId="revenue" dataKey="revenue" fill="var(--color-revenue)" radius={[3,3,0,0]} maxBarSize={36} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ══════════════════════════════ FINANCE ══════════════════════════════ */}
+        <TabsContent value="finance" className="space-y-6">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Общая выручка" value={fmt(totalRevenue)} icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} />
+            <StatCard title="Общая себестоимость" value={fmt(totalExpenses)} icon={Package} loading={isLoading} />
+            <StatCard title="Общая прибыль" value={fmt(totalProfit)} icon={TrendingUp} iconColor={totalProfit >= 0 ? "text-emerald-600" : "text-red-500"} loading={isLoading}
+              accent={totalProfit >= 0 ? "border-emerald-400" : "border-red-400"} />
+            <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={isLoading} />
+          </div>
+
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={isLoading} />
+            <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={isLoading} />
+            <StatCard title="Средний чек" value={fmt(avgOrderValue)} sub="по завершённым" icon={Star} loading={isLoading} />
+            <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={isLoading} />
+          </div>
+
+          {/* Revenue area chart */}
+          {monthlyData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Выручка и прибыль по месяцам</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={monthlyChartConfig} className="h-64 w-full">
+                  <AreaChart data={monthlyData}>
+                    <defs>
+                      <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-revenue)" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="var(--color-revenue)" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gProfit" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} width={65} tickFormatter={v => `${(v / 1000).toFixed(0)}к`} />
+                    <Tooltip formatter={(v: any, n: any) => [fmt(v), n === "revenue" ? "Выручка" : "Прибыль"]} />
+                    <Area type="monotone" dataKey="revenue" stroke="var(--color-revenue)" fill="url(#gRevenue)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="profit" stroke="var(--color-profit)" fill="url(#gProfit)" strokeWidth={2} />
+                  </AreaChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Monthly table */}
+          {monthlyData.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Детали по месяцам</CardTitle></CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-muted-foreground text-xs">
-                        <th className="text-left pb-2 font-medium">Месяц</th>
-                        <th className="text-right pb-2 font-medium">Заказов</th>
-                        <th className="text-right pb-2 font-medium">Завершено</th>
-                        <th className="text-right pb-2 font-medium">Отменено</th>
-                        <th className="text-right pb-2 font-medium">Выручка</th>
-                        <th className="text-right pb-2 font-medium">Филамент</th>
+                        {["Месяц","Заказов","Завершено","Отменено","Выручка","Филамент"].map(h =>
+                          <th key={h} className="pb-2 font-medium text-left last:text-right even:text-right">{h}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {monthlyData.map(row => (
-                        <tr key={row.month} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <tr key={row.month} className="border-b last:border-0 hover:bg-muted/30">
                           <td className="py-2 font-medium">{row.month}</td>
                           <td className="py-2 text-right">{row.orders_count}</td>
-                          <td className="py-2 text-right text-green-600">{row.completed}</td>
+                          <td className="py-2 text-right text-emerald-600">{row.completed}</td>
                           <td className="py-2 text-right text-red-500">{row.cancelled}</td>
-                          <td className="py-2 text-right">{formatCurrency(row.revenue)}</td>
-                          <td className="py-2 text-right">{row.filament_used.toFixed(0)} г</td>
+                          <td className="py-2 text-right">{fmt(row.revenue)}</td>
+                          <td className="py-2 text-right">{fmtWeight(row.filament_used)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -593,100 +609,272 @@ export default function StatisticsPage() {
             </Card>
           )}
         </TabsContent>
-      </Tabs>
 
-      {/* Последние заказы + итог */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Последние заказы</CardTitle>
-            <CardDescription>Недавняя активность</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isOrdersLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : recentOrders.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Нет заказов</p>
-            ) : (
-              <div className="space-y-2">
-                {recentOrders.slice(0, 5).map(order => {
-                  const finalPrice = toNum(order.final_price) ||
-                    toNum((order.calc_result as any)?.finalPrice?.value)
-                  return (
-                    <div
-                      key={order.id}
-                      className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{order.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          #{order.id} · {new Date(order.created_at).toLocaleDateString("ru-RU")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-sm font-medium">{formatCurrency(finalPrice)}</span>
-                        <Badge
-                          variant="outline"
-                          className={
-                            order.status === "completed" ? "text-green-600 border-green-200" :
-                            order.status === "in_progress" ? "text-blue-600 border-blue-200" :
-                            "text-red-500 border-red-200"
-                          }
-                        >
-                          {STATUS_LABELS[order.status] ?? order.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* ══════════════════════════════ ORDERS ══════════════════════════════ */}
+        <TabsContent value="orders" className="space-y-6">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} icon={ShoppingCart} loading={isLoading} />
+            <StatCard title="В работе" value={fmtNum(inProgress)} icon={Activity} iconColor="text-blue-600" loading={isLoading} accent="border-blue-400" />
+            <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" />
+            <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} accent="border-red-400" />
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Сводка периода</CardTitle>
-            <CardDescription>{periodLabel[period]}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isStatsLoading && !statsData ? (
-              <div className="space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-6 w-full" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {[
-                  { icon: ShoppingCart,  label: "Всего заказов",      value: formatNumber(totalOrders) },
-                  { icon: CheckCircle2,  label: "Завершено",           value: formatNumber(completed),   cls: "text-green-600" },
-                  { icon: DollarSign,    label: "Выручка",             value: formatCurrency(totalRevenue) },
-                  { icon: TrendingUp,    label: "Прибыль",             value: formatCurrency(totalProfit), cls: "text-green-600" },
-                  { icon: Package,       label: "Использовано материала",
-                    value: totalFilament >= 1000
-                      ? `${(totalFilament / 1000).toFixed(2)} кг`
-                      : `${totalFilament.toFixed(0)} г` },
-                  { icon: Clock,         label: "Суммарное время",
-                    value: formatHours(Math.floor(totalPrintTime / 60)) },
-                ].map(({ icon: Icon, label, value, cls }) => (
-                  <div key={label} className="flex items-center justify-between py-1 border-b last:border-0">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {label}
-                    </div>
-                    <span className={`text-sm font-semibold ${cls ?? ""}`}>{value}</span>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Процент отмен" value={`${cancellationRate.toFixed(1)}%`} icon={TrendingDown} iconColor="text-red-500" loading={isLoading} />
+            <StatCard title="Процент завершения" value={`${completionRate.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} />
+            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed" icon={Target} loading={isLoading} />
+            <StatCard title="Среднее время выполнения" value={avgCompletionDays > 0 ? `${avgCompletionDays.toFixed(1)} дн` : "—"} icon={Timer} loading={isLoading} />
+          </div>
+
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+            <StatCard title="Общий расход материала" value={fmtWeight(totalFilament)} icon={Package} loading={isLoading} />
+            <StatCard title="Прогноз расхода в месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} sub="на основе истории" icon={FlaskConical} loading={isLoading} />
+            <StatCard title="Общее время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))}/заказ` : "—"} icon={Clock} loading={isLoading} />
+          </div>
+
+          {/* Pending vs done progress */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Распределение заказов</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              {[
+                { label: "Завершены", value: completed, total: totalOrders, color: "bg-emerald-500" },
+                { label: "В работе", value: inProgress, total: totalOrders, color: "bg-blue-500" },
+                { label: "Отменены", value: cancelled, total: totalOrders, color: "bg-red-400" },
+              ].map(({ label, value, total, color }) => (
+                <div key={label}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium">{value} <span className="text-muted-foreground text-xs">({total > 0 ? ((value/total)*100).toFixed(1) : 0}%)</span></span>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <div className="h-2 w-full rounded-full bg-muted">
+                    <div className={`h-2 rounded-full ${color}`} style={{ width: total > 0 ? `${(value/total)*100}%` : "0%" }} />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ══════════════════════════════ PRINTERS ══════════════════════════════ */}
+        <TabsContent value="printers" className="space-y-6">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Всего принтеров" value={fmtNum(printers.length)} icon={Printer} loading={isLoading} />
+            <StatCard title="Самый загруженный"
+              value={busiestPrinter?.name ?? "—"}
+              sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""}
+              icon={Star} iconColor="text-yellow-500" loading={isLoading} />
+            <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading} />
+            <StatCard title="Среднее заказов/принтер" value={printers.length > 0 ? (totalOrders / printers.length).toFixed(1) : "—"} icon={Hash} loading={isLoading} />
+          </div>
+
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Общий наработанный ресурс" value={`${usedHours.toFixed(0)} ч`} icon={Clock} loading={isLoading} />
+            <StatCard title="Остаточный ресурс" value={`${Math.max(0, totalLifetime - usedHours).toFixed(0)} ч`} icon={Activity} loading={isLoading} />
+            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} />
+            <StatCard title="Загрузка (ч/день)" value={totalPrintTime > 0 ? `${(totalPrintTime / 60 / 30).toFixed(1)}` : "—"} sub="за последние 30 дней" icon={Layers} loading={isLoading} />
+          </div>
+
+          {/* Printer type distribution */}
+          {printerTypeData.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader><CardTitle className="text-base">Типы принтеров</CardTitle></CardHeader>
+                <CardContent>
+                  <ChartContainer config={{}} className="h-52 w-full">
+                    <PieChart>
+                      <Pie data={printerTypeData} dataKey="count" nameKey="type" cx="50%" cy="50%" outerRadius={75} label={({ type, count }) => `${type}: ${count}`}>
+                        {printerTypeData.map((_, i) => <Cell key={i} fill={["#3b82f6","#8b5cf6","#10b981","#f59e0b"][i % 4]} />)}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-base">Выручка по принтерам</CardTitle></CardHeader>
+                <CardContent>
+                  <ChartContainer config={{}} className="h-52 w-full">
+                    <BarChart data={printerStats.filter(p => p.revenue > 0)} layout="vertical" margin={{ left: 0 }}>
+                      <XAxis type="number" tickFormatter={v => `${(v/1000).toFixed(0)}к`} tickLine={false} axisLine={false} fontSize={11} />
+                      <YAxis type="category" dataKey="name" width={80} tickLine={false} axisLine={false} fontSize={11} />
+                      <Tooltip formatter={(v: any) => [fmt(v), "Выручка"]} />
+                      <Bar dataKey="revenue" fill="#3b82f6" radius={[0,3,3,0]} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Printer table */}
+          {printerStats.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Детали по принтерам</CardTitle></CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground text-xs">
+                        {["Принтер","Тип","Заказов","Выручка","Прибыль","Время печати","Износ","Статус"].map(h =>
+                          <th key={h} className="pb-2 font-medium text-left">{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printerStats.map(p => {
+                        const wearPct = p.print_lifetime_hours > 0 ? (p.total_print_time_minutes / 60 / p.print_lifetime_hours) * 100 : 0
+                        const needsReplace = wearPct >= 80
+                        return (
+                          <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="py-2 font-medium">{p.name}</td>
+                            <td className="py-2"><Badge variant="outline">{p.type}</Badge></td>
+                            <td className="py-2">{p.orders}</td>
+                            <td className="py-2">{fmt(p.revenue)}</td>
+                            <td className={`py-2 ${p.profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(p.profit)}</td>
+                            <td className="py-2">{fmtHours(p.total_print_time_minutes)}</td>
+                            <td className="py-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className="h-1.5 w-16 rounded-full bg-muted">
+                                  <div className={`h-1.5 rounded-full ${needsReplace ? "bg-red-500" : wearPct > 50 ? "bg-orange-400" : "bg-emerald-500"}`}
+                                    style={{ width: `${Math.min(wearPct, 100).toFixed(0)}%` }} />
+                                </div>
+                                <span className="text-xs text-muted-foreground">{wearPct.toFixed(0)}%</span>
+                              </div>
+                            </td>
+                            <td className="py-2">
+                              {p.orders === 0
+                                ? <Badge variant="outline" className="text-orange-500 border-orange-200">Не используется</Badge>
+                                : needsReplace
+                                ? <Badge variant="outline" className="text-red-500 border-red-200">Требует замены</Badge>
+                                : <Badge variant="outline" className="text-emerald-600 border-emerald-200">В норме</Badge>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ══════════════════════════════ MATERIALS ══════════════════════════════ */}
+        <TabsContent value="materials" className="space-y-6">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <StatCard title="Материалов в парке" value={fmtNum(materials.length)} icon={Package} loading={isLoading} />
+            <StatCard title="Общий расход" value={fmtWeight(totalFilament)} icon={FlaskConical} loading={isLoading} />
+            <StatCard title="Прогноз/месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} icon={TrendingUp} loading={isLoading} />
+            <StatCard
+              title="Остаток закончится через"
+              value={materialRunout != null ? (materialRunout >= 12 ? `${(materialRunout / 12).toFixed(1)} г` : `${materialRunout.toFixed(1)} мес`) : "—"}
+              sub="при текущем темпе"
+              icon={AlertTriangle}
+              iconColor={materialRunout != null && materialRunout < 2 ? "text-red-500" : "text-muted-foreground"}
+              loading={isLoading}
+            />
+          </div>
+
+          {/* Top materials by revenue */}
+          {materialStats.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Материалы с наибольшей выручкой</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer config={{}} className="h-52 w-full">
+                    <BarChart data={[...materialStats].sort((a, b) => b.revenue - a.revenue).slice(0, 8)} layout="vertical">
+                      <XAxis type="number" tickFormatter={v => `${(v/1000).toFixed(0)}к`} tickLine={false} axisLine={false} fontSize={11} />
+                      <YAxis type="category" dataKey="name" width={90} tickLine={false} axisLine={false} fontSize={10} />
+                      <Tooltip formatter={(v: any) => [fmt(v), "Выручка"]} />
+                      <Bar dataKey="revenue" fill="#8b5cf6" radius={[0,3,3,0]} />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-base">Категории материалов</CardTitle></CardHeader>
+                <CardContent>
+                  <ChartContainer config={{}} className="h-52 w-full">
+                    <BarChart data={materialCatData}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="cat" tickLine={false} axisLine={false} fontSize={11} />
+                      <YAxis tickLine={false} axisLine={false} fontSize={11} width={35} />
+                      <Tooltip />
+                      <Bar dataKey="orders" fill="#10b981" radius={[3,3,0,0]} name="Заказов" />
+                    </BarChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Material table */}
+          {materialStats.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Детали по материалам</CardTitle></CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground text-xs">
+                        {["Материал","Кат.","Цена/кг","Остаток","Заказов","Использовано","Выручка","Статус"].map(h =>
+                          <th key={h} className="pb-2 font-medium text-left">{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...materialStats].sort((a, b) => b.revenue - a.revenue).map(m => {
+                        const remainKg = m.quantity
+                        const monthsLeft = monthlyFilamentAvg > 0 ? (remainKg * 1000) / monthlyFilamentAvg : null
+                        const lowStock = monthsLeft != null && monthsLeft < 1
+                        return (
+                          <tr key={m.id} className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="py-2 font-medium">{m.name}</td>
+                            <td className="py-2 text-muted-foreground text-xs">{m.category}</td>
+                            <td className="py-2">{fmt(m.price_per_kg)}/кг</td>
+                            <td className={`py-2 ${lowStock ? "text-red-500 font-medium" : ""}`}>{remainKg} шт</td>
+                            <td className="py-2">{m.orders}</td>
+                            <td className="py-2">{fmtWeight(m.weight_used_g)}</td>
+                            <td className="py-2">{fmt(m.revenue)}</td>
+                            <td className="py-2">
+                              {m.orders === 0
+                                ? <Badge variant="outline" className="text-muted-foreground">Не используется</Badge>
+                                : lowStock
+                                ? <Badge variant="outline" className="text-red-500 border-red-200">Заканчивается</Badge>
+                                : <Badge variant="outline" className="text-emerald-600 border-emerald-200">ОК</Badge>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Purchase recommendations */}
+          {materialRunout != null && materialRunout < 3 && (
+            <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  Рекомендация по закупке
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-orange-700 dark:text-orange-300">
+                При текущем темпе расхода ({fmtWeight(monthlyFilamentAvg)}/мес) запасы закончатся
+                примерно через <strong>{materialRunout.toFixed(1)} мес.</strong> Рекомендуем пополнить запасы.
+                Оптимальный заказ: <strong>{fmtWeight(monthlyFilamentAvg * 3)}</strong> (на 3 месяца).
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
