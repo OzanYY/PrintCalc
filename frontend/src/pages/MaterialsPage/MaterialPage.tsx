@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import {
     Plus, Package, Edit, Trash2, MoreVertical, Star,
-    Copy, Droplet, Ruler, Weight, Award, CircleDot,
+    Copy, Droplet, Ruler, Weight, CircleDot,
     Beaker, Loader2, RefreshCw, X, PlusCircle, Settings2,
+    Layers, Minus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,6 +44,7 @@ interface MaterialFormData {
     density: string
     diameter: string
     is_default: boolean
+    quantity: string
     settings: Record<string, string>
 }
 
@@ -140,7 +142,7 @@ const EMPTY_FORM: MaterialFormData = {
     name: '', category: 'filament', type: 'pla',
     brand: '', color: '#000000',
     price_per_kg: '', density: '', diameter: '1.75',
-    is_default: false, settings: {},
+    is_default: false, quantity: '1', settings: {},
 }
 
 function formToApiData(form: MaterialFormData): CreateMaterialData {
@@ -154,6 +156,7 @@ function formToApiData(form: MaterialFormData): CreateMaterialData {
         density:      form.density  ? parseFloat(form.density)  : undefined,
         diameter:     form.diameter ? parseFloat(form.diameter) : undefined,
         is_default:   form.is_default,
+        quantity:     parseInt(form.quantity) >= 0 ? parseInt(form.quantity) : 1,
         settings:     form.settings,
     }
 }
@@ -194,6 +197,7 @@ export default function MaterialsPage() {
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
     const [isSaving, setIsSaving]                 = useState(false)
     const [isDeleting, setIsDeleting]             = useState(false)
+    const [isUpdatingQty, setIsUpdatingQty]       = useState<number | null>(null) // id материала
 
     // ─── Форма ────────────────────────────────────────────────────────────────
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,6 +243,7 @@ export default function MaterialsPage() {
             density:      material.density?.toString()  ?? '',
             diameter:     material.diameter?.toString() ?? '',
             is_default:   material.is_default,
+            quantity:     (material.quantity ?? 1).toString(),
             settings:     { ...material.settings },
         })
         const existing = settingsToEntries(material.settings)
@@ -290,6 +295,14 @@ export default function MaterialsPage() {
         if (ok) { setIsDeleteOpen(false); setSelectedMaterial(null) }
     }
 
+    // ─── Изменение количества (+1 / -1) ──────────────────────────────────────
+    const handleQuantityChange = async (material: Material, delta: number) => {
+        const newQty = Math.max(0, (material.quantity ?? 1) + delta)
+        setIsUpdatingQty(material.id)
+        await updateMaterial(material.id, { quantity: newQty })
+        setIsUpdatingQty(null)
+    }
+
     // ─── Производные данные ───────────────────────────────────────────────────
     const filtered   = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
     const prices     = materials.map(m => Number(m.price_per_kg))
@@ -299,6 +312,7 @@ export default function MaterialsPage() {
     const maxPrice   = prices.length ? Math.max(...prices) : 0
     const diameters  = [...new Set(materials.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
+    const totalQuantity = materials.reduce((s, m) => s + (m.quantity ?? 1), 0)
 
     if (isLoading) {
         return (
@@ -379,13 +393,13 @@ export default function MaterialsPage() {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Основной материал</CardTitle>
-                        <Award className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Запас материалов</CardTitle>
+                        <Layers className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold truncate">{defaultMat?.name ?? 'Не выбран'}</div>
+                        <div className="text-2xl font-bold">{totalQuantity}</div>
                         <p className="text-xs text-muted-foreground">
-                            {defaultMat?.type ?? 'Установите основной материал'}
+                            Суммарное количество единиц
                         </p>
                     </CardContent>
                 </Card>
@@ -426,10 +440,13 @@ export default function MaterialsPage() {
                     <MaterialCard
                         key={material.id}
                         material={material}
+                        isUpdatingQty={isUpdatingQty === material.id}
                         onEdit={() => openEditDialog(material)}
                         onDelete={() => { setSelectedMaterial(material); setIsDeleteOpen(true) }}
                         onSetDefault={() => setDefaultMaterial(material.id)}
                         onDuplicate={() => duplicateMaterial(material)}
+                        onQuantityInc={() => handleQuantityChange(material, +1)}
+                        onQuantityDec={() => handleQuantityChange(material, -1)}
                     />
                 ))}
             </div>
@@ -516,15 +533,19 @@ export default function MaterialsPage() {
 
 interface MaterialCardProps {
     material: Material
+    isUpdatingQty: boolean
     onEdit: () => void
     onDelete: () => void
     onSetDefault: () => void
     onDuplicate: () => void
+    onQuantityInc: () => void
+    onQuantityDec: () => void
 }
 
-function MaterialCard({ material, onEdit, onDelete, onSetDefault, onDuplicate }: MaterialCardProps) {
-    const settingsEntries = Object.entries(material.settings)
+function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec }: MaterialCardProps) {
+    const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
+    const qty = material.quantity ?? 1
 
     return (
         <Card className={material.is_default ? 'border-primary' : ''}>
@@ -561,6 +582,17 @@ function MaterialCard({ material, onEdit, onDelete, onSetDefault, onDuplicate }:
                             <DropdownMenuItem onClick={onEdit}>
                                 <Edit className="mr-2 h-4 w-4" />Редактировать
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-0">
+                                Количество: {qty}
+                            </DropdownMenuLabel>
+                            <DropdownMenuItem onClick={onQuantityInc} disabled={isUpdatingQty}>
+                                <Plus className="mr-2 h-4 w-4" />Увеличить на 1
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={onQuantityDec} disabled={isUpdatingQty || qty <= 0}>
+                                <Minus className="mr-2 h-4 w-4" />Уменьшить на 1
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             {!material.is_default && (
                                 <DropdownMenuItem onClick={onSetDefault}>
                                     <Star className="mr-2 h-4 w-4" />Сделать основным
@@ -579,10 +611,21 @@ function MaterialCard({ material, onEdit, onDelete, onSetDefault, onDuplicate }:
             </CardHeader>
 
             <CardContent className="pb-3">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <Badge className={getCategoryColor(material.category)}>
                         {getCategoryIcon(material.category)}
                         <span className="ml-1">{CATEGORY_LABELS[material.category]}</span>
+                    </Badge>
+                    {/* Количество */}
+                    <Badge
+                        variant={qty === 0 ? 'destructive' : 'secondary'}
+                        className="flex items-center gap-1"
+                    >
+                        {isUpdatingQty
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Layers className="h-3 w-3" />
+                        }
+                        {qty} шт.
                     </Badge>
                 </div>
 
@@ -734,6 +777,23 @@ function MaterialForm({
                         </Select>
                     </div>
                 )}
+            </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="quantity" className="flex items-center gap-2">
+                    <Layers className="h-4 w-4" />
+                    Количество
+                </Label>
+                <Input
+                    id="quantity"
+                    name="quantity"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={formData.quantity}
+                    onChange={onInputChange}
+                    placeholder="1"
+                />
             </div>
 
             <Separator />
