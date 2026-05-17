@@ -17,10 +17,21 @@ class MaterialModel {
                 density DECIMAL(10,3),
                 diameter DECIMAL(5,2),
                 is_default BOOLEAN DEFAULT false,
+                quantity INTEGER DEFAULT 1 CHECK (quantity >= 0),
                 settings JSONB DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Migration: add quantity column if not exists
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'materials' AND column_name = 'quantity'
+                ) THEN
+                    ALTER TABLE materials ADD COLUMN quantity INTEGER DEFAULT 1 CHECK (quantity >= 0);
+                END IF;
+            END $$;
 
             CREATE INDEX IF NOT EXISTS idx_materials_user_id ON materials(user_id);
             CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category);
@@ -61,7 +72,8 @@ class MaterialModel {
             price_per_kg, 
             density, 
             diameter, 
-            is_default, 
+            is_default,
+            quantity,
             settings 
         } = materialData;
 
@@ -85,15 +97,15 @@ class MaterialModel {
         const query = `
             INSERT INTO materials (
                 user_id, name, category, type, brand, color, 
-                price_per_kg, density, diameter, is_default, settings
+                price_per_kg, density, diameter, is_default, quantity, settings
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING *
         `;
         const values = [
             userId, name, category, type, brand, color, 
             price_per_kg || 0, density || null, finalDiameter, 
-            is_default || false, settings || {}
+            is_default || false, quantity != null ? quantity : 1, settings || {}
         ];
         
         const result = await pool.query(query, values);
@@ -157,7 +169,7 @@ class MaterialModel {
     static async update(id, userId, materialData) {
         const { 
             name, category, type, brand, color, 
-            price_per_kg, density, diameter, is_default, settings 
+            price_per_kg, density, diameter, is_default, quantity, settings 
         } = materialData;
 
         // Если категория или тип меняются, проверяем их
@@ -199,14 +211,16 @@ class MaterialModel {
                     ELSE NULL 
                 END,
                 is_default = COALESCE($9, is_default),
-                settings = settings || $10,
+                quantity = COALESCE($10, quantity),
+                settings = settings || $11,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $11 AND user_id = $12
+            WHERE id = $12 AND user_id = $13
             RETURNING *
         `;
         const values = [
             name, category, type, brand, color, 
             price_per_kg, density, diameter, is_default, 
+            quantity != null ? quantity : null,
             settings, id, userId
         ];
         

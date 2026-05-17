@@ -34,6 +34,7 @@ export interface Material {
     density: number | null
     diameter: number | null
     is_default: boolean
+    quantity: number
     settings: Record<string, string>
     created_at: string
     updated_at: string
@@ -49,6 +50,7 @@ export interface CreateMaterialData {
     density?: number
     diameter?: number
     is_default?: boolean
+    quantity?: number
     settings?: Record<string, string>
 }
 
@@ -62,6 +64,7 @@ export interface UpdateMaterialData {
     density?: number
     diameter?: number
     is_default?: boolean
+    quantity?: number
     settings?: Record<string, string>
 }
 
