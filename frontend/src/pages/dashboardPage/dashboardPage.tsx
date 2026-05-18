@@ -11,7 +11,7 @@ import {
   TrendingDown, Calendar, Download, RefreshCw, Award, CheckCircle2,
   Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
   Layers, ArrowUpRight, ArrowDownRight, Minus, Info, Star, Cpu,
-  Box, FlaskConical, Hash, Percent,
+  Box, FlaskConical, Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -109,9 +109,12 @@ interface StatCardProps {
   delta?: { value: number; suffix?: string }
   loading?: boolean
   accent?: string
+  tooltip?: string
 }
 
-const StatCard = ({ title, value, sub, icon: Icon, iconColor = "text-muted-foreground", delta, loading, accent }: StatCardProps) => {
+const StatCard = ({ title, value, sub, icon: Icon, iconColor = "text-muted-foreground", delta, loading, accent, tooltip }: StatCardProps) => {
+  const [showTip, setShowTip] = React.useState(false)
+
   if (loading) return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
@@ -127,7 +130,30 @@ const StatCard = ({ title, value, sub, icon: Icon, iconColor = "text-muted-foreg
   return (
     <Card className={accent ? `border-l-4 ${accent}` : ""}>
       <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <CardTitle className="text-sm font-medium text-muted-foreground truncate">{title}</CardTitle>
+          {tooltip && (
+            <div className="relative shrink-0">
+              <button
+                className="text-muted-foreground/50 hover:text-muted-foreground transition-colors focus:outline-none"
+                onMouseEnter={() => setShowTip(true)}
+                onMouseLeave={() => setShowTip(false)}
+                onFocus={() => setShowTip(true)}
+                onBlur={() => setShowTip(false)}
+                aria-label="Подробнее"
+                tabIndex={0}
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+              {showTip && (
+                <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 rounded-md bg-popover border border-border shadow-md px-3 py-2 text-xs text-popover-foreground leading-relaxed pointer-events-none">
+                  {tooltip}
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-border" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
       </CardHeader>
       <CardContent>
@@ -161,6 +187,353 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Отменены",
 }
 const MONTH_NAMES = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+
+// ─── ROI Tab Component ─────────────────────────────────────────────────────────
+
+interface RoiTabProps {
+  printers: PrinterType[]
+  printerStats: PrinterStat[]
+  materials: Material[]
+  materialStats: ReturnType<typeof Array.prototype.map> extends (infer T)[] ? T[] : any[]
+  totalRevenue: number
+  totalProfit: number
+  totalExpenses: number
+  totalElectricityCost: number
+  monthlyData: any[]
+  isLoading: boolean
+  fmt: (v: number) => string
+  fmtNum: (v: number) => string
+}
+
+const RoiTab = ({
+  printers, printerStats, materials, materialStats,
+  totalRevenue, totalProfit, totalExpenses, totalElectricityCost,
+  monthlyData, isLoading, fmt, fmtNum,
+}: RoiTabProps) => {
+  const toNum = (v: unknown) => { const n = Number(v); return isFinite(n) ? n : 0 }
+
+  // Total capital invested in printers
+  const totalPrinterInvestment = printers.reduce((s, p) => s + toNum(p.purchase_price), 0)
+
+  // Total capital in materials stock (quantity * price_per_kg)
+  const totalMaterialInvestment = materials.reduce((s, m) => s + toNum(m.quantity) * toNum(m.price_per_kg), 0)
+
+  // Total material spend (what was actually consumed in orders)
+  const totalMaterialSpend = (materialStats as any[]).reduce((s: number, m: any) => s + toNum(m.material_cost), 0)
+
+  // Total investments = printers + materials purchased (stocked)
+  const totalInvestment = totalPrinterInvestment + totalMaterialInvestment
+
+  // Net payback: profit minus printer investments and material stock value
+  const netPayback = totalRevenue - totalExpenses - totalPrinterInvestment
+
+  // ROI percentage
+  const roi = totalInvestment > 0 ? (totalProfit / totalInvestment) * 100 : 0
+
+  // Payback period in months (based on avg monthly profit)
+  const avgMonthlyProfit = monthlyData.length > 0
+    ? monthlyData.reduce((s: number, m: any) => s + toNum(m.profit), 0) / monthlyData.length
+    : 0
+  const paybackMonths = avgMonthlyProfit > 0 ? totalPrinterInvestment / avgMonthlyProfit : null
+
+  // Per-printer ROI
+  const printerRoi = printerStats.map(p => {
+    const invested = toNum(p.purchase_price)
+    const roiPct = invested > 0 ? (p.profit / invested) * 100 : 0
+    const monthsToPayback = avgMonthlyProfit > 0
+      ? invested / Math.max(p.profit / Math.max(monthlyData.length, 1), 0.01)
+      : null
+    const earned = p.profit
+    const remaining = invested - p.revenue
+    const pct = invested > 0 ? Math.min((p.revenue / invested) * 100, 100) : 0
+    return { ...p, invested, roiPct, monthsToPayback, earned, remaining, pct }
+  }).sort((a, b) => b.roiPct - a.roiPct)
+
+  // Breakdown of costs
+  const costBreakdown = [
+    { label: "Принтеры (капитал)", value: totalPrinterInvestment, color: "#3b82f6" },
+    { label: "Материалы (запас)", value: totalMaterialInvestment, color: "#8b5cf6" },
+    { label: "Расход материалов", value: totalMaterialSpend, color: "#f59e0b" },
+    { label: "Электроэнергия", value: totalElectricityCost, color: "#ef4444" },
+  ]
+
+  // Monthly cumulative ROI data
+  let cumRevenue = 0
+  let cumCost = totalPrinterInvestment + totalMaterialInvestment
+  const cumulativeData = monthlyData.map((m, i) => {
+    cumRevenue += toNum(m.revenue)
+    const operCost = toNum(m.revenue) * (1 - (totalProfit / Math.max(totalRevenue, 1)))
+    cumCost += operCost
+    const cumProfit = cumRevenue - totalPrinterInvestment - totalMaterialInvestment
+    return {
+      month: m.month,
+      cumRevenue,
+      cumProfit,
+      breakeven: totalPrinterInvestment + totalMaterialInvestment,
+    }
+  })
+
+  return (
+    <>
+      {/* KPI Row */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <StatCard
+          title="Вложено в принтеры"
+          value={fmt(totalPrinterInvestment)}
+          sub={`${printers.length} принт.`}
+          icon={Printer}
+          iconColor="text-blue-500"
+          loading={isLoading}
+          accent="border-blue-400"
+          tooltip="Суммарная стоимость покупки всех принтеров в вашем парке. Это капитальные вложения, которые необходимо отбить через выручку."
+        />
+        <StatCard
+          title="Вложено в материалы"
+          value={fmt(totalMaterialInvestment)}
+          sub="остаток на складе"
+          icon={Package}
+          iconColor="text-purple-500"
+          loading={isLoading}
+          accent="border-purple-400"
+          tooltip="Рыночная стоимость материалов, хранящихся на складе прямо сейчас (количество × цена/кг). Это замороженный капитал."
+        />
+        <StatCard
+          title="Чистая прибыль"
+          value={fmt(totalProfit)}
+          sub={`из ${fmt(totalRevenue)} выручки`}
+          icon={TrendingUp}
+          iconColor={totalProfit >= 0 ? "text-emerald-600" : "text-red-500"}
+          loading={isLoading}
+          accent={totalProfit >= 0 ? "border-emerald-400" : "border-red-400"}
+          tooltip="Разница между выручкой и операционными затратами (материалы + электроэнергия + амортизация). Именно эта сумма идёт на покрытие капитальных вложений."
+        />
+        <StatCard
+          title="ROI"
+          value={`${roi.toFixed(1)}%`}
+          sub={roi >= 0 ? "прибыль на вложения" : "убыток"}
+          icon={Percent}
+          iconColor={roi >= 0 ? "text-emerald-600" : "text-red-500"}
+          loading={isLoading}
+          accent={roi >= 100 ? "border-emerald-400" : roi >= 0 ? "border-yellow-400" : "border-red-400"}
+          tooltip="Return on Investment — отношение чистой прибыли к суммарным вложениям (принтеры + склад). 100% означает, что вложения полностью отбиты."
+        />
+      </div>
+
+      {/* Payback summary card */}
+      <Card className={netPayback >= 0 ? "border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20" : "border-orange-200 bg-orange-50 dark:bg-orange-950/20"}>
+        <CardHeader className="pb-2">
+          <CardTitle className={`text-base flex items-center gap-2 ${netPayback >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-orange-700 dark:text-orange-400"}`}>
+            <Scale className="h-4 w-4" />
+            {netPayback >= 0 ? "Инвестиции окупились" : "Инвестиции ещё не окупились"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div>
+            <div className="text-muted-foreground mb-0.5">Всего вложено</div>
+            <div className="text-xl font-bold">{fmt(totalInvestment)}</div>
+            <div className="text-xs text-muted-foreground">принтеры + склад материалов</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground mb-0.5">Выручка за период</div>
+            <div className="text-xl font-bold">{fmt(totalRevenue)}</div>
+            <div className="text-xs text-muted-foreground">все завершённые заказы</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground mb-0.5">
+              {paybackMonths != null ? "Срок окупаемости принтеров" : "Данных для расчёта нет"}
+            </div>
+            {paybackMonths != null ? (
+              <>
+                <div className="text-xl font-bold">
+                  {paybackMonths < 1 ? "< 1 мес." : paybackMonths > 120 ? "> 10 лет" : `${paybackMonths.toFixed(1)} мес.`}
+                </div>
+                <div className="text-xs text-muted-foreground">при среднемесячной прибыли {fmt(avgMonthlyProfit)}</div>
+              </>
+            ) : (
+              <div className="text-xl font-bold text-muted-foreground">—</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Charts row: cost breakdown + cumulative ROI */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Cost breakdown pie */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Структура затрат</CardTitle>
+            <CardDescription>Капитальные и операционные расходы</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading
+              ? <div className="h-52 flex items-center justify-center"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
+              : (
+                <>
+                  <ChartContainer config={{}} className="h-44 w-full">
+                    <PieChart>
+                      <Pie data={costBreakdown} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={2} dataKey="value">
+                        {costBreakdown.map((e, i) => <Cell key={i} fill={e.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: any) => [fmt(Number(v)), ""]} />
+                    </PieChart>
+                  </ChartContainer>
+                  <div className="space-y-2 mt-2">
+                    {costBreakdown.map(item => (
+                      <div key={item.label} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: item.color }} />
+                          <span className="text-muted-foreground">{item.label}</span>
+                        </div>
+                        <span className="font-medium">{fmt(item.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )
+            }
+          </CardContent>
+        </Card>
+
+        {/* Cumulative revenue vs investment */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Накопительная выручка vs вложения</CardTitle>
+            <CardDescription>Когда выручка превысит капитал</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading
+              ? <div className="h-52 flex items-center justify-center"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div>
+              : cumulativeData.length === 0
+              ? <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">Нет данных по месяцам</div>
+              : (
+                <ChartContainer config={{}} className="h-52 w-full">
+                  <AreaChart data={cumulativeData}>
+                    <defs>
+                      <linearGradient id="gCumRev" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={11} width={65} tickFormatter={v => `${(v / 1000).toFixed(0)}к`} />
+                    <Tooltip formatter={(v: any, n: any) => [fmt(Number(v)), n === "cumRevenue" ? "Накопит. выручка" : "Вложения"]} />
+                    <Area type="monotone" dataKey="cumRevenue" stroke="#10b981" fill="url(#gCumRev)" strokeWidth={2} name="cumRevenue" />
+                    <Line type="monotone" dataKey="breakeven" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} name="breakeven" />
+                  </AreaChart>
+                </ChartContainer>
+              )
+            }
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-printer ROI table */}
+      {printerRoi.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ReceiptText className="h-4 w-4" />
+              Окупаемость по каждому принтеру
+            </CardTitle>
+            <CardDescription>Сколько принтер заработал относительно своей стоимости</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs">
+                    {["Принтер", "Цена покупки", "Выручка", "Прибыль", "Прогресс окупаемости", "ROI %", "Статус"].map(h =>
+                      <th key={h} className="pb-2 font-medium text-left">{h}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {printerRoi.map(p => {
+                    const paidOff = p.revenue >= p.invested
+                    return (
+                      <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="py-2 font-medium">{p.name}</td>
+                        <td className="py-2">{fmt(p.invested)}</td>
+                        <td className="py-2 text-emerald-600">{fmt(p.revenue)}</td>
+                        <td className={`py-2 font-medium ${p.profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(p.profit)}</td>
+                        <td className="py-2 min-w-[140px]">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full bg-muted">
+                              <div
+                                className={`h-2 rounded-full transition-all ${paidOff ? "bg-emerald-500" : "bg-blue-400"}`}
+                                style={{ width: `${p.pct.toFixed(0)}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground w-10 text-right">{p.pct.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className={`py-2 font-medium ${p.roiPct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          {p.roiPct.toFixed(1)}%
+                        </td>
+                        <td className="py-2">
+                          {p.orders === 0
+                            ? <Badge variant="outline" className="text-muted-foreground">Нет заказов</Badge>
+                            : paidOff
+                            ? <Badge variant="outline" className="text-emerald-600 border-emerald-200">Окупился</Badge>
+                            : <Badge variant="outline" className="text-blue-600 border-blue-200">В процессе</Badge>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Material cost efficiency */}
+      {(materialStats as any[]).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Banknote className="h-4 w-4" />
+              Эффективность материалов
+            </CardTitle>
+            <CardDescription>Выручка относительно стоимости израсходованного материала</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs">
+                    {["Материал", "Цена/кг", "Израсходовано", "Стоимость расхода", "Выручка", "Множитель"].map(h =>
+                      <th key={h} className="pb-2 font-medium text-left">{h}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...(materialStats as any[])].filter((m: any) => m.orders > 0).sort((a: any, b: any) => b.revenue - a.revenue).map((m: any) => {
+                    const multiplier = m.material_cost > 0 ? m.revenue / m.material_cost : 0
+                    return (
+                      <tr key={m.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="py-2 font-medium">{m.name}</td>
+                        <td className="py-2">{fmt(m.price_per_kg)}/кг</td>
+                        <td className="py-2">{m.weight_used_g >= 1000 ? `${(m.weight_used_g / 1000).toFixed(2)} кг` : `${m.weight_used_g.toFixed(0)} г`}</td>
+                        <td className="py-2 text-orange-600">{fmt(m.material_cost)}</td>
+                        <td className="py-2 text-emerald-600">{fmt(m.revenue)}</td>
+                        <td className={`py-2 font-bold ${multiplier >= 3 ? "text-emerald-600" : multiplier >= 1.5 ? "text-yellow-600" : "text-red-500"}`}>
+                          ×{multiplier.toFixed(1)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  )
+}
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
@@ -405,6 +778,7 @@ export default function StatisticsPage() {
           <TabsTrigger value="orders">Заказы</TabsTrigger>
           <TabsTrigger value="printers">Принтеры</TabsTrigger>
           <TabsTrigger value="materials">Материалы</TabsTrigger>
+          <TabsTrigger value="roi">Окупаемость</TabsTrigger>
         </TabsList>
 
         {/* ══════════════════════════════ OVERVIEW ══════════════════════════════ */}
@@ -413,26 +787,34 @@ export default function StatisticsPage() {
           {/* KPI row 1 */}
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <StatCard title="Всего заказов" value={fmtNum(totalOrders)} sub={`${inProgress} в работе`}
-              icon={ShoppingCart} loading={isLoading} accent="border-blue-400" />
+              icon={ShoppingCart} loading={isLoading} accent="border-blue-400"
+              tooltip="Общее число заказов за выбранный период, включая завершённые, в работе и отменённые." />
             <StatCard title="Выручка" value={fmt(totalRevenue)} sub={`Ср. чек ${fmt(avgOrderValue)}`}
-              icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" />
+              icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400"
+              tooltip="Сумма финальных цен всех завершённых заказов за период. Не учитывает отменённые." />
             <StatCard title="Прибыль" value={fmt(totalProfit)} sub={`Маржа ${grossMarginPct.toFixed(1)}%`}
               icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400"
-              delta={{ value: grossMarginPct - 30, suffix: "% vs 30%" }} />
+              delta={{ value: grossMarginPct - 30, suffix: "% vs 30%" }}
+              tooltip="Выручка минус себестоимость (материалы + электроэнергия + амортизация). Стрелка показывает отклонение от целевой маржи 30%." />
             <StatCard title="Себестоимость" value={fmt(totalExpenses)} sub={`${avgCostPerGram} ₽/г`}
-              icon={Package} loading={isLoading} />
+              icon={Package} loading={isLoading}
+              tooltip="Суммарные операционные затраты: стоимость материалов, электроэнергия и амортизация принтеров по всем завершённым заказам." />
           </div>
 
           {/* KPI row 2 */}
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed"
-              icon={Target} loading={isLoading} />
+              icon={Target} loading={isLoading}
+              tooltip="Доля заказов, которые перешли из статуса «В работе» в «Завершён». Показывает эффективность выполнения принятых заказов." />
             <StatCard title="Завершено" value={`${completionRate.toFixed(1)}%`} sub={`${completed} заказов`}
-              icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} />
+              icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading}
+              tooltip="Процент завершённых заказов от общего числа за период. Высокое значение говорит о надёжности производства." />
             <StatCard title="Отменено" value={`${cancellationRate.toFixed(1)}%`} sub={`${cancelled} заказов`}
-              icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} />
+              icon={AlertTriangle} iconColor="text-red-500" loading={isLoading}
+              tooltip="Доля отменённых заказов. Высокий процент может сигнализировать о проблемах с приёмом заказов или производственных сбоях." />
             <StatCard title="Время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))} / заказ` : "—"}
-              icon={Clock} loading={isLoading} />
+              icon={Clock} loading={isLoading}
+              tooltip="Суммарное время печати по всем заказам за период. В подписи — среднее время на один завершённый заказ." />
           </div>
 
           {/* Charts row */}
@@ -533,18 +915,26 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ FINANCE ══════════════════════════════ */}
         <TabsContent value="finance" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Общая выручка" value={fmt(totalRevenue)} icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} />
-            <StatCard title="Общая себестоимость" value={fmt(totalExpenses)} icon={Package} loading={isLoading} />
+            <StatCard title="Общая выручка" value={fmt(totalRevenue)} icon={DollarSign} iconColor="text-emerald-600" loading={isLoading}
+              tooltip="Суммарная сумма всех завершённых заказов за выбранный период." />
+            <StatCard title="Общая себестоимость" value={fmt(totalExpenses)} icon={Package} loading={isLoading}
+              tooltip="Совокупные затраты на выполнение заказов: материалы, электроэнергия и амортизация принтеров." />
             <StatCard title="Общая прибыль" value={fmt(totalProfit)} icon={TrendingUp} iconColor={totalProfit >= 0 ? "text-emerald-600" : "text-red-500"} loading={isLoading}
-              accent={totalProfit >= 0 ? "border-emerald-400" : "border-red-400"} />
-            <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={isLoading} />
+              accent={totalProfit >= 0 ? "border-emerald-400" : "border-red-400"}
+              tooltip="Выручка минус себестоимость. Отражает реальный финансовый результат за период." />
+            <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={isLoading}
+              tooltip="Средний процент прибыли в цене заказа. Показывает, какую долю от выручки вы оставляете себе после вычета всех затрат." />
           </div>
 
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={isLoading} />
-            <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={isLoading} />
-            <StatCard title="Средний чек" value={fmt(avgOrderValue)} sub="по завершённым" icon={Star} loading={isLoading} />
-            <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={isLoading} />
+            <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={isLoading}
+              tooltip="Среднее значение суммы заказа по всем завершённым заказам за период." />
+            <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={isLoading}
+              tooltip="Медиана цен завершённых заказов. В отличие от среднего, не искажается единичными очень дорогими или очень дешёвыми заказами." />
+            <StatCard title="Средний чек" value={fmt(avgOrderValue)} sub="по завершённым" icon={Star} loading={isLoading}
+              tooltip="Средняя сумма одного завершённого заказа. Используется для планирования и сравнения с медианой." />
+            <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={isLoading}
+              tooltip="Суммарные расходы на электроэнергию по всем заказам, рассчитанные на основе потребления принтеров и времени печати." />
           </div>
 
           {/* Revenue area chart */}
@@ -613,23 +1003,34 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ ORDERS ══════════════════════════════ */}
         <TabsContent value="orders" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} icon={ShoppingCart} loading={isLoading} />
-            <StatCard title="В работе" value={fmtNum(inProgress)} icon={Activity} iconColor="text-blue-600" loading={isLoading} accent="border-blue-400" />
-            <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" />
-            <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} accent="border-red-400" />
+            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} icon={ShoppingCart} loading={isLoading}
+              tooltip="Общее количество заказов за выбранный период всех статусов." />
+            <StatCard title="В работе" value={fmtNum(inProgress)} icon={Activity} iconColor="text-blue-600" loading={isLoading} accent="border-blue-400"
+              tooltip="Заказы, которые сейчас находятся в процессе выполнения." />
+            <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400"
+              tooltip="Заказы, успешно выполненные и переданные клиенту за выбранный период." />
+            <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} accent="border-red-400"
+              tooltip="Заказы, которые были отменены. Учитываются в общем числе, но не включаются в выручку и прибыль." />
           </div>
 
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Процент отмен" value={`${cancellationRate.toFixed(1)}%`} icon={TrendingDown} iconColor="text-red-500" loading={isLoading} />
-            <StatCard title="Процент завершения" value={`${completionRate.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} />
-            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed" icon={Target} loading={isLoading} />
-            <StatCard title="Среднее время выполнения" value={avgCompletionDays > 0 ? `${avgCompletionDays.toFixed(1)} дн` : "—"} icon={Timer} loading={isLoading} />
+            <StatCard title="Процент отмен" value={`${cancellationRate.toFixed(1)}%`} icon={TrendingDown} iconColor="text-red-500" loading={isLoading}
+              tooltip="Доля отменённых заказов от общего числа. Высокий процент — сигнал для анализа причин отказов." />
+            <StatCard title="Процент завершения" value={`${completionRate.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading}
+              tooltip="Доля успешно выполненных заказов от общего числа. Отражает стабильность и надёжность производства." />
+            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed" icon={Target} loading={isLoading}
+              tooltip="Процент заказов, которые дошли до финала из статуса «В работе». Помогает оценить потери на этапе производства." />
+            <StatCard title="Среднее время выполнения" value={avgCompletionDays > 0 ? `${avgCompletionDays.toFixed(1)} дн` : "—"} icon={Timer} loading={isLoading}
+              tooltip="Среднее количество дней от создания заказа до его завершения. Помогает планировать сроки для клиентов." />
           </div>
 
           <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
-            <StatCard title="Общий расход материала" value={fmtWeight(totalFilament)} icon={Package} loading={isLoading} />
-            <StatCard title="Прогноз расхода в месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} sub="на основе истории" icon={FlaskConical} loading={isLoading} />
-            <StatCard title="Общее время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))}/заказ` : "—"} icon={Clock} loading={isLoading} />
+            <StatCard title="Общий расход материала" value={fmtWeight(totalFilament)} icon={Package} loading={isLoading}
+              tooltip="Суммарный вес материала, использованного во всех завершённых заказах за период." />
+            <StatCard title="Прогноз расхода в месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} sub="на основе истории" icon={FlaskConical} loading={isLoading}
+              tooltip="Средний расход материала в месяц, рассчитанный по исторической динамике. Помогает планировать закупки." />
+            <StatCard title="Общее время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))}/заказ` : "—"} icon={Clock} loading={isLoading}
+              tooltip="Суммарное машинное время по всем заказам. В подписи — среднее время на один завершённый заказ." />
           </div>
 
           {/* Pending vs done progress */}
@@ -658,20 +1059,28 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ PRINTERS ══════════════════════════════ */}
         <TabsContent value="printers" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего принтеров" value={fmtNum(printers.length)} icon={Printer} loading={isLoading} />
+            <StatCard title="Всего принтеров" value={fmtNum(printers.length)} icon={Printer} loading={isLoading}
+              tooltip="Общее количество принтеров в вашем парке оборудования." />
             <StatCard title="Самый загруженный"
               value={busiestPrinter?.name ?? "—"}
               sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""}
-              icon={Star} iconColor="text-yellow-500" loading={isLoading} />
-            <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading} />
-            <StatCard title="Среднее заказов/принтер" value={printers.length > 0 ? (totalOrders / printers.length).toFixed(1) : "—"} icon={Hash} loading={isLoading} />
+              icon={Star} iconColor="text-yellow-500" loading={isLoading}
+              tooltip="Принтер с наибольшим числом заказов за период. Показывает, какое оборудование используется активнее всего." />
+            <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading}
+              tooltip="Количество принтеров, у которых нет ни одного заказа за выбранный период. Простаивающее оборудование — повод пересмотреть загрузку." />
+            <StatCard title="Среднее заказов/принтер" value={printers.length > 0 ? (totalOrders / printers.length).toFixed(1) : "—"} icon={Hash} loading={isLoading}
+              tooltip="Среднее число заказов на один принтер за период. Помогает оценить равномерность загрузки парка." />
           </div>
 
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Общий наработанный ресурс" value={`${usedHours.toFixed(0)} ч`} icon={Clock} loading={isLoading} />
-            <StatCard title="Остаточный ресурс" value={`${Math.max(0, totalLifetime - usedHours).toFixed(0)} ч`} icon={Activity} loading={isLoading} />
-            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} />
-            <StatCard title="Загрузка (ч/день)" value={totalPrintTime > 0 ? `${(totalPrintTime / 60 / 30).toFixed(1)}` : "—"} sub="за последние 30 дней" icon={Layers} loading={isLoading} />
+            <StatCard title="Общий наработанный ресурс" value={`${usedHours.toFixed(0)} ч`} icon={Clock} loading={isLoading}
+              tooltip="Суммарное количество часов, которые все принтеры проработали по заказам. Используется для расчёта износа." />
+            <StatCard title="Остаточный ресурс" value={`${Math.max(0, totalLifetime - usedHours).toFixed(0)} ч`} icon={Activity} loading={isLoading}
+              tooltip="Оставшийся ресурс всего парка принтеров до достижения заявленного производителем ресурса (print_lifetime_hours)." />
+            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading}
+              tooltip="Средний процент выработанного ресурса по всем принтерам. Свыше 70% — рекомендуется планировать замену или обслуживание." />
+            <StatCard title="Загрузка (ч/день)" value={totalPrintTime > 0 ? `${(totalPrintTime / 60 / 30).toFixed(1)}` : "—"} sub="за последние 30 дней" icon={Layers} loading={isLoading}
+              tooltip="Среднесуточная загрузка всего парка принтеров в часах за последние 30 дней. Помогает оценить интенсивность использования." />
           </div>
 
           {/* Printer type distribution */}
@@ -763,9 +1172,12 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ MATERIALS ══════════════════════════════ */}
         <TabsContent value="materials" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Материалов в парке" value={fmtNum(materials.length)} icon={Package} loading={isLoading} />
-            <StatCard title="Общий расход" value={fmtWeight(totalFilament)} icon={FlaskConical} loading={isLoading} />
-            <StatCard title="Прогноз/месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} icon={TrendingUp} loading={isLoading} />
+            <StatCard title="Материалов в парке" value={fmtNum(materials.length)} icon={Package} loading={isLoading}
+              tooltip="Количество уникальных позиций материалов, добавленных в систему (включая материалы с нулевым остатком)." />
+            <StatCard title="Общий расход" value={fmtWeight(totalFilament)} icon={FlaskConical} loading={isLoading}
+              tooltip="Суммарный вес материала, израсходованного во всех завершённых заказах за выбранный период." />
+            <StatCard title="Прогноз/месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} icon={TrendingUp} loading={isLoading}
+              tooltip="Средний ежемесячный расход материала, рассчитанный на основе исторических данных. Используйте для планирования закупок." />
             <StatCard
               title="Остаток закончится через"
               value={materialRunout != null ? (materialRunout >= 12 ? `${(materialRunout / 12).toFixed(1)} г` : `${materialRunout.toFixed(1)} мес`) : "—"}
@@ -773,6 +1185,7 @@ export default function StatisticsPage() {
               icon={AlertTriangle}
               iconColor={materialRunout != null && materialRunout < 2 ? "text-red-500" : "text-muted-foreground"}
               loading={isLoading}
+              tooltip="Прогноз, через сколько месяцев закончится весь запас материалов на складе при сохранении текущего темпа расхода. Менее 2 месяцев — критично."
             />
           </div>
 
@@ -873,6 +1286,24 @@ export default function StatisticsPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* ══════════════════════════════ ROI ══════════════════════════════ */}
+        <TabsContent value="roi" className="space-y-6">
+          <RoiTab
+            printers={printers}
+            printerStats={printerStats}
+            materials={materials}
+            materialStats={materialStats}
+            totalRevenue={totalRevenue}
+            totalProfit={totalProfit}
+            totalExpenses={totalExpenses}
+            totalElectricityCost={totalElectricityCost}
+            monthlyData={monthlyData}
+            isLoading={isLoading}
+            fmt={fmt}
+            fmtNum={fmtNum}
+          />
         </TabsContent>
       </Tabs>
     </div>

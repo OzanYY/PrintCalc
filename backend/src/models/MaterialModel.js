@@ -212,7 +212,7 @@ class MaterialModel {
                 END,
                 is_default = COALESCE($9, is_default),
                 quantity = COALESCE($10, quantity),
-                settings = settings || $11,
+                settings = CASE WHEN $11::JSONB IS NOT NULL THEN settings || $11::JSONB ELSE settings END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $12 AND user_id = $13
             RETURNING *

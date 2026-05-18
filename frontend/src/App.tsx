@@ -9,7 +9,7 @@ import PrintersPage from './pages/PrinterPage/PrinterPage'
 import MaterialsPage from './pages/MaterialsPage/MaterialPage'
 import OrdersPage from './pages/OrdersPage/OrderPage'
 import StatisticsPage from './pages/dashboardPage/dashboardPage'
-import { ProtectedRoute } from './components/ProtectedRoute';
+import { ProtectedRoute, GuestRoute } from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -20,7 +20,7 @@ function App() {
           <Routes>
             {/* Публичные маршруты */}
             <Route path="/" element={<CalcPage />} />
-            <Route path="/login" element={<LoginPage />} />
+            <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
 
             {/* Защищенные маршруты */}
             <Route path="/profile" element={<ProtectedRoute> <ProfilePage /> </ProtectedRoute>} />

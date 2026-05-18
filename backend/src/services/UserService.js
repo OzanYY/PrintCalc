@@ -72,7 +72,7 @@ class UserService {
     }
 
     // ─── Смена пароля ─────────────────────────────────────────────────────────
-    static async changePassword(userId, oldPassword, newPassword) {
+    static async changePassword(userId, oldPassword, newPassword, currentRefreshToken = null) {
         // findByIdWithHash возвращает запись включая password_hash — один запрос вместо двух
         const fullUser = await UserModel.findByIdWithHash(userId);
         if (!fullUser) throw new Error('User not found');
@@ -84,6 +84,14 @@ class UserService {
 
         const password_hash = await bcrypt.hash(newPassword, 10);
         await UserModel.updatePasswordHash(userId, password_hash);
+
+        // Разлогиниваем все остальные сессии, кроме текущей
+        if (currentRefreshToken) {
+            await TokenService.removeOtherTokens(userId, currentRefreshToken);
+        } else {
+            // Если текущий refresh-токен недоступен — выкидываем все сессии
+            await TokenService.removeAllUserTokens(userId);
+        }
 
         return { message: 'Пароль успешно изменен' };
     }

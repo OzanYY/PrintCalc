@@ -191,7 +191,8 @@ class AuthController {
             if (!oldPassword || !newPassword) {
                 return res.status(400).json({ error: 'Old password and new password are required' });
             }
-            const result = await UserService.changePassword(req.user.id, oldPassword, newPassword);
+            const currentRefreshToken = req.cookies.refreshToken ?? null;
+            const result = await UserService.changePassword(req.user.id, oldPassword, newPassword, currentRefreshToken);
             res.json(result);
         } catch (error) {
             console.error('Change password error:', error);
