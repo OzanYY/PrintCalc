@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -74,6 +74,7 @@ export default function Calc() {
 
     const [materialPresets, setMaterialPresets] = useState<PresetOption[]>([])
     const [materialsData, setMaterialsData]     = useState<import('@/api/materials').Material[]>([])
+    const materialsDataRef = useRef<import('@/api/materials').Material[]>([])
 
     const loadPresets = useCallback(async () => {
         try {
@@ -109,6 +110,7 @@ export default function Calc() {
             })
 
             setMaterialsData(materials)
+            materialsDataRef.current = materials
             setMaterialPresets(materials.map(m => ({
                 id:        m.id,
                 label:     m.name,
@@ -304,8 +306,9 @@ export default function Calc() {
 
     // ─── Проверка остатка и запуск расчёта ──────────────────────────────────────
     const calculateCost = () => {
+
         if (selectedPresets.filamentPrice != null) {
-            const mat = materialsData.find(m => m.id === Number(selectedPresets.filamentPrice))
+            const mat = materialsDataRef.current.find(m => Number(m.id) === Number(selectedPresets.filamentPrice))
             if (mat) {
                 const cfg = CATEGORY_UNIT_CONFIG[mat.category]
                 const stock = Number(mat.stock_grams) - Number(mat.reserved_grams)
