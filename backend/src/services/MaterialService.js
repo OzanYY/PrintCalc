@@ -19,7 +19,9 @@ class MaterialService {
     static async createMaterial(userId, materialData) {
         const { 
             name, category, type, brand, color, 
-            price_per_kg, density, diameter, is_default, quantity, settings 
+            price_per_kg, density, diameter, is_default, quantity,
+            weight_per_spool_grams, stock_grams,
+            settings 
         } = materialData;
 
         // Валидация обязательных полей
@@ -48,6 +50,8 @@ class MaterialService {
             diameter,
             is_default,
             quantity,
+            weight_per_spool_grams,
+            stock_grams,
             settings
         });
 

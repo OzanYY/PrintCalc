@@ -21,11 +21,13 @@ class MaterialInventoryService {
     // ─── Получить текущий инвентарь материала ────────────────────────────────
 
     static async getInventory(materialId, userId, client = pool) {
+        const isTransaction = client !== pool;
+        const lockClause = isTransaction ? 'FOR UPDATE' : '';
         const result = await client.query(
             `SELECT id, stock_grams, reserved_grams, weight_per_spool_grams, quantity, name
              FROM materials
              WHERE id = $1 AND user_id = $2
-             FOR UPDATE`,
+             ${lockClause}`,
             [materialId, userId]
         );
         return result.rows[0] ?? null;

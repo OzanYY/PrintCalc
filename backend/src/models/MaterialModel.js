@@ -18,6 +18,9 @@ class MaterialModel {
                 diameter DECIMAL(5,2),
                 is_default BOOLEAN DEFAULT false,
                 quantity INTEGER DEFAULT 1 CHECK (quantity >= 0),
+                weight_per_spool_grams DECIMAL(10,2) NOT NULL DEFAULT 1000,
+                stock_grams DECIMAL(12,2) NOT NULL DEFAULT 0,
+                reserved_grams DECIMAL(12,2) NOT NULL DEFAULT 0,
                 settings JSONB DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -30,6 +33,28 @@ class MaterialModel {
                     WHERE table_name = 'materials' AND column_name = 'quantity'
                 ) THEN
                     ALTER TABLE materials ADD COLUMN quantity INTEGER DEFAULT 1 CHECK (quantity >= 0);
+                END IF;
+            END $$;
+
+            -- Migration: add inventory columns if not exists
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'materials' AND column_name = 'weight_per_spool_grams'
+                ) THEN
+                    ALTER TABLE materials ADD COLUMN weight_per_spool_grams DECIMAL(10,2) NOT NULL DEFAULT 1000;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'materials' AND column_name = 'stock_grams'
+                ) THEN
+                    ALTER TABLE materials ADD COLUMN stock_grams DECIMAL(12,2) NOT NULL DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'materials' AND column_name = 'reserved_grams'
+                ) THEN
+                    ALTER TABLE materials ADD COLUMN reserved_grams DECIMAL(12,2) NOT NULL DEFAULT 0;
                 END IF;
             END $$;
 
@@ -74,6 +99,8 @@ class MaterialModel {
             diameter, 
             is_default,
             quantity,
+            weight_per_spool_grams,
+            stock_grams,
             settings 
         } = materialData;
 
@@ -94,18 +121,24 @@ class MaterialModel {
             finalDiameter = null;
         }
 
+        const initialStock = stock_grams != null ? parseFloat(stock_grams) : 0;
+        const spoolWeight  = weight_per_spool_grams != null ? parseFloat(weight_per_spool_grams) : 1000;
+        const initialQty   = spoolWeight > 0 ? Math.floor(initialStock / spoolWeight) : (quantity != null ? quantity : 1);
+
         const query = `
             INSERT INTO materials (
                 user_id, name, category, type, brand, color, 
-                price_per_kg, density, diameter, is_default, quantity, settings
+                price_per_kg, density, diameter, is_default, quantity,
+                weight_per_spool_grams, stock_grams, reserved_grams, settings
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING *
         `;
         const values = [
             userId, name, category, type, brand, color, 
             price_per_kg || 0, density || null, finalDiameter, 
-            is_default || false, quantity != null ? quantity : 1, settings || {}
+            is_default || false, initialQty,
+            spoolWeight, initialStock, 0, settings || {}
         ];
         
         const result = await pool.query(query, values);
