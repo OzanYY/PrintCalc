@@ -191,6 +191,26 @@ class OrderService {
                 throw new Error('Нельзя удалить выполненный заказ');
             }
 
+            // Снимаем бронь материала, если заказ был «в процессе»
+            if (order.status === 'in_progress' && order.material_id && order.total_weight_grams > 0) {
+                try {
+                    const reserved = await MaterialInventoryService.getReservedForOrder(
+                        orderId, order.material_id, userId
+                    );
+                    if (reserved > 0) {
+                        await MaterialInventoryService.release({
+                            materialId:  order.material_id,
+                            userId,
+                            orderId,
+                            amountGrams: reserved,
+                            note:        `Снятие брони при удалении заказа #${orderId}`,
+                        });
+                    }
+                } catch (invErr) {
+                    console.error('Ошибка снятия брони при удалении заказа:', invErr);
+                }
+            }
+
             const deleted = await OrderModel.delete(orderId, userId);
             if (!deleted) throw new Error('Не удалось удалить заказ');
 
