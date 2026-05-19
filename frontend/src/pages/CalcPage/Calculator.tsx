@@ -29,7 +29,7 @@ import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
 import { printersAPI } from "@/api/printers"
-import { materialsAPI } from "@/api/materials"
+import { materialsAPI, CATEGORY_UNIT_CONFIG } from "@/api/materials"
 
 // Генерирует базовое имя заказа по текущей дате и времени
 function generateOrderName(): string {
@@ -73,6 +73,7 @@ export default function Calc() {
     }>({ power: [], cost: [], hours: [] })
 
     const [materialPresets, setMaterialPresets] = useState<PresetOption[]>([])
+    const [materialsData, setMaterialsData]     = useState<import('@/api/materials').Material[]>([])
 
     const loadPresets = useCallback(async () => {
         try {
@@ -107,6 +108,7 @@ export default function Calc() {
                 })),
             })
 
+            setMaterialsData(materials)
             setMaterialPresets(materials.map(m => ({
                 id:        m.id,
                 label:     m.name,
@@ -187,6 +189,12 @@ export default function Calc() {
 
     // ─── Состояние модального окна сохранения ────────────────────────────────
     const [saveDialogOpen, setSaveDialogOpen]   = useState(false)
+    const [stockWarning, setStockWarning]       = useState<{
+        type: 'impossible' | 'low'
+        message: string
+        detail: string
+        onContinue: () => void
+    } | null>(null)
     const [orderTitle, setOrderTitle]           = useState('')      // доп. заголовок от пользователя
     const [isSaving, setIsSaving]               = useState(false)
 
@@ -254,7 +262,7 @@ export default function Calc() {
     }
 
     // ─── Расчёт ───────────────────────────────────────────────────────────────
-    const calculateCost = async () => {
+    const doCalculate = async () => {
         setServerError('')
         setSuccessMessage('')
         setIsLoading(true)
@@ -292,6 +300,51 @@ export default function Calc() {
         } finally {
             setIsLoading(false)
         }
+    }
+
+    // ─── Проверка остатка и запуск расчёта ──────────────────────────────────────
+    const calculateCost = () => {
+        if (selectedPresets.filamentPrice != null) {
+            const mat = materialsData.find(m => m.id === Number(selectedPresets.filamentPrice))
+            if (mat) {
+                const cfg = CATEGORY_UNIT_CONFIG[mat.category]
+                const stock = Number(mat.stock_grams) - Number(mat.reserved_grams)
+                const needed = (Number(materials.modelWeight) || 0) + (Number(materials.supportWeight) || 0)
+                const spoolW = Number(mat.weight_per_spool_grams) || 1000
+                const fmt = (g: number) => cfg.unit === 'ml'
+                    ? (g < 1000 ? `${g.toFixed(0)} мл` : `${(g/1000).toFixed(2)} л`)
+                    : (g < 1000 ? `${g.toFixed(0)} г` : `${(g/1000).toFixed(3)} кг`)
+
+                if (needed > 0 && stock < needed) {
+                    setStockWarning({
+                        type: 'impossible',
+                        message: 'Недостаточно материала',
+                        detail: `Для печати нужно ${fmt(needed)}, а на складе доступно только ${fmt(Math.max(0, stock))}. Пополните остаток перед созданием заказа.`,
+                        onContinue: () => { setStockWarning(null); doCalculate() },
+                    })
+                    return
+                }
+                if (needed > 0 && stock - needed < spoolW * 0.1) {
+                    setStockWarning({
+                        type: 'low',
+                        message: 'Материал заканчивается',
+                        detail: `После печати останется ${fmt(stock - needed)} — менее 10% упаковки. Рекомендуем пополнить склад.`,
+                        onContinue: () => { setStockWarning(null); doCalculate() },
+                    })
+                    return
+                }
+                if (needed === 0 && stock < spoolW * 0.1) {
+                    setStockWarning({
+                        type: 'low',
+                        message: 'Материал заканчивается',
+                        detail: `На складе доступно ${fmt(Math.max(0, stock))} — менее 10% упаковки. Рекомендуем пополнить склад.`,
+                        onContinue: () => { setStockWarning(null); doCalculate() },
+                    })
+                    return
+                }
+            }
+        }
+        doCalculate()
     }
 
     // ─── Открытие диалога сохранения ─────────────────────────────────────────
@@ -599,6 +652,7 @@ export default function Calc() {
                                                     selectedPresetId={selectedPresets.filamentPrice}
                                                     onPresetChange={(id) => setSelectedPreset('filamentPrice', id)}
                                                 />
+
                                             </div>
                                         </div>
                                     </div>
@@ -1089,6 +1143,28 @@ export default function Calc() {
             )}
 
             {/* ─── Модальное окно сохранения заказа ─────────────────────────────── */}
+            {/* Диалог предупреждения об остатке */}
+            <Dialog open={stockWarning !== null} onOpenChange={open => { if (!open) setStockWarning(null) }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className={`flex items-center gap-2 ${stockWarning?.type === 'impossible' ? 'text-red-600' : 'text-orange-600'}`}>
+                            {stockWarning?.type === 'impossible' ? '🚫' : '⚠️'} {stockWarning?.message}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground py-2">{stockWarning?.detail}</p>
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild>
+                            <Button variant="outline">Отмена</Button>
+                        </DialogClose>
+                        {stockWarning?.type === 'low' && (
+                            <Button onClick={stockWarning.onContinue}>
+                                Всё равно рассчитать
+                            </Button>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>

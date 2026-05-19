@@ -27,7 +27,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import {
-    MATERIAL_CATEGORIES, MATERIAL_TYPES, CATEGORY_LABELS,
+    MATERIAL_CATEGORIES, MATERIAL_TYPES, CATEGORY_LABELS, CATEGORY_UNIT_CONFIG,
     type Material, type MaterialCategory, type CreateMaterialData,
 } from '@/api/materials'
 import { inventoryAPI, TX_LABELS, TX_COLORS, TX_SIGN, type MaterialTransaction } from '@/api/inventory'
@@ -146,7 +146,7 @@ const EMPTY_FORM: MaterialFormData = {
     brand: '', color: '#000000',
     price_per_kg: '', density: '', diameter: '1.75',
     is_default: false, quantity: '1',
-    weight_per_spool_grams: '1000',
+    weight_per_spool_grams: String(CATEGORY_UNIT_CONFIG['filament'].defaultContainerSize),
     stock_grams: '0',
     settings: {},
 }
@@ -228,11 +228,13 @@ export default function MaterialsPage() {
     }
 
     const handleCategoryChange = (value: MaterialCategory) => {
+        const cfg = CATEGORY_UNIT_CONFIG[value]
         setFormData(prev => ({
             ...prev,
             category: value,
             type:     MATERIAL_TYPES[value][0],
             diameter: value === 'filament' ? '1.75' : '',
+            weight_per_spool_grams: String(cfg.defaultContainerSize),
         }))
         setSettingEntries(getEmptySuggestions(value))
     }
@@ -463,9 +465,9 @@ export default function MaterialsPage() {
                         <Layers className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{(totalStockGrams / 1000).toFixed(2)} кг</div>
+                        <div className="text-2xl font-bold">{(totalStockGrams / 1000).toFixed(2)} кг/л</div>
                         <p className="text-xs text-muted-foreground">
-                            🔒 {totalReservedGrams.toFixed(0)} г забронировано · {totalQuantity} шт
+                            🔒 {totalReservedGrams.toFixed(0)} г/мл забронировано · {totalQuantity} упак.
                         </p>
                     </CardContent>
                 </Card>
@@ -669,39 +671,46 @@ export default function MaterialsPage() {
                         </DialogTitle>
                         <DialogDescription>{adjustMaterial?.name}</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                                <Label>Катушки (шт.)</Label>
-                                <Input
-                                    type="number" min="0" step="0.5"
-                                    value={adjustSpools}
-                                    onChange={e => { setAdjustSpools(e.target.value); setAdjustGrams('') }}
-                                    placeholder="1"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    = {((parseFloat(adjustSpools) || 0) * (adjustMaterial?.weight_per_spool_grams || 1000)).toFixed(0)} г
-                                </p>
+                    {(() => {
+                        const cfg = adjustMaterial ? CATEGORY_UNIT_CONFIG[adjustMaterial.category] : CATEGORY_UNIT_CONFIG['filament']
+                        const unitLabel = cfg.unit === 'ml' ? 'мл' : 'г'
+                        const containerSize = adjustMaterial?.weight_per_spool_grams || cfg.defaultContainerSize
+                        return (
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label>{cfg.unitNamePlural.charAt(0).toUpperCase() + cfg.unitNamePlural.slice(1)} (шт.)</Label>
+                                    <Input
+                                        type="number" min="0" step="0.5"
+                                        value={adjustSpools}
+                                        onChange={e => { setAdjustSpools(e.target.value); setAdjustGrams('') }}
+                                        placeholder="1"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        = {((parseFloat(adjustSpools) || 0) * containerSize).toFixed(0)} {unitLabel}
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Или {unitLabel} напрямую</Label>
+                                    <Input
+                                        type="number" min="0"
+                                        value={adjustGrams}
+                                        onChange={e => { setAdjustGrams(e.target.value); setAdjustSpools('') }}
+                                        placeholder={cfg.unit === 'ml' ? '250' : '250'}
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2">
-                                <Label>Или граммы</Label>
+                                <Label>Комментарий (необязательно)</Label>
                                 <Input
-                                    type="number" min="0"
-                                    value={adjustGrams}
-                                    onChange={e => { setAdjustGrams(e.target.value); setAdjustSpools('') }}
-                                    placeholder="250"
+                                    value={adjustNote}
+                                    onChange={e => setAdjustNote(e.target.value)}
+                                    placeholder={`Новый ${cfg.unitName} от поставщика...`}
                                 />
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Комментарий (необязательно)</Label>
-                            <Input
-                                value={adjustNote}
-                                onChange={e => setAdjustNote(e.target.value)}
-                                placeholder="Новая катушка от поставщика..."
-                            />
-                        </div>
-                    </div>
+                        )
+                    })()}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsAdjustOpen(false)} disabled={isAdjusting}>Отмена</Button>
                         <Button
@@ -732,14 +741,35 @@ interface MaterialCardProps {
     onAdjustSub: () => void
 }
 
+
+// ─── Вычислить количество упаковок для отображения ────────────────────────────
+// 0г → 0, >0г → ceil(stock / containerSize)
+function computeDisplayQty(stockGrams: number, containerSize: number): number {
+    if (stockGrams <= 0) return 0
+    return Math.ceil(stockGrams / containerSize)
+}
+
+// ─── Форматировать доступный остаток с учётом единиц категории ────────────────
+function formatAvailable(grams: number, category: MaterialCategory): string {
+    const cfg = CATEGORY_UNIT_CONFIG[category]
+    if (cfg.unit === 'ml') {
+        // Умно: < 1000 мл → мл, >= 1000 → литры
+        if (grams < 1000) return `${grams.toFixed(0)} мл`
+        return `${(grams / 1000).toFixed(2)} л`
+    }
+    // граммы / кг
+    if (grams < 1000) return `${grams.toFixed(0)} г`
+    return `${(grams / 1000).toFixed(3)} кг`
+}
+
 function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
-    const qty = material.quantity ?? 1
     const stockGrams = Number(material.stock_grams) || 0
+    const spoolWeight = Number(material.weight_per_spool_grams) || 1000
+    const qty = computeDisplayQty(stockGrams, spoolWeight)
     const reservedGrams = Number(material.reserved_grams) || 0
     const availableGrams = Math.max(0, stockGrams - reservedGrams)
-    const spoolWeight = Number(material.weight_per_spool_grams) || 1000
     const isLowStock = availableGrams < spoolWeight * 0.2
 
     return (
@@ -788,7 +818,7 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-0">
-                                Остаток: {availableGrams.toFixed(0)} г доступно
+                                Остаток: {formatAvailable(availableGrams, material.category)} доступно
                             </DropdownMenuLabel>
                             <DropdownMenuItem onClick={onAdjustAdd}>
                                 <TrendingUp className="mr-2 h-4 w-4 text-green-500" />Пополнить склад
@@ -828,37 +858,31 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             ? <Loader2 className="h-3 w-3 animate-spin" />
                             : <Layers className="h-3 w-3" />
                         }
-                        {qty} шт.
+                        {qty} {CATEGORY_UNIT_CONFIG[material.category].unitName}
                     </Badge>
                 </div>
 
                 {/* Блок инвентаря */}
                 <div className="rounded-md border bg-muted/30 p-3 mb-3 space-y-1.5">
                     <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Остаток на складе</span>
+                        <span className="text-muted-foreground">Остаток</span>
                         <span className={`font-semibold ${isLowStock ? 'text-orange-500' : ''}`}>
-                            {(stockGrams / 1000).toFixed(3)} кг
+                            {formatAvailable(stockGrams, material.category)}
                         </span>
                     </div>
                     {reservedGrams > 0 && (
                         <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground flex items-center gap-1">
-                                🔒 Забронировано
+                                🔒 из них забронировано
                             </span>
-                            <span className="text-yellow-600 dark:text-yellow-400">{reservedGrams.toFixed(1)} г</span>
+                            <span className="text-yellow-600 dark:text-yellow-400">{formatAvailable(reservedGrams, material.category)}</span>
                         </div>
                     )}
-                    <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Доступно</span>
-                        <span className={`font-medium ${isLowStock ? 'text-orange-500' : 'text-green-600 dark:text-green-400'}`}>
-                            {availableGrams.toFixed(1)} г
-                        </span>
-                    </div>
                     {/* Прогресс-бар */}
                     <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
                         <div
                             className={`h-1.5 rounded-full ${isLowStock ? 'bg-orange-500' : 'bg-green-500'}`}
-                            style={{ width: `${Math.min(100, (stockGrams / (spoolWeight * Math.max(1, qty))) * 100)}%` }}
+                            style={{ width: `${Math.min(100, stockGrams / (spoolWeight * Math.max(1, qty)) * 100)}%` }}
                         />
                     </div>
                 </div>
@@ -1016,7 +1040,7 @@ function MaterialForm({
             <div className="space-y-2">
                 <Label htmlFor="quantity" className="flex items-center gap-2">
                     <Layers className="h-4 w-4" />
-                    Количество катушек
+                    {`Количество ${CATEGORY_UNIT_CONFIG[formData.category].unitNamePlural}`}
                 </Label>
                 <Input
                     id="quantity"
@@ -1032,7 +1056,7 @@ function MaterialForm({
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <Label htmlFor="weight_per_spool_grams">Вес катушки (г)</Label>
+                    <Label htmlFor="weight_per_spool_grams">{CATEGORY_UNIT_CONFIG[formData.category].containerLabel}</Label>
                     <Input
                         id="weight_per_spool_grams"
                         name="weight_per_spool_grams"
@@ -1041,12 +1065,17 @@ function MaterialForm({
                         step="50"
                         value={formData.weight_per_spool_grams}
                         onChange={onInputChange}
-                        placeholder="1000"
+                        placeholder={CATEGORY_UNIT_CONFIG[formData.category].containerPlaceholder}
                     />
-                    <p className="text-xs text-muted-foreground">Обычно 1000 г (1 кг)</p>
+                    {formData.category === 'filament' && (
+                        <p className="text-xs text-muted-foreground">Обычно 1000 г (1 кг)</p>
+                    )}
+                    {formData.category === 'resin' && (
+                        <p className="text-xs text-muted-foreground">Обычно 500 мл или 1000 мл</p>
+                    )}
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="stock_grams">Начальный остаток (г)</Label>
+                    <Label htmlFor="stock_grams">{`Начальный остаток (${CATEGORY_UNIT_CONFIG[formData.category].unit === 'ml' ? 'мл' : 'г'})`}</Label>
                     <Input
                         id="stock_grams"
                         name="stock_grams"
@@ -1057,9 +1086,15 @@ function MaterialForm({
                         onChange={onInputChange}
                         placeholder="1000"
                     />
-                    <p className="text-xs text-muted-foreground">
-                        ≈ {((parseFloat(formData.stock_grams) || 0) / 1000).toFixed(3)} кг
-                    </p>
+                    {formData.category !== 'resin' ? (
+                        <p className="text-xs text-muted-foreground">
+                            ≈ {((parseFloat(formData.stock_grams) || 0) / 1000).toFixed(3)} кг
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                            ≈ {((parseFloat(formData.stock_grams) || 0) / 1000).toFixed(3)} л
+                        </p>
+                    )}
                 </div>
             </div>
 

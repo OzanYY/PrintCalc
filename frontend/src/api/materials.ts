@@ -20,6 +20,64 @@ export const CATEGORY_LABELS: Record<MaterialCategory, string> = {
     other:    'Другое',
 };
 
+// ─── Конфигурация единиц упаковки ─────────────────────────────────────────────
+
+export interface CategoryUnitConfig {
+    /** Название единицы упаковки в именительном падеже */
+    unitName: string
+    /** Родительный падеж множественного числа (для «количество ...») */
+    unitNamePlural: string
+    /** Ярлык для поля "вес/объём упаковки" */
+    containerLabel: string
+    /** Placeholder для поля размера упаковки */
+    containerPlaceholder: string
+    /** Единица измерения (г или мл) */
+    unit: 'g' | 'ml'
+    /** Значение по умолчанию для weight_per_spool_grams */
+    defaultContainerSize: number
+    /** Показывать ли поле "количество упаковок" в диалоге корректировки */
+    showContainerCount: boolean
+}
+
+export const CATEGORY_UNIT_CONFIG: Record<MaterialCategory, CategoryUnitConfig> = {
+    filament: {
+        unitName:             'катушка',
+        unitNamePlural:       'катушек',
+        containerLabel:       'Вес катушки (г)',
+        containerPlaceholder: '1000',
+        unit:                 'g',
+        defaultContainerSize: 1000,
+        showContainerCount:   true,
+    },
+    resin: {
+        unitName:             'флакон',
+        unitNamePlural:       'флаконов',
+        containerLabel:       'Объём флакона (мл)',
+        containerPlaceholder: '500',
+        unit:                 'ml',
+        defaultContainerSize: 500,
+        showContainerCount:   true,
+    },
+    powder: {
+        unitName:             'пакет',
+        unitNamePlural:       'пакетов',
+        containerLabel:       'Вес упаковки (г)',
+        containerPlaceholder: '1000',
+        unit:                 'g',
+        defaultContainerSize: 1000,
+        showContainerCount:   true,
+    },
+    other: {
+        unitName:             'ёмкость',
+        unitNamePlural:       'ёмкостей',
+        containerLabel:       'Вес/объём упаковки (г)',
+        containerPlaceholder: '500',
+        unit:                 'g',
+        defaultContainerSize: 500,
+        showContainerCount:   true,
+    },
+};
+
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 
 export interface Material {

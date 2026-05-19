@@ -37,7 +37,8 @@ class MaterialInventoryService {
 
     static computeSpools(stockGrams, weightPerSpool) {
         if (!weightPerSpool || weightPerSpool <= 0) return 0;
-        return Math.floor(stockGrams / weightPerSpool);
+        if (stockGrams <= 0) return 0;
+        return Math.ceil(stockGrams / weightPerSpool);
     }
 
     // ─── Обновить stock_grams + quantity в БД (внутри транзакции) ────────────

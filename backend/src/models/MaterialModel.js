@@ -123,7 +123,7 @@ class MaterialModel {
 
         const initialStock = stock_grams != null ? parseFloat(stock_grams) : 0;
         const spoolWeight  = weight_per_spool_grams != null ? parseFloat(weight_per_spool_grams) : 1000;
-        const initialQty   = spoolWeight > 0 ? Math.floor(initialStock / spoolWeight) : (quantity != null ? quantity : 1);
+        const initialQty   = spoolWeight > 0 ? (initialStock <= 0 ? 0 : Math.ceil(initialStock / spoolWeight)) : (quantity != null ? quantity : 1);
 
         const query = `
             INSERT INTO materials (
