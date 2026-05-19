@@ -195,7 +195,6 @@ export default function Calc() {
         type: 'impossible' | 'low'
         message: string
         detail: string
-        onContinue: () => void
     } | null>(null)
     const [orderTitle, setOrderTitle]           = useState('')      // доп. заголовок от пользователя
     const [isSaving, setIsSaving]               = useState(false)
@@ -322,28 +321,23 @@ export default function Calc() {
                     setStockWarning({
                         type: 'impossible',
                         message: 'Недостаточно материала',
-                        detail: `Для печати нужно ${fmt(needed)}, а на складе доступно только ${fmt(Math.max(0, stock))}. Пополните остаток перед созданием заказа.`,
-                        onContinue: () => { setStockWarning(null); doCalculate() },
+                        detail: `Для печати нужно ${fmt(needed)}, а на складе доступно только ${fmt(Math.max(0, stock))}. Рекомендуем пополнить остаток.`,
                     })
-                    return
-                }
-                if (needed > 0 && stock - needed < spoolW * 0.1) {
+                    // Информационное предупреждение — расчёт выполняется сразу
+                } else if (needed > 0 && stock - needed < spoolW * 0.1) {
                     setStockWarning({
                         type: 'low',
                         message: 'Материал заканчивается',
                         detail: `После печати останется ${fmt(stock - needed)} — менее 10% упаковки. Рекомендуем пополнить склад.`,
-                        onContinue: () => { setStockWarning(null); doCalculate() },
                     })
-                    return
-                }
-                if (needed === 0 && stock < spoolW * 0.1) {
+                    // Информационное предупреждение — расчёт выполняется сразу
+                } else if (needed === 0 && stock < spoolW * 0.1) {
                     setStockWarning({
                         type: 'low',
                         message: 'Материал заканчивается',
                         detail: `На складе доступно ${fmt(Math.max(0, stock))} — менее 10% упаковки. Рекомендуем пополнить склад.`,
-                        onContinue: () => { setStockWarning(null); doCalculate() },
                     })
-                    return
+                    // Информационное предупреждение — расчёт выполняется сразу
                 }
             }
         }
@@ -1157,13 +1151,8 @@ export default function Calc() {
                     <p className="text-sm text-muted-foreground py-2">{stockWarning?.detail}</p>
                     <DialogFooter className="gap-2">
                         <DialogClose asChild>
-                            <Button variant="outline">Отмена</Button>
+                            <Button>Понятно</Button>
                         </DialogClose>
-                        {stockWarning?.type === 'low' && (
-                            <Button onClick={stockWarning.onContinue}>
-                                Всё равно рассчитать
-                            </Button>
-                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
