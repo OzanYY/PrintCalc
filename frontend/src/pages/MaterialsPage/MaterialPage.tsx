@@ -3,7 +3,7 @@ import {
     Plus, Package, Edit, Trash2, MoreVertical, Star,
     Copy, Droplet, Ruler, Weight, CircleDot,
     Beaker, Loader2, RefreshCw, X, PlusCircle, Settings2,
-    Layers, Minus,
+    Layers, Minus, History, AlertTriangle, TrendingDown, TrendingUp,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,7 @@ import {
     MATERIAL_CATEGORIES, MATERIAL_TYPES, CATEGORY_LABELS,
     type Material, type MaterialCategory, type CreateMaterialData,
 } from '@/api/materials'
+import { inventoryAPI, TX_LABELS, TX_COLORS, TX_SIGN, type MaterialTransaction } from '@/api/inventory'
 import { useMaterials } from '@/hooks/useMaterials'
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ interface MaterialFormData {
     diameter: string
     is_default: boolean
     quantity: string
+    weight_per_spool_grams: string
+    stock_grams: string
     settings: Record<string, string>
 }
 
@@ -142,7 +145,10 @@ const EMPTY_FORM: MaterialFormData = {
     name: '', category: 'filament', type: 'pla',
     brand: '', color: '#000000',
     price_per_kg: '', density: '', diameter: '1.75',
-    is_default: false, quantity: '1', settings: {},
+    is_default: false, quantity: '1',
+    weight_per_spool_grams: '1000',
+    stock_grams: '0',
+    settings: {},
 }
 
 function formToApiData(form: MaterialFormData): CreateMaterialData {
@@ -157,6 +163,8 @@ function formToApiData(form: MaterialFormData): CreateMaterialData {
         diameter:     form.diameter ? parseFloat(form.diameter) : undefined,
         is_default:   form.is_default,
         quantity:     parseInt(form.quantity) >= 0 ? parseInt(form.quantity) : 1,
+        weight_per_spool_grams: parseFloat(form.weight_per_spool_grams) || 1000,
+        stock_grams:  parseFloat(form.stock_grams) || 0,
         settings:     form.settings,
     }
 }
@@ -197,7 +205,21 @@ export default function MaterialsPage() {
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
     const [isSaving, setIsSaving]                 = useState(false)
     const [isDeleting, setIsDeleting]             = useState(false)
-    const [isUpdatingQty, setIsUpdatingQty]       = useState<number | null>(null) // id материала
+    const [isUpdatingQty, setIsUpdatingQty]       = useState<number | null>(null)
+
+    // ─── Инвентарь ────────────────────────────────────────────────────────────
+    const [isHistoryOpen, setIsHistoryOpen]       = useState(false)
+    const [historyMaterial, setHistoryMaterial]   = useState<Material | null>(null)
+    const [historyTx, setHistoryTx]               = useState<MaterialTransaction[]>([])
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false)
+
+    const [isAdjustOpen, setIsAdjustOpen]         = useState(false)
+    const [adjustMaterial, setAdjustMaterial]     = useState<Material | null>(null)
+    const [adjustIsAdd, setAdjustIsAdd]           = useState(true)
+    const [adjustSpools, setAdjustSpools]         = useState('')
+    const [adjustGrams, setAdjustGrams]           = useState('')
+    const [adjustNote, setAdjustNote]             = useState('')
+    const [isAdjusting, setIsAdjusting]           = useState(false)
 
     // ─── Форма ────────────────────────────────────────────────────────────────
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,6 +266,8 @@ export default function MaterialsPage() {
             diameter:     material.diameter?.toString() ?? '',
             is_default:   material.is_default,
             quantity:     (material.quantity ?? 1).toString(),
+            weight_per_spool_grams: (material.weight_per_spool_grams ?? 1000).toString(),
+            stock_grams:  (material.stock_grams ?? 0).toString(),
             settings:     { ...material.settings },
         })
         const existing = settingsToEntries(material.settings)
@@ -303,6 +327,54 @@ export default function MaterialsPage() {
         setIsUpdatingQty(null)
     }
 
+    // ─── История транзакций ───────────────────────────────────────────────────
+    const openHistory = async (material: Material) => {
+        setHistoryMaterial(material)
+        setIsHistoryOpen(true)
+        setIsHistoryLoading(true)
+        try {
+            const res = await inventoryAPI.getByMaterial(material.id)
+            setHistoryTx(res.data.data)
+        } catch {
+            setHistoryTx([])
+        } finally {
+            setIsHistoryLoading(false)
+        }
+    }
+
+    // ─── Диалог корректировки ─────────────────────────────────────────────────
+    const openAdjust = (material: Material, isAdd: boolean) => {
+        setAdjustMaterial(material)
+        setAdjustIsAdd(isAdd)
+        setAdjustSpools('')
+        setAdjustGrams('')
+        setAdjustNote('')
+        setIsAdjustOpen(true)
+    }
+
+    const handleAdjust = async () => {
+        if (!adjustMaterial) return
+        const spoolsNum = parseFloat(adjustSpools)
+        const gramsNum  = parseFloat(adjustGrams)
+        if (!spoolsNum && !gramsNum) return
+
+        setIsAdjusting(true)
+        try {
+            await inventoryAPI.adjust(adjustMaterial.id, {
+                spools:      spoolsNum || undefined,
+                amount_grams: !spoolsNum && gramsNum ? gramsNum : undefined,
+                is_add:      adjustIsAdd,
+                note:        adjustNote || undefined,
+            })
+            await fetchMaterials()
+            setIsAdjustOpen(false)
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setIsAdjusting(false)
+        }
+    }
+
     // ─── Производные данные ───────────────────────────────────────────────────
     const filtered   = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
     const prices     = materials.map(m => Number(m.price_per_kg))
@@ -313,6 +385,12 @@ export default function MaterialsPage() {
     const diameters  = [...new Set(materials.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
     const totalQuantity = materials.reduce((s, m) => s + (m.quantity ?? 1), 0)
+    const totalStockGrams = materials.reduce((s, m) => s + (Number(m.stock_grams) || 0), 0)
+    const totalReservedGrams = materials.reduce((s, m) => s + (Number(m.reserved_grams) || 0), 0)
+    const lowStockMaterials = materials.filter(m => {
+        const available = Number(m.stock_grams) - Number(m.reserved_grams)
+        return available < (Number(m.weight_per_spool_grams) || 1000) * 0.2 // меньше 20% катушки
+    })
 
     if (isLoading) {
         return (
@@ -381,25 +459,30 @@ export default function MaterialsPage() {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Диаметры</CardTitle>
-                        <Ruler className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {diameters.length ? diameters.join(', ') + ' мм' : '—'}
-                        </div>
-                        <p className="text-xs text-muted-foreground">Доступные диаметры филамента</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Запас материалов</CardTitle>
+                        <CardTitle className="text-sm font-medium">Остаток на складе</CardTitle>
                         <Layers className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{totalQuantity}</div>
+                        <div className="text-2xl font-bold">{(totalStockGrams / 1000).toFixed(2)} кг</div>
                         <p className="text-xs text-muted-foreground">
-                            Суммарное количество единиц
+                            🔒 {totalReservedGrams.toFixed(0)} г забронировано · {totalQuantity} шт
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card className={lowStockMaterials.length > 0 ? 'border-orange-400' : ''}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Заканчивается</CardTitle>
+                        <AlertTriangle className={`h-4 w-4 ${lowStockMaterials.length > 0 ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${lowStockMaterials.length > 0 ? 'text-orange-500' : ''}`}>
+                            {lowStockMaterials.length}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            {lowStockMaterials.length > 0
+                                ? lowStockMaterials.map(m => m.name).slice(0, 2).join(', ') + (lowStockMaterials.length > 2 ? '...' : '')
+                                : 'Все материалы в норме'
+                            }
                         </p>
                     </CardContent>
                 </Card>
@@ -447,6 +530,9 @@ export default function MaterialsPage() {
                         onDuplicate={() => duplicateMaterial(material)}
                         onQuantityInc={() => handleQuantityChange(material, +1)}
                         onQuantityDec={() => handleQuantityChange(material, -1)}
+                        onHistory={() => openHistory(material)}
+                        onAdjustAdd={() => openAdjust(material, true)}
+                        onAdjustSub={() => openAdjust(material, false)}
                     />
                 ))}
             </div>
@@ -525,11 +611,112 @@ export default function MaterialsPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Диалог истории транзакций */}
+            <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+                <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>История списаний — {historyMaterial?.name}</DialogTitle>
+                        <DialogDescription>Все операции с остатком материала</DialogDescription>
+                    </DialogHeader>
+                    {isHistoryLoading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                    ) : historyTx.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">История пуста — операции появятся после первого заказа</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {historyTx.map(tx => (
+                                <div key={tx.id} className="flex items-start justify-between rounded-lg border p-3 gap-3">
+                                    <div className="flex items-start gap-3 min-w-0">
+                                        <span className="text-lg shrink-0">{TX_SIGN[tx.type]}</span>
+                                        <div className="min-w-0">
+                                            <div className={`font-medium text-sm ${TX_COLORS[tx.type]}`}>
+                                                {TX_LABELS[tx.type]}
+                                                {tx.order_name && <span className="text-muted-foreground font-normal"> · {tx.order_name}</span>}
+                                            </div>
+                                            {tx.note && <div className="text-xs text-muted-foreground truncate">{tx.note}</div>}
+                                            <div className="text-xs text-muted-foreground">
+                                                {new Date(tx.created_at).toLocaleString('ru-RU')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <div className={`font-semibold text-sm ${tx.type === 'manual_add' || tx.type === 'release' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {tx.type === 'manual_add' || tx.type === 'release' ? '+' : '−'}{Number(tx.amount_grams).toFixed(1)} г
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            → {Number(tx.balance_after).toFixed(1)} г
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsHistoryOpen(false)}>Закрыть</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Диалог корректировки остатка */}
+            <Dialog open={isAdjustOpen} onOpenChange={setIsAdjustOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {adjustIsAdd
+                                ? <span className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-green-500" />Пополнить остаток</span>
+                                : <span className="flex items-center gap-2"><TrendingDown className="h-5 w-5 text-red-500" />Уменьшить остаток</span>}
+                        </DialogTitle>
+                        <DialogDescription>{adjustMaterial?.name}</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                                <Label>Катушки (шт.)</Label>
+                                <Input
+                                    type="number" min="0" step="0.5"
+                                    value={adjustSpools}
+                                    onChange={e => { setAdjustSpools(e.target.value); setAdjustGrams('') }}
+                                    placeholder="1"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    = {((parseFloat(adjustSpools) || 0) * (adjustMaterial?.weight_per_spool_grams || 1000)).toFixed(0)} г
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Или граммы</Label>
+                                <Input
+                                    type="number" min="0"
+                                    value={adjustGrams}
+                                    onChange={e => { setAdjustGrams(e.target.value); setAdjustSpools('') }}
+                                    placeholder="250"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Комментарий (необязательно)</Label>
+                            <Input
+                                value={adjustNote}
+                                onChange={e => setAdjustNote(e.target.value)}
+                                placeholder="Новая катушка от поставщика..."
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAdjustOpen(false)} disabled={isAdjusting}>Отмена</Button>
+                        <Button
+                            onClick={handleAdjust}
+                            disabled={isAdjusting || (!adjustSpools && !adjustGrams)}
+                            variant={adjustIsAdd ? 'default' : 'destructive'}
+                        >
+                            {isAdjusting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Сохранение...</> : adjustIsAdd ? 'Пополнить' : 'Списать'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
-
-// ─── Карточка материала ───────────────────────────────────────────────────────
 
 interface MaterialCardProps {
     material: Material
@@ -540,15 +727,23 @@ interface MaterialCardProps {
     onDuplicate: () => void
     onQuantityInc: () => void
     onQuantityDec: () => void
+    onHistory: () => void
+    onAdjustAdd: () => void
+    onAdjustSub: () => void
 }
 
-function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec }: MaterialCardProps) {
+function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
     const qty = material.quantity ?? 1
+    const stockGrams = Number(material.stock_grams) || 0
+    const reservedGrams = Number(material.reserved_grams) || 0
+    const availableGrams = Math.max(0, stockGrams - reservedGrams)
+    const spoolWeight = Number(material.weight_per_spool_grams) || 1000
+    const isLowStock = availableGrams < spoolWeight * 0.2
 
     return (
-        <Card className={material.is_default ? 'border-primary' : ''}>
+        <Card className={`${material.is_default ? 'border-primary' : ''} ${isLowStock ? 'border-orange-400' : ''}`}>
             <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 min-w-0 pr-2">
@@ -564,6 +759,12 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                                 <Badge variant="default">
                                     <Star className="h-3 w-3 mr-1 fill-current" />
                                     Основной
+                                </Badge>
+                            )}
+                            {isLowStock && (
+                                <Badge variant="outline" className="text-orange-500 border-orange-400">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Мало
                                 </Badge>
                             )}
                         </CardTitle>
@@ -582,15 +783,18 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             <DropdownMenuItem onClick={onEdit}>
                                 <Edit className="mr-2 h-4 w-4" />Редактировать
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={onHistory}>
+                                <History className="mr-2 h-4 w-4" />История списаний
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-0">
-                                Количество: {qty}
+                                Остаток: {availableGrams.toFixed(0)} г доступно
                             </DropdownMenuLabel>
-                            <DropdownMenuItem onClick={onQuantityInc} disabled={isUpdatingQty}>
-                                <Plus className="mr-2 h-4 w-4" />Увеличить на 1
+                            <DropdownMenuItem onClick={onAdjustAdd}>
+                                <TrendingUp className="mr-2 h-4 w-4 text-green-500" />Пополнить склад
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onQuantityDec} disabled={isUpdatingQty || qty <= 0}>
-                                <Minus className="mr-2 h-4 w-4" />Уменьшить на 1
+                            <DropdownMenuItem onClick={onAdjustSub}>
+                                <TrendingDown className="mr-2 h-4 w-4 text-red-500" />Уменьшить остаток
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {!material.is_default && (
@@ -616,7 +820,6 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                         {getCategoryIcon(material.category)}
                         <span className="ml-1">{CATEGORY_LABELS[material.category]}</span>
                     </Badge>
-                    {/* Количество */}
                     <Badge
                         variant={qty === 0 ? 'destructive' : 'secondary'}
                         className="flex items-center gap-1"
@@ -627,6 +830,37 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                         }
                         {qty} шт.
                     </Badge>
+                </div>
+
+                {/* Блок инвентаря */}
+                <div className="rounded-md border bg-muted/30 p-3 mb-3 space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Остаток на складе</span>
+                        <span className={`font-semibold ${isLowStock ? 'text-orange-500' : ''}`}>
+                            {(stockGrams / 1000).toFixed(3)} кг
+                        </span>
+                    </div>
+                    {reservedGrams > 0 && (
+                        <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground flex items-center gap-1">
+                                🔒 Забронировано
+                            </span>
+                            <span className="text-yellow-600 dark:text-yellow-400">{reservedGrams.toFixed(1)} г</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Доступно</span>
+                        <span className={`font-medium ${isLowStock ? 'text-orange-500' : 'text-green-600 dark:text-green-400'}`}>
+                            {availableGrams.toFixed(1)} г
+                        </span>
+                    </div>
+                    {/* Прогресс-бар */}
+                    <div className="w-full bg-secondary rounded-full h-1.5 mt-1">
+                        <div
+                            className={`h-1.5 rounded-full ${isLowStock ? 'bg-orange-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.min(100, (stockGrams / (spoolWeight * Math.max(1, qty))) * 100)}%` }}
+                        />
+                    </div>
                 </div>
 
                 <div className="space-y-2 text-sm">
@@ -782,7 +1016,7 @@ function MaterialForm({
             <div className="space-y-2">
                 <Label htmlFor="quantity" className="flex items-center gap-2">
                     <Layers className="h-4 w-4" />
-                    Количество
+                    Количество катушек
                 </Label>
                 <Input
                     id="quantity"
@@ -794,6 +1028,39 @@ function MaterialForm({
                     onChange={onInputChange}
                     placeholder="1"
                 />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="weight_per_spool_grams">Вес катушки (г)</Label>
+                    <Input
+                        id="weight_per_spool_grams"
+                        name="weight_per_spool_grams"
+                        type="number"
+                        min="1"
+                        step="50"
+                        value={formData.weight_per_spool_grams}
+                        onChange={onInputChange}
+                        placeholder="1000"
+                    />
+                    <p className="text-xs text-muted-foreground">Обычно 1000 г (1 кг)</p>
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="stock_grams">Начальный остаток (г)</Label>
+                    <Input
+                        id="stock_grams"
+                        name="stock_grams"
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={formData.stock_grams}
+                        onChange={onInputChange}
+                        placeholder="1000"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        ≈ {((parseFloat(formData.stock_grams) || 0) / 1000).toFixed(3)} кг
+                    </p>
+                </div>
             </div>
 
             <Separator />

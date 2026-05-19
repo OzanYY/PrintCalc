@@ -1,5 +1,6 @@
 // services/OrderService.js
 const OrderModel = require('../models/OrderModel');
+const MaterialInventoryService = require('./MaterialInventoryService');
 
 class OrderService {
     // ─── Создание заказа ─────────────────────────────────────────────────────────
@@ -14,10 +15,28 @@ class OrderService {
             }
 
             const order = await OrderModel.create(userId, orderData);
+
+            // Бронируем материал, если он указан
+            let materialWarning = null;
+            if (order.material_id && order.total_weight_grams > 0) {
+                try {
+                    const result = await MaterialInventoryService.reserve({
+                        materialId:  order.material_id,
+                        userId,
+                        orderId:     order.id,
+                        amountGrams: parseFloat(order.total_weight_grams),
+                    });
+                    if (result.warning) materialWarning = result.warning;
+                } catch (invErr) {
+                    console.error('Ошибка бронирования материала:', invErr);
+                }
+            }
+
             return {
                 success: true,
                 data: order,
-                message: 'Заказ успешно создан'
+                message: 'Заказ успешно создан',
+                material_warning: materialWarning ?? undefined,
             };
         } catch (error) {
             console.error('Ошибка при создании заказа:', error);
@@ -113,6 +132,38 @@ class OrderService {
             }
 
             const updatedOrder = await OrderModel.updateStatus(orderId, userId, status);
+
+            // Обработка инвентаря при смене статуса
+            if (order.material_id && order.total_weight_grams > 0) {
+                const amountGrams = parseFloat(order.total_weight_grams);
+                try {
+                    if (status === 'completed' && order.status === 'in_progress') {
+                        // Фактическое списание: снимаем бронь и вычитаем из остатка
+                        await MaterialInventoryService.consume({
+                            materialId:  order.material_id,
+                            userId,
+                            orderId,
+                            amountGrams,
+                        });
+                    } else if (status === 'cancelled' && order.status === 'in_progress') {
+                        // Отмена: возвращаем забронированное
+                        const reserved = await MaterialInventoryService.getReservedForOrder(
+                            orderId, order.material_id, userId
+                        );
+                        if (reserved > 0) {
+                            await MaterialInventoryService.release({
+                                materialId:  order.material_id,
+                                userId,
+                                orderId,
+                                amountGrams: reserved,
+                            });
+                        }
+                    }
+                } catch (invErr) {
+                    console.error('Ошибка операции с инвентарём:', invErr);
+                }
+            }
+
             const statusMessages = {
                 completed:   'Заказ отмечен как выполненный',
                 cancelled:   'Заказ отменён',

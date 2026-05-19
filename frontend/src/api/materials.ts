@@ -35,6 +35,10 @@ export interface Material {
     diameter: number | null
     is_default: boolean
     quantity: number
+    // Инвентарный учёт
+    weight_per_spool_grams: number   // граммов в одной катушке (по умолчанию 1000)
+    stock_grams: number              // фактический остаток граммов
+    reserved_grams: number           // забронировано под активные заказы
     settings: Record<string, string>
     created_at: string
     updated_at: string
@@ -51,6 +55,8 @@ export interface CreateMaterialData {
     diameter?: number
     is_default?: boolean
     quantity?: number
+    weight_per_spool_grams?: number
+    stock_grams?: number
     settings?: Record<string, string>
 }
 

@@ -15,6 +15,8 @@ const TokenModel = require('./models/TokenModel');
 const { PrinterModel } = require('./models/PrinterModel');
 const MaterialModel = require('./models/MaterialModel');
 const OrderModel = require('./models/OrderModel');
+const MaterialTransactionModel = require('./models/MaterialTransactionModel');
+const inventoryRoutes = require('./routes/inventory-routes');
 
 // Объявляем порт, на котором будет развернут сервек
 const PORT = process.env.PORT || 5000;
@@ -52,6 +54,7 @@ app.use('/api/printers', printerRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api', calculationRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -84,6 +87,9 @@ const start = async () => {
 
         await OrderModel.createTable();
         console.log('✅ Orders table ready');
+
+        await MaterialTransactionModel.createTable();
+        console.log('✅ Material transactions table ready');
 
         app.listen(PORT, () => console.log(`Server started on port - ${PORT}`))
     }
