@@ -201,7 +201,13 @@ class OrderModel {
         SELECT o.*,
                p.name as printer_name, p.type as printer_type,
                m.name as material_name, m.category as material_category, m.type as material_type,
-               c.name as client_name, c.phone as client_phone, c.email as client_email
+               c.name as client_name, c.phone as client_phone, c.email as client_email,
+               COALESCE(
+                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
+                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
+                    WHERE ot.order_id = o.id),
+                   '[]'::json
+               ) AS tags
         FROM orders o
         LEFT JOIN printers  p ON o.printer_id  = p.id
         LEFT JOIN materials m ON o.material_id = m.id
@@ -226,7 +232,13 @@ class OrderModel {
         SELECT o.*,
                p.name as printer_name, p.type as printer_type,
                m.name as material_name, m.category as material_category, m.type as material_type,
-               c.name as client_name, c.phone as client_phone, c.email as client_email
+               c.name as client_name, c.phone as client_phone, c.email as client_email,
+               COALESCE(
+                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
+                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
+                    WHERE ot.order_id = o.id),
+                   '[]'::json
+               ) AS tags
         FROM orders o
         LEFT JOIN printers  p ON o.printer_id  = p.id
         LEFT JOIN materials m ON o.material_id = m.id
@@ -290,38 +302,46 @@ class OrderModel {
             settings,
         } = orderData;
 
+        // Флаги: undefined = не трогать поле; null = явно сбросить в NULL; значение = обновить
+        const hasName       = name        !== undefined;
+        const hasClientId   = client_id   !== undefined;
+        const hasDeadline   = deadline    !== undefined;
+        const hasNotes      = notes       !== undefined;
+        const hasPrinter    = printer_id  !== undefined;
+        const hasMaterial   = material_id !== undefined;
+
         const query = `
         UPDATE orders
-        SET name              = COALESCE($1,  name),
-            printer_id        = COALESCE($2,  printer_id),
-            material_id       = COALESCE($3,  material_id),
-            client_id         = COALESCE($4,  client_id),
-            deadline          = CASE WHEN $5::date IS NOT NULL THEN $5::date ELSE deadline END,
-            calc_materials    = CASE WHEN $6::jsonb IS NOT NULL THEN calc_materials    || $6::jsonb ELSE calc_materials    END,
-            calc_electricity  = CASE WHEN $7::jsonb IS NOT NULL THEN calc_electricity  || $7::jsonb ELSE calc_electricity  END,
-            calc_depreciation = CASE WHEN $8::jsonb IS NOT NULL THEN calc_depreciation || $8::jsonb ELSE calc_depreciation END,
-            calc_labor        = CASE WHEN $9::jsonb  IS NOT NULL THEN calc_labor        || $9::jsonb  ELSE calc_labor        END,
-            calc_additional   = CASE WHEN $10::jsonb IS NOT NULL THEN calc_additional   || $10::jsonb ELSE calc_additional   END,
-            calc_result       = CASE WHEN $11::jsonb IS NOT NULL THEN $11::jsonb         ELSE calc_result       END,
-            notes             = COALESCE($12, notes),
-            settings          = settings || COALESCE($13::jsonb, '{}'::jsonb),
+        SET name              = CASE WHEN $1::boolean THEN $2          ELSE name              END,
+            printer_id        = CASE WHEN $3::boolean THEN $4::bigint  ELSE printer_id        END,
+            material_id       = CASE WHEN $5::boolean THEN $6::bigint  ELSE material_id       END,
+            client_id         = CASE WHEN $7::boolean THEN $8::bigint  ELSE client_id         END,
+            deadline          = CASE WHEN $9::boolean THEN $10::date   ELSE deadline          END,
+            notes             = CASE WHEN $11::boolean THEN $12        ELSE notes             END,
+            calc_materials    = CASE WHEN $13::jsonb IS NOT NULL THEN calc_materials    || $13::jsonb ELSE calc_materials    END,
+            calc_electricity  = CASE WHEN $14::jsonb IS NOT NULL THEN calc_electricity  || $14::jsonb ELSE calc_electricity  END,
+            calc_depreciation = CASE WHEN $15::jsonb IS NOT NULL THEN calc_depreciation || $15::jsonb ELSE calc_depreciation END,
+            calc_labor        = CASE WHEN $16::jsonb IS NOT NULL THEN calc_labor        || $16::jsonb ELSE calc_labor        END,
+            calc_additional   = CASE WHEN $17::jsonb IS NOT NULL THEN calc_additional   || $17::jsonb ELSE calc_additional   END,
+            calc_result       = CASE WHEN $18::jsonb IS NOT NULL THEN $18::jsonb        ELSE calc_result                    END,
+            settings          = settings || COALESCE($19::jsonb, '{}'::jsonb),
             updated_at        = CURRENT_TIMESTAMP
-        WHERE id = $14 AND user_id = $15
+        WHERE id = $20 AND user_id = $21
         RETURNING *
     `;
         const values = [
-            name || null,
-            printer_id || null,
-            material_id || null,
-            client_id || null,
-            deadline || null,
-            calc_materials ? JSON.stringify(calc_materials) : null,
-            calc_electricity ? JSON.stringify(calc_electricity) : null,
+            hasName,       name ?? null,
+            hasPrinter,    printer_id  ?? null,
+            hasMaterial,   material_id ?? null,
+            hasClientId,   client_id   ?? null,
+            hasDeadline,   deadline    ?? null,
+            hasNotes,      notes       ?? null,
+            calc_materials    ? JSON.stringify(calc_materials)    : null,
+            calc_electricity  ? JSON.stringify(calc_electricity)  : null,
             calc_depreciation ? JSON.stringify(calc_depreciation) : null,
-            calc_labor ? JSON.stringify(calc_labor) : null,
-            calc_additional ? JSON.stringify(calc_additional) : null,
-            calc_result ? JSON.stringify(calc_result) : null,
-            notes || null,
+            calc_labor        ? JSON.stringify(calc_labor)        : null,
+            calc_additional   ? JSON.stringify(calc_additional)   : null,
+            calc_result       ? JSON.stringify(calc_result)       : null,
             settings ? JSON.stringify(settings) : null,
             id,
             userId,

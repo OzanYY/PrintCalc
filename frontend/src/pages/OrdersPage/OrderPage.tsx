@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Printer,
@@ -19,7 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Tag,
+  Tag as TagIco,
   CalendarDays,
   User,
 } from 'lucide-react';
@@ -67,7 +67,11 @@ import {
 } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOrders } from '@/hooks/useOrders';
+import { useContext } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import type { Order, CreateOrderData } from '@/api/orders';
+import { tagsAPI } from '@/api/tags';
+import type { Tag } from '@/api/tags';
 import { toast } from 'sonner';
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
@@ -465,6 +469,165 @@ const OrderForm = ({ data, onChange, printers = [], materials = [], isEdit }: Or
   );
 };
 
+// ─── Выбор тегов при создании заказа (без orderId) ───────────────────────────
+
+interface CreateTagSelectorProps {
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}
+
+const CreateTagSelector = ({ selectedIds, onChange }: CreateTagSelectorProps) => {
+  const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState('#6366f1');
+  const ref = useRef<HTMLDivElement>(null);
+
+  const PRESET_COLORS = [
+    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444',
+    '#f97316', '#eab308', '#22c55e', '#06b6d4',
+    '#3b82f6', '#64748b',
+  ];
+
+  useEffect(() => {
+    tagsAPI.getAll().then(r => setAllTags(r.data.data));
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setCreating(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const toggleTag = (id: number) => {
+    onChange(selectedIds.includes(id) ? selectedIds.filter(i => i !== id) : [...selectedIds, id]);
+  };
+
+  const handleCreateTag = async () => {
+    if (!newName.trim()) return;
+    try {
+      const r = await tagsAPI.create({ name: newName.trim(), color: newColor });
+      const tag = r.data.data;
+      setAllTags(prev => [...prev, tag]);
+      onChange([...selectedIds, tag.id]);
+      setNewName('');
+      setCreating(false);
+    } catch {
+      toast.error('Ошибка создания тега');
+    }
+  };
+
+  const selectedTags = allTags.filter(t => selectedIds.includes(t.id));
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex flex-wrap gap-1 min-h-[28px]">
+        {selectedTags.map(tag => (
+          <span
+            key={tag.id}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+            style={{ backgroundColor: tag.color }}
+          >
+            {tag.name}
+            <button
+              onClick={e => { e.stopPropagation(); toggleTag(tag.id); }}
+              className="hover:opacity-70 ml-0.5"
+            >
+              <XCircle className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground"
+          onClick={() => setOpen(v => !v)}
+          type="button"
+        >
+          <TagIco className="h-3 w-3 mr-1" />
+          {selectedTags.length === 0 ? 'Добавить теги' : <Plus className="h-3 w-3" />}
+        </Button>
+      </div>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-64 rounded-lg border bg-popover shadow-md">
+          {!creating ? (
+            <>
+              <div className="max-h-48 overflow-y-auto p-1">
+                {allTags.length === 0 && (
+                  <div className="py-2 text-center text-sm text-muted-foreground">Нет тегов</div>
+                )}
+                {allTags.map(tag => (
+                  <button
+                    key={tag.id}
+                    onClick={() => toggleTag(tag.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-sm"
+                    type="button"
+                  >
+                    <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                    <span className="flex-1 text-left">{tag.name}</span>
+                    {selectedIds.includes(tag.id) && <CheckCircle className="h-3 w-3 text-primary" />}
+                  </button>
+                ))}
+              </div>
+              <div className="p-2 border-t">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => setCreating(true)}
+                  type="button"
+                >
+                  <Plus className="h-4 w-4 mr-2" />Создать тег
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="p-3 space-y-3">
+              <div className="font-medium text-sm">Новый тег</div>
+              <Input
+                placeholder="Название"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
+                autoFocus
+              />
+              <div>
+                <div className="text-xs text-muted-foreground mb-1.5">Цвет</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewColor(c)}
+                      className="h-6 w-6 rounded-full transition-transform hover:scale-110"
+                      style={{
+                        backgroundColor: c,
+                        outline: newColor === c ? '2px solid currentColor' : 'none',
+                        outlineOffset: '2px',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleCreateTag} disabled={!newName.trim()} type="button">Создать</Button>
+                <Button size="sm" variant="ghost" onClick={() => setCreating(false)} type="button">Отмена</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Главный компонент ────────────────────────────────────────────────────────
 
 export default function OrdersPage() {
@@ -491,6 +654,9 @@ export default function OrdersPage() {
     refresh,
   } = useOrders({ autoFetch: true });
 
+  const authCtx = useAuth();
+  const currentUserId = authCtx?.user ? Number(authCtx.user.id) : null;
+
   // Показываем ошибки через toast
   useEffect(() => {
     if (error) {
@@ -511,14 +677,27 @@ export default function OrdersPage() {
   // Форма
   const [formData, setFormData] = useState<OrderFormData>(emptyForm());
 
-  // Дополнительные поля заказа
+  // Поля для create-диалога
   const [clientId, setClientId] = useState<number | null>(null);
   const [deadline, setDeadline] = useState<string | null>(null);
   const [tagIds, setTagIds]     = useState<number[]>([]);
 
+  // Поля для edit-диалога (независимые от selectedOrder, чтобы не ломать state при onChange)
+  const [editClientId,   setEditClientId]   = useState<number | null>(null);
+  const [editClientName, setEditClientName] = useState<string | null>(null);
+  const [editClientPhone,setEditClientPhone]= useState<string | null>(null);
+  const [editClientEmail,setEditClientEmail]= useState<string | null>(null);
+  const [editDeadline,   setEditDeadline]   = useState<string | null>(null);
+  const [editOrderTags,  setEditOrderTags]  = useState<import('@/api/tags').Tag[]>([]);
+
   // Фильтр по тегам
   const [filterTagId, setFilterTagId] = useState<number | null>(null);
   const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+
+  // Загружаем теги для фильтра при монтировании
+  useEffect(() => {
+    tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => {});
+  }, []);
 
   const handleFormChange = (name: string, value: string) =>
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -533,9 +712,22 @@ export default function OrdersPage() {
     setIsCreateOpen(true);
   };
 
-  const openEdit = (order: Order) => {
+  const openEdit = async (order: Order) => {
     setSelectedOrder(order);
     setFormData(formFromOrder(order));
+    // Инициализируем edit-state из данных заказа
+    setEditClientId((order as any).client_id ?? null);
+    setEditClientName((order as any).client_name ?? null);
+    setEditClientPhone((order as any).client_phone ?? null);
+    setEditClientEmail((order as any).client_email ?? null);
+    setEditDeadline((order as any).deadline ?? null);
+    // Загружаем теги заказа (они не приходят в списке)
+    try {
+      const r = await tagsAPI.getOrderTags(order.id);
+      setEditOrderTags(r.data.data);
+    } catch {
+      setEditOrderTags([]);
+    }
     setIsEditOpen(true);
   };
 
@@ -553,7 +745,17 @@ export default function OrdersPage() {
       client_id: clientId ?? undefined,
       deadline:  deadline ?? undefined,
     } as any);
-    if (result) setIsCreateOpen(false);
+    if (result) {
+      // После создания применяем теги если выбраны
+      if (tagIds.length > 0) {
+        try {
+          await tagsAPI.setOrderTags((result as any).id, tagIds);
+        } catch {
+          toast.error('Заказ создан, но не удалось применить теги');
+        }
+      }
+      setIsCreateOpen(false);
+    }
   };
 
   const handleEdit = async () => {
@@ -561,7 +763,7 @@ export default function OrdersPage() {
     const data = buildCreateData(formData);
     const result = await updateOrder(selectedOrder.id, {
       name:              data.name,
-      notes:             data.notes,
+      notes:             data.notes || null,
       printer_id:        data.printer_id,
       material_id:       data.material_id,
       calc_materials:    data.calc_materials,
@@ -570,7 +772,10 @@ export default function OrdersPage() {
       calc_labor:        data.calc_labor,
       calc_additional:   data.calc_additional,
       calc_result:       data.calc_result,
-    });
+      // Берём из edit-state (обновляется при каждом изменении в полях диалога)
+      client_id: editClientId,
+      deadline:  editDeadline,
+    } as any);
     if (result) {
       setIsEditOpen(false);
       setSelectedOrder(null);
@@ -870,6 +1075,42 @@ export default function OrdersPage() {
                         <p className="text-sm text-muted-foreground line-clamp-2">{order.notes}</p>
                       </>
                     )}
+
+                    {/* Клиент, дедлайн, теги */}
+                    {((order as any).client_name || (order as any).deadline || ((order as any).tags?.length > 0)) && (
+                      <>
+                        <Separator />
+                        <div className="space-y-1.5">
+                          {(order as any).client_name && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <User className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{(order as any).client_name}</span>
+                            </div>
+                          )}
+                          {(order as any).deadline && (
+                            <div className="flex items-center gap-1.5">
+                              <OrderDeadlineBadge
+                                deadline={(order as any).deadline}
+                                status={order.status}
+                              />
+                            </div>
+                          )}
+                          {(order as any).tags?.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {(order as any).tags.map((tag: any) => (
+                                <span
+                                  key={tag.id}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                                  style={{ backgroundColor: tag.color }}
+                                >
+                                  {tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1024,20 +1265,31 @@ export default function OrdersPage() {
           <OrderForm data={formData} onChange={handleFormChange} />
 
           <div className="grid gap-4 pb-2">
+            <Separator />
             <div className="space-y-2">
-              <Label>Клиент</Label>
+              <Label className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />Клиент
+              </Label>
               <OrderClientField
                 clientId={clientId}
                 onClientChange={setClientId}
               />
             </div>
             <div className="space-y-2">
-              <Label>Дедлайн</Label>
+              <Label className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />Дедлайн
+              </Label>
               <OrderDeadlineField
                 deadline={deadline}
                 status="in_progress"
                 onChange={setDeadline}
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <TagIco className="h-3.5 w-3.5" />Теги
+              </Label>
+              <CreateTagSelector selectedIds={tagIds} onChange={setTagIds} />
             </div>
           </div>
           <DialogFooter>
@@ -1065,11 +1317,13 @@ export default function OrdersPage() {
 
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
-                  <Tag className="h-3.5 w-3.5" />Теги
+                  <TagIco className="h-3.5 w-3.5" />Теги
                 </Label>
+                {/* initialTags загружаются в openEdit — теги не приходят в списке заказов */}
                 <OrderTagsField
                   orderId={selectedOrder.id}
-                  initialTags={(selectedOrder as any).tags ?? []}
+                  initialTags={editOrderTags}
+                  onChange={setEditOrderTags}
                 />
               </div>
 
@@ -1078,12 +1332,9 @@ export default function OrdersPage() {
                   <CalendarDays className="h-3.5 w-3.5" />Дедлайн
                 </Label>
                 <OrderDeadlineField
-                  deadline={(selectedOrder as any).deadline ?? null}
+                  deadline={editDeadline}
                   status={selectedOrder.status}
-                  onChange={async (d) => {
-                    await updateOrder(selectedOrder.id, { deadline: d } as any);
-                    setSelectedOrder(prev => prev ? { ...prev, deadline: d } as any : null);
-                  }}
+                  onChange={setEditDeadline}
                 />
               </div>
 
@@ -1092,13 +1343,15 @@ export default function OrdersPage() {
                   <User className="h-3.5 w-3.5" />Клиент
                 </Label>
                 <OrderClientField
-                  clientId={(selectedOrder as any).client_id ?? null}
-                  clientName={(selectedOrder as any).client_name}
-                  clientPhone={(selectedOrder as any).client_phone}
-                  clientEmail={(selectedOrder as any).client_email}
-                  onClientChange={async (id) => {
-                    await updateOrder(selectedOrder.id, { client_id: id } as any);
-                    setSelectedOrder(prev => prev ? { ...prev, client_id: id } as any : null);
+                  clientId={editClientId}
+                  clientName={editClientName}
+                  clientPhone={editClientPhone}
+                  clientEmail={editClientEmail}
+                  onClientChange={(id, client) => {
+                    setEditClientId(id);
+                    setEditClientName(client?.name ?? null);
+                    setEditClientPhone(client?.phone ?? null);
+                    setEditClientEmail(client?.email ?? null);
                   }}
                 />
               </div>
@@ -1107,7 +1360,7 @@ export default function OrdersPage() {
 
               <OrderComments
                 orderId={selectedOrder.id}
-                currentUserId={(selectedOrder as any).currentUserId}
+                currentUserId={currentUserId ?? 0}
               />
             </div>
           )}

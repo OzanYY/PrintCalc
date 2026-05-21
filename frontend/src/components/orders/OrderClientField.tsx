@@ -11,7 +11,7 @@ interface Props {
     clientName?: string | null;
     clientPhone?: string | null;
     clientEmail?: string | null;
-    onClientChange: (clientId: number | null) => void;
+    onClientChange: (clientId: number | null, client?: Client | null) => void;
 }
 
 export function OrderClientField({ clientId, clientName, clientPhone, clientEmail, onClientChange }: Props) {
@@ -52,7 +52,7 @@ export function OrderClientField({ clientId, clientName, clientPhone, clientEmai
         if (!newClient.name.trim()) return;
         try {
             const r = await clientsAPI.create(newClient);
-            onClientChange(r.data.data.id);
+            onClientChange(r.data.data.id, r.data.data);
             setOpen(false);
             setCreating(false);
             setNewClient({ name: '', phone: '', email: '' });
@@ -79,7 +79,7 @@ export function OrderClientField({ clientId, clientName, clientPhone, clientEmai
                         </div>
                     )}
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => onClientChange(null)}>
+                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => onClientChange(null, null)}>
                     <X className="h-3 w-3" />
                 </Button>
             </div>
@@ -122,7 +122,7 @@ export function OrderClientField({ clientId, clientName, clientPhone, clientEmai
                                     <button
                                         key={c.id}
                                         className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
-                                        onClick={() => { onClientChange(c.id); setOpen(false); }}
+                                        onClick={() => { onClientChange(c.id, c); setOpen(false); }}
                                     >
                                         <div className="font-medium">{c.name}</div>
                                         {(c.phone || c.email) && (

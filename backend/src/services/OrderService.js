@@ -108,7 +108,9 @@ class OrderService {
                 );
             }
 
-            const updatedOrder = await OrderModel.update(orderId, userId, updateData);
+            await OrderModel.update(orderId, userId, updateData);
+            // Перечитываем с JOIN-ами (printer, material, client, tags)
+            const updatedOrder = await OrderModel.findById(orderId, userId);
             return {
                 success: true,
                 data: updatedOrder,

@@ -60,7 +60,7 @@ export interface Order {
   notes: string | null;
   settings: Record<string, unknown>;
 
-  lient_id: number | null;
+  client_id: number | null;
   deadline: string | null; // ISO date 'YYYY-MM-DD'
   is_urgent: boolean;
 
