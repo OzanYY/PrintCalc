@@ -160,6 +160,7 @@ class TokenService {
             id: tokenFromDb.user_id,
             email: tokenFromDb.email,
             username: tokenFromDb.username,
+            role: tokenFromDb.role,
         };
         const tokens = this.generateTokens(payload);
 
@@ -193,6 +194,7 @@ class TokenService {
                 id: tokenFromDb.user_id,
                 email: tokenFromDb.email,
                 username: tokenFromDb.username,
+                role: tokenFromDb.role,
             },
         };
     }
@@ -203,6 +205,7 @@ class TokenService {
             id: user.id,
             email: user.email,
             username: user.username,
+            role: user.role,
         };
 
         const tokens = this.generateTokens(payload);

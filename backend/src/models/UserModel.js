@@ -2,7 +2,6 @@
 const pool = require('../config/database');
 
 class UserModel {
-    // Создание таблицы (если не существует)
     static async createTable() {
         const query = `
             CREATE TABLE IF NOT EXISTS users (
@@ -21,46 +20,51 @@ class UserModel {
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_password_token);
+
+            -- Migration: add role column if not exists
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'role'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'
+                        CHECK (role IN ('user', 'admin'));
+                END IF;
+            END $$;
         `;
         await pool.query(query);
     }
 
-    // Создание пользователя (принимает уже готовый password_hash)
     static async create({ username, email, password_hash, activation_link }) {
         const query = `
             INSERT INTO users (username, email, password_hash, activation_link)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, username, email, is_activated, created_at
+            RETURNING id, username, email, is_activated, role, created_at
         `;
         const values = [username, email, password_hash, activation_link];
-
         try {
             const result = await pool.query(query, values);
             return result.rows[0];
         } catch (error) {
-            // Пробрасываем ошибку дальше, не обрабатываем здесь
             throw error;
         }
     }
 
-    // Поиск пользователя по email (полные данные, включая пароль)
     static async findByEmail(email) {
         const query = 'SELECT * FROM users WHERE email = $1';
         const result = await pool.query(query, [email]);
         return result.rows[0];
     }
 
-    // Поиск пользователя по username
     static async findByUsername(username) {
         const query = 'SELECT * FROM users WHERE username = $1';
         const result = await pool.query(query, [username]);
         return result.rows[0];
     }
 
-    // Поиск пользователя по ID (без пароля)
     static async findById(id) {
         const query = `
-            SELECT id, username, email, is_activated, created_at
+            SELECT id, username, email, is_activated, role, created_at
             FROM users 
             WHERE id = $1
         `;
@@ -68,33 +72,29 @@ class UserModel {
         return result.rows[0];
     }
 
-    // Поиск пользователя по ID с хешем пароля (для смены пароля)
     static async findByIdWithHash(id) {
         const query = 'SELECT * FROM users WHERE id = $1';
         const result = await pool.query(query, [id]);
         return result.rows[0];
     }
 
-    // Поиск по ссылке активации
     static async findByActivationLink(link) {
         const query = 'SELECT * FROM users WHERE activation_link = $1';
         const result = await pool.query(query, [link]);
         return result.rows[0];
     }
 
-    // Активация пользователя
     static async activateUser(id) {
         const query = `
             UPDATE users 
             SET is_activated = TRUE, activation_link = NULL 
             WHERE id = $1 
-            RETURNING id, username, email, is_activated
+            RETURNING id, username, email, is_activated, role
         `;
         const result = await pool.query(query, [id]);
         return result.rows[0];
     }
 
-    // Обновление данных пользователя
     static async update(id, { username, email }) {
         const query = `
             UPDATE users 
@@ -102,14 +102,13 @@ class UserModel {
                 email = COALESCE($2, email),
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $3 
-            RETURNING id, username, email, is_activated, created_at
+            RETURNING id, username, email, is_activated, role, created_at
         `;
         const values = [username, email, id];
         const result = await pool.query(query, values);
         return result.rows[0];
     }
 
-    // Обновление пароля (принимает готовый хеш)
     static async updatePasswordHash(id, password_hash) {
         const query = `
             UPDATE users 
@@ -121,7 +120,6 @@ class UserModel {
         return result.rows[0];
     }
 
-    // Удаление пользователя
     static async delete(id) {
         const query = 'DELETE FROM users WHERE id = $1 RETURNING id';
         const result = await pool.query(query, [id]);
@@ -130,13 +128,13 @@ class UserModel {
 
     static async setResetToken(userId, token, expiresAt) {
         const query = `
-        UPDATE users 
-        SET reset_password_token = $1, 
-            reset_password_expires = $2,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3
-        RETURNING id
-    `;
+            UPDATE users 
+            SET reset_password_token = $1, 
+                reset_password_expires = $2,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3
+            RETURNING id
+        `;
         const result = await pool.query(query, [token, expiresAt, userId]);
         return result.rows[0];
     }
@@ -149,12 +147,37 @@ class UserModel {
 
     static async clearResetToken(userId) {
         const query = `
-        UPDATE users 
-        SET reset_password_token = NULL, 
-            reset_password_expires = NULL 
-        WHERE id = $1
-    `;
+            UPDATE users 
+            SET reset_password_token = NULL, 
+                reset_password_expires = NULL 
+            WHERE id = $1
+        `;
         await pool.query(query, [userId]);
+    }
+
+    // ─── Admin methods ────────────────────────────────────────────────────────
+    static async findAll() {
+        const query = `
+            SELECT id, username, email, is_activated, role, created_at, updated_at
+            FROM users
+            ORDER BY created_at DESC
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    }
+
+    static async adminUpdate(id, { username, email, is_activated }) {
+        const query = `
+            UPDATE users 
+            SET username = COALESCE($1, username),
+                email = COALESCE($2, email),
+                is_activated = COALESCE($3, is_activated),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+            RETURNING id, username, email, is_activated, role, created_at, updated_at
+        `;
+        const result = await pool.query(query, [username, email, is_activated, id]);
+        return result.rows[0];
     }
 }
 

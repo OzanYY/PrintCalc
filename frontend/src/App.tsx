@@ -10,6 +10,7 @@ import MaterialsPage from './pages/MaterialsPage/MaterialPage'
 import OrdersPage from './pages/OrdersPage/OrderPage'
 import StatisticsPage from './pages/dashboardPage/dashboardPage'
 import { ProtectedRoute, GuestRoute } from './components/ProtectedRoute';
+import AdminPage from './pages/AdminPage/AdminPage';
 
 function App() {
   return (
@@ -28,6 +29,9 @@ function App() {
             <Route path="/materials" element={<ProtectedRoute> <MaterialsPage /> </ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute> <OrdersPage /> </ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute> <StatisticsPage /> </ProtectedRoute>} />
+
+            {/* Админ */}
+            <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
 
             {/* Редирект для неизвестных маршрутов */}
             <Route path="*" element={<Navigate to="/" replace />} />

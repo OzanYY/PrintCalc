@@ -53,7 +53,7 @@ class TokenModel {
 
     static async findByToken(refreshToken) {
         const query = `
-            SELECT t.*, u.id as user_id, u.email, u.username, u.is_activated
+            SELECT t.*, u.id as user_id, u.email, u.username, u.is_activated, u.role
             FROM tokens t
             INNER JOIN users u ON t.user_id = u.id
             WHERE t.refresh_token = $1
@@ -64,7 +64,7 @@ class TokenModel {
 
     static async findValidToken(refreshToken) {
         const query = `
-            SELECT t.*, u.id as user_id, u.email, u.username, u.is_activated
+            SELECT t.*, u.id as user_id, u.email, u.username, u.is_activated, u.role
             FROM tokens t
             INNER JOIN users u ON t.user_id = u.id
             WHERE t.refresh_token = $1 AND t.expires_at > NOW()
