@@ -2,6 +2,8 @@
 const express = require('express');
 const router  = express.Router();
 const OrderController = require('../controllers/orderController');
+const TagController         = require('../controllers/TagController');
+const OrderCommentController = require('../controllers/OrderCommentController');
 const { authMiddleware, requireAuth } = require('../middleware/auth-middleware');
 
 // Все маршруты требуют авторизации
@@ -45,5 +47,25 @@ router.patch('/:id/status',   OrderController.updateOrderStatus);
 router.patch('/:id/complete', OrderController.completeOrder);
 router.patch('/:id/cancel',   OrderController.cancelOrder);
 router.post ('/:id/clone',    OrderController.cloneOrder);
+
+// ─── Теги заказа ──────────────────────────────────────────────────────────────
+// GET    /orders/:orderId/tags             — теги заказа
+// PUT    /orders/:orderId/tags             — заменить все теги { tagIds: [] }
+// POST   /orders/:orderId/tags/:tagId      — добавить тег
+// DELETE /orders/:orderId/tags/:tagId      — убрать тег
+router.get   ('/:orderId/tags',          TagController.getOrderTags);
+router.put   ('/:orderId/tags',          TagController.setOrderTags);
+router.post  ('/:orderId/tags/:tagId',   TagController.addOrderTag);
+router.delete('/:orderId/tags/:tagId',   TagController.removeOrderTag);
+
+// ─── Комментарии заказа ───────────────────────────────────────────────────────
+// GET    /orders/:orderId/comments                    — история комментариев
+// POST   /orders/:orderId/comments                    — добавить комментарий
+// PUT    /orders/:orderId/comments/:commentId         — редактировать
+// DELETE /orders/:orderId/comments/:commentId         — удалить
+router.get   ('/:orderId/comments',                  OrderCommentController.list);
+router.post  ('/:orderId/comments',                  OrderCommentController.create);
+router.put   ('/:orderId/comments/:commentId',       OrderCommentController.update);
+router.delete('/:orderId/comments/:commentId',       OrderCommentController.delete);
 
 module.exports = router;

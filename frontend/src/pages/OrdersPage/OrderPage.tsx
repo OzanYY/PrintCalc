@@ -19,8 +19,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Tag,
+  CalendarDays,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { OrderClientField }   from '@/components/orders/OrderClientField';
+import { OrderTagsField }     from '@/components/orders/OrderTagsField';
+import { OrderDeadlineField, OrderDeadlineBadge } from '@/components/orders/OrderDeadlineField';
+import { OrderComments }      from '@/components/orders/OrderComments';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -504,6 +511,15 @@ export default function OrdersPage() {
   // Форма
   const [formData, setFormData] = useState<OrderFormData>(emptyForm());
 
+  // Дополнительные поля заказа
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [deadline, setDeadline] = useState<string | null>(null);
+  const [tagIds, setTagIds]     = useState<number[]>([]);
+
+  // Фильтр по тегам
+  const [filterTagId, setFilterTagId] = useState<number | null>(null);
+  const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+
   const handleFormChange = (name: string, value: string) =>
     setFormData(prev => ({ ...prev, [name]: value }));
 
@@ -511,6 +527,9 @@ export default function OrdersPage() {
 
   const openCreate = () => {
     setFormData(emptyForm());
+    setClientId(null);
+    setDeadline(null);
+    setTagIds([]);
     setIsCreateOpen(true);
   };
 
@@ -529,7 +548,11 @@ export default function OrdersPage() {
 
   const handleCreate = async () => {
     if (!formData.name.trim()) return;
-    const result = await createOrder(buildCreateData(formData));
+    const result = await createOrder({
+      ...buildCreateData(formData),
+      client_id: clientId ?? undefined,
+      deadline:  deadline ?? undefined,
+    } as any);
     if (result) setIsCreateOpen(false);
   };
 
@@ -667,6 +690,28 @@ export default function OrdersPage() {
             <SelectItem value="cancelled">Отменённые</SelectItem>
           </SelectContent>
         </Select>
+
+        {allTags.length > 0 && (
+          <Select
+            value={filterTagId?.toString() ?? 'all'}
+            onValueChange={v => setFilterTagId(v === 'all' ? null : Number(v))}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Все теги" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все теги</SelectItem>
+              {allTags.map(t => (
+                <SelectItem key={t.id} value={t.id.toString()}>
+                  <span className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} />
+                    {t.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <div className="flex gap-1 border rounded-lg p-1">
           <Button variant={viewMode === 'cards' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('cards')}>
@@ -842,6 +887,7 @@ export default function OrdersPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Название</TableHead>
                 <TableHead>Статус</TableHead>
+                <TableHead>Дедлайн / Клиент</TableHead>
                 <TableHead>Принтер</TableHead>
                 <TableHead>Материал</TableHead>
                 <TableHead>Вес</TableHead>
@@ -866,6 +912,22 @@ export default function OrdersPage() {
                     <TableCell className="font-medium">#{order.id}</TableCell>
                     <TableCell className="max-w-45 truncate">{order.name}</TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {(order as any).deadline && (
+                          <OrderDeadlineBadge
+                            deadline={(order as any).deadline}
+                            status={order.status}
+                          />
+                        )}
+                        {(order as any).client_name && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <User className="h-3 w-3" />
+                            {(order as any).client_name}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{order.printer_name ?? '—'}</TableCell>
                     <TableCell>{order.material_name ?? '—'}</TableCell>
                     <TableCell>{weight.toFixed(1)} г</TableCell>
@@ -960,6 +1022,24 @@ export default function OrdersPage() {
             <DialogDescription>Заполните параметры заказа на 3D-печать</DialogDescription>
           </DialogHeader>
           <OrderForm data={formData} onChange={handleFormChange} />
+
+          <div className="grid gap-4 pb-2">
+            <div className="space-y-2">
+              <Label>Клиент</Label>
+              <OrderClientField
+                clientId={clientId}
+                onClientChange={setClientId}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Дедлайн</Label>
+              <OrderDeadlineField
+                deadline={deadline}
+                status="in_progress"
+                onChange={setDeadline}
+              />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Отмена</Button>
             <Button onClick={handleCreate} disabled={isMutating || !formData.name.trim()}>
@@ -978,6 +1058,59 @@ export default function OrdersPage() {
             <DialogDescription>Измените параметры заказа и пересчитайте стоимость</DialogDescription>
           </DialogHeader>
           <OrderForm data={formData} onChange={handleFormChange} isEdit />
+
+          {selectedOrder && (
+            <div className="grid gap-4 pb-2">
+              <Separator />
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" />Теги
+                </Label>
+                <OrderTagsField
+                  orderId={selectedOrder.id}
+                  initialTags={(selectedOrder as any).tags ?? []}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />Дедлайн
+                </Label>
+                <OrderDeadlineField
+                  deadline={(selectedOrder as any).deadline ?? null}
+                  status={selectedOrder.status}
+                  onChange={async (d) => {
+                    await updateOrder(selectedOrder.id, { deadline: d } as any);
+                    setSelectedOrder(prev => prev ? { ...prev, deadline: d } as any : null);
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" />Клиент
+                </Label>
+                <OrderClientField
+                  clientId={(selectedOrder as any).client_id ?? null}
+                  clientName={(selectedOrder as any).client_name}
+                  clientPhone={(selectedOrder as any).client_phone}
+                  clientEmail={(selectedOrder as any).client_email}
+                  onClientChange={async (id) => {
+                    await updateOrder(selectedOrder.id, { client_id: id } as any);
+                    setSelectedOrder(prev => prev ? { ...prev, client_id: id } as any : null);
+                  }}
+                />
+              </div>
+
+              <Separator />
+
+              <OrderComments
+                orderId={selectedOrder.id}
+                currentUserId={(selectedOrder as any).currentUserId}
+              />
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>Отмена</Button>
             <Button onClick={handleEdit} disabled={isMutating || !formData.name.trim()}>

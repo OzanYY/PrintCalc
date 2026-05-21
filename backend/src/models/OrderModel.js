@@ -134,11 +134,11 @@ class OrderModel {
         return {
             ...row,
             // Плоские алиасы (read-only, не хранятся в БД отдельно)
-            material_cost:       r.materials?.total?.value      ?? 0,
-            electricity_cost:    r.electricity?.value           ?? 0,
-            depreciation_cost:   r.depreciation?.value          ?? 0,
-            labor_cost:          r.labor?.value                 ?? 0,
-            additional_expenses: r.additionalExpenses?.value    ?? 0,
+            material_cost: r.materials?.total?.value ?? 0,
+            electricity_cost: r.electricity?.value ?? 0,
+            depreciation_cost: r.depreciation?.value ?? 0,
+            labor_cost: r.labor?.value ?? 0,
+            additional_expenses: r.additionalExpenses?.value ?? 0,
             // total_cost, margin_percent, final_price — вычисляемые столбцы в БД
         };
     }
@@ -148,38 +148,38 @@ class OrderModel {
         const {
             printer_id,
             material_id,
+            client_id,          // ← НОВОЕ
             name,
-            // Параметры калькулятора
-            calc_materials   = {},
+            deadline,           // ← НОВОЕ
+            calc_materials = {},
             calc_electricity = {},
             calc_depreciation = {},
-            calc_labor       = {},
-            calc_additional  = {},
-            // Результат расчёта
-            calc_result      = {},
-            // Прочее
+            calc_labor = {},
+            calc_additional = {},
+            calc_result = {},
             notes,
-            settings         = {},
+            settings = {},
         } = orderData;
 
         const query = `
-            INSERT INTO orders (
-                user_id, printer_id, material_id, name, status,
-                calc_materials, calc_electricity, calc_depreciation,
-                calc_labor, calc_additional, calc_result,
-                notes, settings
-            ) VALUES (
-                $1, $2, $3, $4, 'in_progress',
-                $5, $6, $7,
-                $8, $9, $10,
-                $11, $12
-            )
-            RETURNING *
-        `;
+        INSERT INTO orders (
+            user_id, printer_id, material_id, client_id, name, status,
+            calc_materials, calc_electricity, calc_depreciation,
+            calc_labor, calc_additional, calc_result,
+            notes, settings, deadline
+        ) VALUES (
+            $1, $2, $3, $4, $5, 'in_progress',
+            $6, $7, $8,
+            $9, $10, $11,
+            $12, $13, $14
+        )
+        RETURNING *
+    `;
         const values = [
             userId,
-            printer_id  || null,
+            printer_id || null,
             material_id || null,
+            client_id || null,    // ← НОВОЕ
             name,
             JSON.stringify(calc_materials),
             JSON.stringify(calc_electricity),
@@ -189,6 +189,7 @@ class OrderModel {
             JSON.stringify(calc_result),
             notes || null,
             JSON.stringify(settings),
+            deadline || null,    // ← НОВОЕ
         ];
         const result = await pool.query(query, values);
         return this.#flattenResult(result.rows[0]);
@@ -197,25 +198,24 @@ class OrderModel {
     // ─── Получение всех заказов пользователя ─────────────────────────────────────
     static async findByUser(userId, status = null, limit = 50, offset = 0) {
         let query = `
-            SELECT o.*,
-                   p.name as printer_name, p.type as printer_type,
-                   m.name as material_name, m.category as material_category, m.type as material_type
-            FROM orders o
-            LEFT JOIN printers  p ON o.printer_id  = p.id
-            LEFT JOIN materials m ON o.material_id = m.id
-            WHERE o.user_id = $1
-        `;
+        SELECT o.*,
+               p.name as printer_name, p.type as printer_type,
+               m.name as material_name, m.category as material_category, m.type as material_type,
+               c.name as client_name, c.phone as client_phone, c.email as client_email
+        FROM orders o
+        LEFT JOIN printers  p ON o.printer_id  = p.id
+        LEFT JOIN materials m ON o.material_id = m.id
+        LEFT JOIN clients   c ON o.client_id   = c.id
+        WHERE o.user_id = $1
+    `;
         const params = [userId];
-
         if (status) {
             query += ` AND o.status = $2`;
             params.push(status);
         }
-
         query += ` ORDER BY o.created_at DESC
-                   LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+               LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
         params.push(limit, offset);
-
         const result = await pool.query(query, params);
         return result.rows.map(this.#flattenResult.bind(this));
     }
@@ -223,16 +223,53 @@ class OrderModel {
     // ─── Получение заказа по ID ───────────────────────────────────────────────────
     static async findById(id, userId) {
         const query = `
-            SELECT o.*,
-                   p.name as printer_name, p.type as printer_type,
-                   m.name as material_name, m.category as material_category, m.type as material_type
-            FROM orders o
-            LEFT JOIN printers  p ON o.printer_id  = p.id
-            LEFT JOIN materials m ON o.material_id = m.id
-            WHERE o.id = $1 AND o.user_id = $2
-        `;
+        SELECT o.*,
+               p.name as printer_name, p.type as printer_type,
+               m.name as material_name, m.category as material_category, m.type as material_type,
+               c.name as client_name, c.phone as client_phone, c.email as client_email
+        FROM orders o
+        LEFT JOIN printers  p ON o.printer_id  = p.id
+        LEFT JOIN materials m ON o.material_id = m.id
+        LEFT JOIN clients   c ON o.client_id   = c.id
+        WHERE o.id = $1 AND o.user_id = $2
+    `;
         const result = await pool.query(query, [id, userId]);
         return this.#flattenResult(result.rows[0]);
+    }
+
+    static async findByTag(userId, tagId, limit = 50, offset = 0) {
+        const query = `
+        SELECT o.*,
+               p.name as printer_name,
+               m.name as material_name,
+               c.name as client_name, c.phone as client_phone, c.email as client_email
+        FROM orders o
+        JOIN order_tags ot ON ot.order_id = o.id AND ot.tag_id = $2
+        LEFT JOIN printers  p ON o.printer_id  = p.id
+        LEFT JOIN materials m ON o.material_id = m.id
+        LEFT JOIN clients   c ON o.client_id   = c.id
+        WHERE o.user_id = $1
+        ORDER BY o.created_at DESC
+        LIMIT $3 OFFSET $4
+    `;
+        const result = await pool.query(query, [userId, tagId, limit, offset]);
+        return result.rows.map(this.#flattenResult.bind(this));
+    }
+
+    static async findOverdueAndUrgent(userId) {
+        const query = `
+        SELECT o.*,
+               c.name as client_name, c.phone as client_phone
+        FROM orders o
+        LEFT JOIN clients c ON o.client_id = c.id
+        WHERE o.user_id = $1
+          AND o.status  = 'in_progress'
+          AND o.deadline IS NOT NULL
+          AND o.deadline <= CURRENT_DATE + INTERVAL '2 days'
+        ORDER BY o.deadline ASC
+    `;
+        const result = await pool.query(query, [userId]);
+        return result.rows.map(this.#flattenResult.bind(this));
     }
 
     // ─── Обновление заказа ────────────────────────────────────────────────────────
@@ -240,7 +277,9 @@ class OrderModel {
         const {
             printer_id,
             material_id,
+            client_id,
             name,
+            deadline,
             calc_materials,
             calc_electricity,
             calc_depreciation,
@@ -251,48 +290,39 @@ class OrderModel {
             settings,
         } = orderData;
 
-        // Обновляем только переданные поля; JSONB-поля мержим (||) для частичных правок
         const query = `
-            UPDATE orders
-            SET name              = COALESCE($1,  name),
-                printer_id        = COALESCE($2,  printer_id),
-                material_id       = COALESCE($3,  material_id),
-                calc_materials    = CASE WHEN $4::jsonb IS NOT NULL
-                                         THEN calc_materials    || $4::jsonb
-                                         ELSE calc_materials    END,
-                calc_electricity  = CASE WHEN $5::jsonb IS NOT NULL
-                                         THEN calc_electricity  || $5::jsonb
-                                         ELSE calc_electricity  END,
-                calc_depreciation = CASE WHEN $6::jsonb IS NOT NULL
-                                         THEN calc_depreciation || $6::jsonb
-                                         ELSE calc_depreciation END,
-                calc_labor        = CASE WHEN $7::jsonb IS NOT NULL
-                                         THEN calc_labor        || $7::jsonb
-                                         ELSE calc_labor        END,
-                calc_additional   = CASE WHEN $8::jsonb IS NOT NULL
-                                         THEN calc_additional   || $8::jsonb
-                                         ELSE calc_additional   END,
-                calc_result       = CASE WHEN $9::jsonb IS NOT NULL
-                                         THEN $9::jsonb
-                                         ELSE calc_result       END,
-                notes             = COALESCE($10, notes),
-                settings          = settings || COALESCE($11::jsonb, '{}'::jsonb),
-                updated_at        = CURRENT_TIMESTAMP
-            WHERE id = $12 AND user_id = $13
-            RETURNING *
-        `;
+        UPDATE orders
+        SET name              = COALESCE($1,  name),
+            printer_id        = COALESCE($2,  printer_id),
+            material_id       = COALESCE($3,  material_id),
+            client_id         = COALESCE($4,  client_id),
+            deadline          = CASE WHEN $5::date IS NOT NULL THEN $5::date ELSE deadline END,
+            calc_materials    = CASE WHEN $6::jsonb IS NOT NULL THEN calc_materials    || $6::jsonb ELSE calc_materials    END,
+            calc_electricity  = CASE WHEN $7::jsonb IS NOT NULL THEN calc_electricity  || $7::jsonb ELSE calc_electricity  END,
+            calc_depreciation = CASE WHEN $8::jsonb IS NOT NULL THEN calc_depreciation || $8::jsonb ELSE calc_depreciation END,
+            calc_labor        = CASE WHEN $9::jsonb  IS NOT NULL THEN calc_labor        || $9::jsonb  ELSE calc_labor        END,
+            calc_additional   = CASE WHEN $10::jsonb IS NOT NULL THEN calc_additional   || $10::jsonb ELSE calc_additional   END,
+            calc_result       = CASE WHEN $11::jsonb IS NOT NULL THEN $11::jsonb         ELSE calc_result       END,
+            notes             = COALESCE($12, notes),
+            settings          = settings || COALESCE($13::jsonb, '{}'::jsonb),
+            updated_at        = CURRENT_TIMESTAMP
+        WHERE id = $14 AND user_id = $15
+        RETURNING *
+    `;
         const values = [
-            name        || null,
-            printer_id  || null,
+            name || null,
+            printer_id || null,
             material_id || null,
-            calc_materials    ? JSON.stringify(calc_materials)    : null,
-            calc_electricity  ? JSON.stringify(calc_electricity)  : null,
+            client_id || null,
+            deadline || null,
+            calc_materials ? JSON.stringify(calc_materials) : null,
+            calc_electricity ? JSON.stringify(calc_electricity) : null,
             calc_depreciation ? JSON.stringify(calc_depreciation) : null,
-            calc_labor        ? JSON.stringify(calc_labor)        : null,
-            calc_additional   ? JSON.stringify(calc_additional)   : null,
-            calc_result       ? JSON.stringify(calc_result)       : null,
-            notes       || null,
-            settings    ? JSON.stringify(settings) : null,
+            calc_labor ? JSON.stringify(calc_labor) : null,
+            calc_additional ? JSON.stringify(calc_additional) : null,
+            calc_result ? JSON.stringify(calc_result) : null,
+            notes || null,
+            settings ? JSON.stringify(settings) : null,
             id,
             userId,
         ];

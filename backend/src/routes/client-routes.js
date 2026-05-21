@@ -1,0 +1,15 @@
+// routes/client-routes.js
+const express          = require('express');
+const router           = express.Router();
+const ClientController = require('../controllers/ClientController');
+const { authMiddleware } = require('../middleware/auth-middleware');
+
+router.use(authMiddleware);
+
+router.get   ('/',        ClientController.list);
+router.get   ('/search',  ClientController.search);
+router.post  ('/',        ClientController.create);
+router.put   ('/:id',     ClientController.update);
+router.delete('/:id',     ClientController.delete);
+
+module.exports = router;

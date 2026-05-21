@@ -18,6 +18,8 @@ const OrderModel = require('./models/OrderModel');
 const MaterialTransactionModel = require('./models/MaterialTransactionModel');
 const inventoryRoutes = require('./routes/inventory-routes');
 const adminRoutes = require('./routes/admin-routes');
+const clientRoutes = require('./routes/client-routes');
+const tagRoutes = require('./routes/tag-routes');
 
 // Объявляем порт, на котором будет развернут сервек
 const PORT = process.env.PORT || 5000;
@@ -57,6 +59,8 @@ app.use('/api', calculationRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/tags',    tagRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
