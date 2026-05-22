@@ -80,8 +80,6 @@ import { toast } from 'sonner';
 
 type OrderStatus = 'in_progress' | 'completed' | 'cancelled';
 
-
-
 /** Извлекает числовое значение из calc_result (JSONB может хранить числа как строки) */
 const getCalcValue = (order: Order, path: string[]): number => {
   let node: any = order.calc_result;
@@ -129,18 +127,39 @@ const formatTime = (minutes: number) => {
 const formatMoney = (value: number) =>
   value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
 
+/**
+ * Парсит строку YYYY-MM-DD как локальное время.
+ * new Date('YYYY-MM-DD') → UTC → съезжает на день в UTC+ зонах.
+ * new Date('YYYY-MM-DDTHH:mm:ss') без Z → локальное время → корректно.
+ */
+const parseLocalDate = (dateStr: string): Date => {
+  return new Date(dateStr.slice(0, 10) + 'T00:00:00');
+};
+
 const formatDeadline = (deadline: string) =>
-  new Date(deadline).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  parseLocalDate(deadline).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 function getDeadlineBorderClass(deadline: string | null | undefined, status: string): string {
   if (!deadline || status !== 'in_progress') return '';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const d = new Date(deadline);
+  const d = parseLocalDate(deadline);
   const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000);
   if (diffDays < 0)  return 'border-2 border-red-500 shadow-red-100 dark:shadow-red-950';
   if (diffDays <= 2) return 'border-2 border-orange-400 shadow-orange-100 dark:shadow-orange-950';
   if (diffDays <= 7) return 'border-2 border-yellow-400 shadow-yellow-100 dark:shadow-yellow-950';
+  return '';
+}
+
+function getDeadlineTextClass(deadline: string | null | undefined, status: string): string {
+  if (!deadline || status !== 'in_progress') return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = parseLocalDate(deadline);
+  const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000);
+  if (diffDays < 0)  return 'text-red-500';
+  if (diffDays <= 2) return 'text-orange-400';
+  if (diffDays <= 7) return 'text-yellow-400';
   return '';
 }
 
@@ -1141,7 +1160,9 @@ export default function OrdersPage() {
                           {(order as any).deadline && (
                             <div className="flex items-center gap-1.5 text-sm text-muted-foreground justify-end align-bottom">
                               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                              <span>{formatDeadline((order as any).deadline)}</span>
+                              <span className={`${getDeadlineTextClass((order as any).deadline, order.status)}`}>
+                                {formatDeadline((order as any).deadline)}
+                              </span>
                             </div>
                           )}
                         </div>

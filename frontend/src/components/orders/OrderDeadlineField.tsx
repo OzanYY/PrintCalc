@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 interface Props {
-    deadline: string | null;         // ISO 'YYYY-MM-DD'
+    deadline: string | null;         // ISO 'YYYY-MM-DD' или 'YYYY-MM-DDTHH:mm:ss.sssZ'
     status: 'in_progress' | 'completed' | 'cancelled';
     onChange: (deadline: string | null) => void;
     readOnly?: boolean;
@@ -12,12 +12,27 @@ interface Props {
 
 type DeadlineState = 'overdue' | 'urgent' | 'upcoming' | 'ok' | 'none';
 
+/** Нормализует дату к формату YYYY-MM-DD, обрезая время/timezone если есть */
+const normalizeDate = (date: string | null): string => {
+    if (!date) return '';
+    return date.slice(0, 10); // '2025-06-15T00:00:00.000Z' → '2025-06-15'
+};
+
+/**
+ * Парсит строку YYYY-MM-DD как локальное время (без Z).
+ * new Date('2025-06-15') трактуется как UTC и съезжает на день в UTC+ зонах.
+ * new Date('2025-06-15T00:00:00') трактуется как локальное время — корректно.
+ */
+const parseLocalDate = (dateStr: string): Date => {
+    return new Date(dateStr + 'T00:00:00');
+};
+
 function getDeadlineState(deadline: string | null, status: string): DeadlineState {
     if (!deadline) return 'none';
     if (status !== 'in_progress') return 'ok';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const d = new Date(deadline);
+    const d = parseLocalDate(normalizeDate(deadline));
     const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000);
     if (diffDays < 0)  return 'overdue';
     if (diffDays <= 2) return 'urgent';
@@ -37,7 +52,7 @@ export function OrderDeadlineBadge({ deadline, status }: Pick<Props, 'deadline' 
     if (!deadline) return null;
     const state = getDeadlineState(deadline, status);
     const { icon: Icon, label, className } = STATE_CONFIG[state];
-    const formatted = new Date(deadline).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formatted = parseLocalDate(normalizeDate(deadline)).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     return (
         <span className={cn('inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium', className)}>
@@ -64,7 +79,7 @@ export function OrderDeadlineField({ deadline, status, onChange, readOnly }: Pro
                     <Input
                         type="date"
                         className="pl-9"
-                        value={deadline ?? ''}
+                        value={normalizeDate(deadline)}
                         onChange={e => onChange(e.target.value || null)}
                     />
                 </div>
