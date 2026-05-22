@@ -2,6 +2,38 @@
 const pool = require('../config/database');
 
 class ClientModel {
+    static async createTable() {
+        const query = `
+            CREATE TABLE IF NOT EXISTS clients (
+                id         BIGSERIAL PRIMARY KEY,
+                user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name       VARCHAR(255) NOT NULL,
+                phone      VARCHAR(50),
+                email      VARCHAR(255),
+                notes      TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
+            CREATE INDEX IF NOT EXISTS idx_clients_name    ON clients(user_id, name);
+
+            CREATE OR REPLACE FUNCTION set_updated_at()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS trg_clients_updated ON clients;
+            CREATE TRIGGER trg_clients_updated
+                BEFORE UPDATE ON clients
+                FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+        `;
+        await pool.query(query);
+    }
+
     // ─── CRUD ──────────────────────────────────────────────────────────────────
 
     static async create(userId, { name, phone, email, notes }) {

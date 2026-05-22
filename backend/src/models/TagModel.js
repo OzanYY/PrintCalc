@@ -2,6 +2,30 @@
 const pool = require('../config/database');
 
 class TagModel {
+    static async createTable() {
+        const query = `
+            CREATE TABLE IF NOT EXISTS tags (
+                id      BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name    VARCHAR(50)  NOT NULL,
+                color   VARCHAR(7)   NOT NULL DEFAULT '#6366f1',
+                UNIQUE (user_id, name)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
+
+            CREATE TABLE IF NOT EXISTS order_tags (
+                order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                tag_id   BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+                PRIMARY KEY (order_id, tag_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_order_tags_order_id ON order_tags(order_id);
+            CREATE INDEX IF NOT EXISTS idx_order_tags_tag_id   ON order_tags(tag_id);
+        `;
+        await pool.query(query);
+    }
+
     // ─── Теги пользователя ─────────────────────────────────────────────────────
 
     static async findByUser(userId) {

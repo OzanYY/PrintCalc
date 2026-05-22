@@ -122,6 +122,33 @@ class OrderModel {
             CREATE TRIGGER trg_orders_sync_denorm
                 BEFORE INSERT OR UPDATE ON orders
                 FOR EACH ROW EXECUTE FUNCTION orders_sync_denorm();
+
+            -- Новые колонки (из миграции 001)
+            ALTER TABLE orders
+                ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS deadline  DATE,
+                ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN NOT NULL DEFAULT FALSE;
+
+            CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_deadline  ON orders(deadline) WHERE deadline IS NOT NULL;
+
+            -- Триггер: автоматически выставляет is_urgent (дедлайн ≤ 2 дней)
+            CREATE OR REPLACE FUNCTION orders_sync_urgent()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.deadline IS NOT NULL THEN
+                    NEW.is_urgent := (NEW.deadline - CURRENT_DATE) <= 2;
+                ELSE
+                    NEW.is_urgent := FALSE;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS trg_orders_sync_urgent ON orders;
+            CREATE TRIGGER trg_orders_sync_urgent
+                BEFORE INSERT OR UPDATE OF deadline ON orders
+                FOR EACH ROW EXECUTE FUNCTION orders_sync_urgent();
         `;
         await pool.query(query);
     }

@@ -20,6 +20,9 @@ const inventoryRoutes = require('./routes/inventory-routes');
 const adminRoutes = require('./routes/admin-routes');
 const clientRoutes = require('./routes/client-routes');
 const tagRoutes = require('./routes/tag-routes');
+const ClientModel = require('./models/ClientModel');
+const TagModel = require('./models/TagModel');
+const OrderCommentModel = require('./models/OrderCommentModel');
 
 // Объявляем порт, на котором будет развернут сервек
 const PORT = process.env.PORT || 5000;
@@ -96,6 +99,15 @@ const start = async () => {
 
         await MaterialTransactionModel.createTable();
         console.log('✅ Material transactions table ready');
+
+        await ClientModel.createTable();
+        console.log('✅ Clients table ready');
+
+        await TagModel.createTable();
+        console.log('✅ Tags & order_tags tables ready');
+
+        await OrderCommentModel.createTable();
+        console.log('✅ Order comments table ready');
 
         app.listen(PORT, () => console.log(`Server started on port - ${PORT}`))
     }
