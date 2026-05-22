@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -179,6 +179,23 @@ function CreateTagSelector({ selectedIds, onChange }: CreateTagSelectorProps) {
         </div>
     );
 }
+
+// ─── История расчётов ──────────────────────────────────────────────────────────
+
+interface HistoryEntry {
+    id: string
+    timestamp: string
+    materials: { modelWeight: number; supportWeight: number; filamentPrice: number }
+    electricity: { powerConsumption: number; printTime: number; electricityPrice: number }
+    depreciation: { printerCost: number; printResource: number }
+    labor: { hourlyRate: number; workTime: number }
+    additional: { additionalExpensesPercent: number; marginPercent: number }
+    selectedPresets: Record<string, number | string | null>
+    result: CalculationResult
+}
+
+const HISTORY_KEY = 'calculator_history'
+const HISTORY_MAX = 20
 
 // Генерирует базовое имя заказа по текущей дате и времени
 function generateOrderName(): string {
@@ -355,6 +372,12 @@ export default function Calc() {
     const [saveTagIds, setSaveTagIds] = useState<number[]>([])
     const [isSaving, setIsSaving] = useState(false)
 
+    // ─── История расчётов ─────────────────────────────────────────────────────
+    const [history, setHistory] = useState<HistoryEntry[]>(() => {
+        try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
+    })
+    const [historyOpen, setHistoryOpen] = useState(false)
+
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
         if (hasCalculated) {
@@ -443,10 +466,28 @@ export default function Calc() {
             const response = await calculationAPI.calculate(requestData)
 
             if (response.data.success && response.data.data) {
-                setResults(response.data.data)
+                const newResult = response.data.data
+                setResults(newResult)
                 setHasCalculated(true)
-                localStorage.setItem('calculator_results', JSON.stringify(response.data.data))
+                localStorage.setItem('calculator_results', JSON.stringify(newResult))
                 setSuccessMessage('Расчет успешно выполнен!')
+
+                const entry: HistoryEntry = {
+                    id: Date.now().toString(),
+                    timestamp: new Date().toISOString(),
+                    materials: { ...materials },
+                    electricity: { ...electricity },
+                    depreciation: { ...depreciation },
+                    labor: { ...labor },
+                    additional: { ...additional },
+                    selectedPresets: { ...selectedPresets },
+                    result: newResult,
+                }
+                setHistory(prev => {
+                    const updated = [entry, ...prev].slice(0, HISTORY_MAX)
+                    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+                    return updated
+                })
             } else {
                 throw new Error(response.data.error || 'Ошибка при расчете стоимости')
             }
@@ -568,6 +609,25 @@ export default function Calc() {
         } finally {
             setIsSaving(false)
         }
+    }
+
+    // ─── Восстановление из истории ────────────────────────────────────────────
+    const restoreFromHistory = (entry: HistoryEntry) => {
+        setMaterials(entry.materials)
+        setElectricity(entry.electricity)
+        setDepreciation(entry.depreciation)
+        setLabor(entry.labor)
+        setAdditional(entry.additional)
+        setResults(entry.result)
+        setHasCalculated(true)
+        localStorage.setItem('calculator_results', JSON.stringify(entry.result))
+        if (entry.selectedPresets.powerConsumption != null) {
+            setSelectedPrinter(entry.selectedPresets.powerConsumption)
+        } else {
+            setSelectedPrinter(null)
+        }
+        setSelectedPreset('filamentPrice', entry.selectedPresets.filamentPrice ?? null)
+        toast.success('Параметры восстановлены')
     }
 
     // ─── Сброс ────────────────────────────────────────────────────────────────
@@ -727,11 +787,27 @@ export default function Calc() {
                 <div className="lg:col-span-2">
                     <Card className="border">
                         <CardHeader>
-                            <div className="flex justify-between">
-                                <CardTitle className="flex items-center gap-2">
-                                    <Calculator className="h-5 w-5" />
-                                    Калькулятор 3D печати
-                                </CardTitle>
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="relative h-8 w-8 p-0"
+                                        onClick={() => setHistoryOpen(true)}
+                                        title="История расчётов"
+                                    >
+                                        <History className="h-4 w-4" />
+                                        {history.length > 0 && (
+                                            <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[9px] flex items-center justify-center font-bold leading-none">
+                                                {history.length > 9 ? '9+' : history.length}
+                                            </span>
+                                        )}
+                                    </Button>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Calculator className="h-5 w-5" />
+                                        Калькулятор 3D печати
+                                    </CardTitle>
+                                </div>
                                 <Button
                                     className="text-destructive hover:bg-destructive/10"
                                     onClick={resetValues}
@@ -1314,6 +1390,76 @@ export default function Calc() {
                     </Button>
                 </div>
             )}
+
+            {/* ─── История расчётов: drawer ─────────────────────────────────────── */}
+            {historyOpen && (
+                <div
+                    className="fixed inset-0 bg-black/40 z-40"
+                    onClick={() => setHistoryOpen(false)}
+                />
+            )}
+            <div className={`fixed top-0 left-0 h-full w-80 bg-background border-r shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${historyOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                    <div className="flex items-center gap-2 font-semibold text-sm">
+                        <History className="h-4 w-4" />
+                        История расчётов
+                        {history.length > 0 && (
+                            <Badge variant="secondary">{history.length}</Badge>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {history.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-muted-foreground h-7 px-2"
+                                onClick={() => { setHistory([]); localStorage.removeItem(HISTORY_KEY) }}
+                            >
+                                Очистить
+                            </Button>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setHistoryOpen(false)}>
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    {history.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm gap-2">
+                            <History className="h-8 w-8 opacity-30" />
+                            Нет сохранённых расчётов
+                        </div>
+                    ) : (
+                        history.map(entry => (
+                            <div
+                                key={entry.id}
+                                className="rounded-md border px-3 py-2.5 space-y-1.5 hover:bg-muted/40 transition-colors"
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-semibold text-sm">{entry.result.finalPrice.formatted}</span>
+                                    <span className="text-xs text-muted-foreground">{entry.result.totalWeight.grams} г · {entry.electricity.printTime} мин</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {new Date(entry.timestamp).toLocaleString('ru-RU', {
+                                        day: '2-digit', month: '2-digit', year: '2-digit',
+                                        hour: '2-digit', minute: '2-digit',
+                                    })}
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full h-7 text-xs mt-0.5"
+                                    onClick={() => { restoreFromHistory(entry); setHistoryOpen(false) }}
+                                >
+                                    <RotateCcw className="h-3 w-3 mr-1.5" />
+                                    Восстановить параметры
+                                </Button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
 
             {/* ─── Модальное окно сохранения заказа ─────────────────────────────── */}
             {/* Диалог предупреждения об остатке */}
