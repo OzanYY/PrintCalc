@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight, FileUp } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -34,6 +34,7 @@ import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
 import { printersAPI } from "@/api/printers"
 import { materialsAPI, CATEGORY_UNIT_CONFIG } from "@/api/materials"
+import { parse3mf, type Parse3mfResult } from '@/utils/parse3mf'
 
 // ─── Выбор тегов при сохранении заказа из калькулятора ────────────────────────
 
@@ -436,6 +437,16 @@ export default function Calc() {
     })
     const [compareResults, setCompareResults] = useState<CalculationResult | null>(null)
 
+    // ─── Импорт .3mf ─────────────────────────────────────────────────────────
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [import3mfResult, setImport3mfResult] = useState<Parse3mfResult | null>(null)
+    const [import3mfFileName, setImport3mfFileName] = useState('')
+    const [import3mfLoading, setImport3mfLoading] = useState(false)
+    const [import3mfOpen, setImport3mfOpen] = useState(false)
+    const [applyModelWeight, setApplyModelWeight] = useState(true)
+    const [applySupportWeight, setApplySupportWeight] = useState(true)
+    const [applyPrintTime, setApplyPrintTime] = useState(true)
+
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
         if (hasCalculated) {
@@ -759,6 +770,45 @@ export default function Calc() {
         toast.info("Параметры сброшены, результаты сохранены", { position: "top-center", duration: 2000 })
     }
 
+    // ─── Импорт .3mf ─────────────────────────────────────────────────────────
+    const handleImport3mfClick = () => fileInputRef.current?.click()
+
+    const handleImport3mfFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        e.target.value = ''
+        setImport3mfLoading(true)
+        try {
+            const parsed = await parse3mf(file)
+            if (parsed.modelWeight === undefined && parsed.printTime === undefined) {
+                toast.error('Не удалось извлечь данные из файла')
+                return
+            }
+            setImport3mfFileName(file.name)
+            setImport3mfResult(parsed)
+            setApplyModelWeight(parsed.modelWeight !== undefined)
+            setApplySupportWeight(parsed.supportWeight !== undefined)
+            setApplyPrintTime(parsed.printTime !== undefined)
+            setImport3mfOpen(true)
+        } catch {
+            toast.error('Ошибка при чтении .3mf файла')
+        } finally {
+            setImport3mfLoading(false)
+        }
+    }
+
+    const confirmImport3mf = () => {
+        if (!import3mfResult) return
+        if (applyModelWeight && import3mfResult.modelWeight !== undefined)
+            handleMaterialsChange('modelWeight', import3mfResult.modelWeight)
+        if (applySupportWeight && import3mfResult.supportWeight !== undefined)
+            handleMaterialsChange('supportWeight', import3mfResult.supportWeight)
+        if (applyPrintTime && import3mfResult.printTime !== undefined)
+            handleElectricityChange('printTime', import3mfResult.printTime)
+        setImport3mfOpen(false)
+        toast.success('Параметры из .3mf применены')
+    }
+
     const handlePrint = () => {
         if (!results) return
 
@@ -1035,6 +1085,27 @@ export default function Calc() {
                                     </CardTitle>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".3mf"
+                                        className="hidden"
+                                        onChange={handleImport3mfFile}
+                                    />
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5"
+                                        onClick={handleImport3mfClick}
+                                        disabled={import3mfLoading || isLoading}
+                                        title="Импортировать параметры из .3mf файла"
+                                    >
+                                        {import3mfLoading
+                                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            : <FileUp className="h-3.5 w-3.5" />
+                                        }
+                                        .3mf
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -1847,6 +1918,93 @@ export default function Calc() {
                             ) : (
                                 'Сохранить'
                             )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* ─── Диалог импорта .3mf ──────────────────────────────────────────── */}
+            <Dialog open={import3mfOpen} onOpenChange={setImport3mfOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileUp className="h-4 w-4" />
+                            Импорт параметров из .3mf
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {import3mfResult && (
+                        <div className="space-y-4 py-1">
+                            <div className="text-xs text-muted-foreground truncate" title={import3mfFileName}>
+                                {import3mfFileName}
+                            </div>
+
+                            {import3mfResult.slicer && (
+                                <Badge variant="secondary" className="text-xs">{import3mfResult.slicer}</Badge>
+                            )}
+
+                            <div className="space-y-3 rounded-md border p-3">
+                                {import3mfResult.modelWeight !== undefined && (
+                                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={applyModelWeight}
+                                            onChange={e => setApplyModelWeight(e.target.checked)}
+                                            className="accent-primary h-4 w-4"
+                                        />
+                                        <span className="text-sm flex-1">Вес модели</span>
+                                        <Badge variant="outline" className="font-mono tabular-nums">
+                                            {import3mfResult.modelWeight} г
+                                        </Badge>
+                                    </label>
+                                )}
+                                {import3mfResult.supportWeight !== undefined && (
+                                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={applySupportWeight}
+                                            onChange={e => setApplySupportWeight(e.target.checked)}
+                                            className="accent-primary h-4 w-4"
+                                        />
+                                        <span className="text-sm flex-1">Вес поддержек</span>
+                                        <Badge variant="outline" className="font-mono tabular-nums">
+                                            {import3mfResult.supportWeight} г
+                                        </Badge>
+                                    </label>
+                                )}
+                                {import3mfResult.printTime !== undefined && (
+                                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={applyPrintTime}
+                                            onChange={e => setApplyPrintTime(e.target.checked)}
+                                            className="accent-primary h-4 w-4"
+                                        />
+                                        <span className="text-sm flex-1">Время печати</span>
+                                        <Badge variant="outline" className="font-mono tabular-nums">
+                                            {import3mfResult.printTime} мин
+                                        </Badge>
+                                    </label>
+                                )}
+                            </div>
+
+                            {import3mfResult.totalWeight !== undefined && import3mfResult.supportWeight === undefined && (
+                                <p className="text-xs text-muted-foreground">
+                                    Суммарный вес модели и поддержек: {import3mfResult.totalWeight} г
+                                    <br />Поддержки не найдены в файле — заполнится поле «Вес модели»
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild>
+                            <Button variant="outline">Отмена</Button>
+                        </DialogClose>
+                        <Button
+                            onClick={confirmImport3mf}
+                            disabled={!applyModelWeight && !applySupportWeight && !applyPrintTime}
+                        >
+                            Применить
                         </Button>
                     </DialogFooter>
                 </DialogContent>
