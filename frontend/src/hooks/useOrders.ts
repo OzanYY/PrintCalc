@@ -41,6 +41,12 @@ interface UseOrdersReturn {
   // ─── Фильтры ──────────────────────────────────────────────────────────────
   statusFilter: OrderStatus | null;
   setStatusFilter: (status: OrderStatus | null) => void;
+  tagFilter: number | null;
+  setTagFilter: (tagId: number | null) => void;
+  clientFilter: number | null;
+  setClientFilter: (clientId: number | null) => void;
+  deadlineFilter: 'has_deadline' | 'overdue' | 'this_week' | null;
+  setDeadlineFilter: (f: 'has_deadline' | 'overdue' | 'this_week' | null) => void;
   currentPage: number;
   setCurrentPage: (page: number) => void;
 
@@ -92,6 +98,9 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
   const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(initialStatus);
+  const [tagFilter, setTagFilter] = useState<number | null>(null);
+  const [clientFilter, setClientFilter] = useState<number | null>(null);
+  const [deadlineFilter, setDeadlineFilter] = useState<'has_deadline' | 'overdue' | 'this_week' | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Защита от race conditions
@@ -113,6 +122,9 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
       try {
         const res = await ordersAPI.getAll({
           status: status ?? undefined,
+          tag_id: tagFilter ?? undefined,
+          client_id: clientFilter ?? undefined,
+          deadline_filter: deadlineFilter ?? undefined,
           limit: pageSize,
           page,
         });
@@ -128,7 +140,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
         setIsLoading(false);
       }
     },
-    [statusFilter, currentPage, pageSize],
+    [statusFilter, tagFilter, clientFilter, deadlineFilter, currentPage, pageSize],
   );
 
   // ─── Fetch stats ────────────────────────────────────────────────────────────
@@ -236,8 +248,9 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
       try {
         const res = await ordersAPI.clone(id);
         const cloned = res.data.data;
-        // Перезагружаем список и статистику, чтобы все счётчики были актуальны
-        await Promise.all([fetchOrders(), fetchStats()]);
+        // Обновляем список и статистику в фоне — не блокируем UI
+        fetchOrders();
+        fetchStats();
         return cloned;
       } catch (err: any) {
         const msg = err?.response?.data?.message ?? err?.message ?? 'Ошибка клонирования заказа';
@@ -321,9 +334,24 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     [],
   );
 
-  // ─── Фильтры: сброс страницы при смене статуса ─────────────────────────────
+  // ─── Фильтры: сброс страницы при смене любого фильтра ──────────────────────
   const handleSetStatusFilter = useCallback((status: OrderStatus | null) => {
     setStatusFilter(status);
+    setCurrentPage(1);
+  }, []);
+
+  const handleSetTagFilter = useCallback((tagId: number | null) => {
+    setTagFilter(tagId);
+    setCurrentPage(1);
+  }, []);
+
+  const handleSetClientFilter = useCallback((clientId: number | null) => {
+    setClientFilter(clientId);
+    setCurrentPage(1);
+  }, []);
+
+  const handleSetDeadlineFilter = useCallback((f: 'has_deadline' | 'overdue' | 'this_week' | null) => {
+    setDeadlineFilter(f);
     setCurrentPage(1);
   }, []);
 
@@ -341,7 +369,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     if (autoFetch) {
       fetchOrders();
     }
-  }, [statusFilter, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [statusFilter, tagFilter, clientFilter, deadlineFilter, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoFetch) {
@@ -366,6 +394,12 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     error,
     statusFilter,
     setStatusFilter: handleSetStatusFilter,
+    tagFilter,
+    setTagFilter: handleSetTagFilter,
+    clientFilter,
+    setClientFilter: handleSetClientFilter,
+    deadlineFilter,
+    setDeadlineFilter: handleSetDeadlineFilter,
     currentPage,
     setCurrentPage: handleSetCurrentPage,
     fetchOrders,

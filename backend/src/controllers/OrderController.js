@@ -1,5 +1,6 @@
 // controllers/orderController.js
 const OrderService = require('../services/orderService');
+const TagModel = require('../models/TagModel');
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
 
@@ -84,14 +85,17 @@ class OrderController {
             const userId = requireAuth(req, res);
             if (!userId) return;
 
-            const { status, limit = 50, page = 1 } = req.query;
+            const { status, tag_id, client_id, deadline_filter, limit = 50, page = 1 } = req.query;
             const parsedLimit  = parseInt(limit);
             const parsedOffset = (parseInt(page) - 1) * parsedLimit;
 
             const result = await OrderService.getUserOrders(userId, {
-                status: status || null,
-                limit:  parsedLimit,
-                offset: parsedOffset
+                status:          status || null,
+                tag_id:          tag_id ? parseInt(tag_id) : null,
+                client_id:       client_id ? parseInt(client_id) : null,
+                deadline_filter: deadline_filter || null,
+                limit:           parsedLimit,
+                offset:          parsedOffset,
             });
 
             res.status(200).json({
@@ -314,6 +318,8 @@ class OrderController {
                 name:              `${original.name} (копия)`,
                 notes:             original.notes,
                 settings:          original.settings,
+                client_id:         original.client_id,
+                deadline:          original.deadline,
                 // Параметры калькулятора копируются как есть
                 calc_materials:    original.calc_materials,
                 calc_electricity:  original.calc_electricity,
@@ -325,7 +331,17 @@ class OrderController {
             };
 
             const result = await OrderService.createOrder(userId, clonedData);
-            res.status(201).json({ success: true, message: 'Заказ успешно скопирован', data: result.data });
+            const clonedOrder = result.data;
+
+            // Копируем теги оригинального заказа
+            const originalTags = await TagModel.getOrderTags(original.id);
+            if (originalTags.length > 0) {
+                const tagIds = originalTags.map(t => t.id);
+                await TagModel.setOrderTags(clonedOrder.id, tagIds);
+                clonedOrder.tags = originalTags;
+            }
+
+            res.status(201).json({ success: true, message: 'Заказ успешно скопирован', data: clonedOrder });
         } catch (error) {
             console.error('Clone order error:', error);
             sendError(res, error);

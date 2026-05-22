@@ -34,7 +34,7 @@ class OrderCommentModel {
 
     static async findByOrder(orderId) {
         const result = await pool.query(
-            `SELECT c.*, u.name AS author_name
+            `SELECT c.*, u.username AS author_name
              FROM order_comments c
              JOIN users u ON u.id = c.user_id
              WHERE c.order_id = $1

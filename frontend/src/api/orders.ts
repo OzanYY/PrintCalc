@@ -72,6 +72,8 @@ export interface Order {
   // Теги — загружаются отдельным запросом или через eager load
   tags?: import("./tags").Tag[];
 
+  comments_count?: number;
+
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -187,6 +189,9 @@ export const ordersAPI = {
    */
   getAll: (params?: {
     status?: "in_progress" | "completed" | "cancelled";
+    tag_id?: number;
+    client_id?: number;
+    deadline_filter?: "has_deadline" | "overdue" | "this_week";
     limit?: number;
     page?: number;
   }) =>

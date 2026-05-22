@@ -32,9 +32,12 @@ class OrderService {
                 }
             }
 
+            // Перечитываем с JOIN-ами (printer, material, client, tags)
+            const fullOrder = await OrderModel.findById(order.id, userId);
+
             return {
                 success: true,
-                data: order,
+                data: fullOrder,
                 message: 'Заказ успешно создан',
                 material_warning: materialWarning ?? undefined,
             };
@@ -47,19 +50,19 @@ class OrderService {
     // ─── Получение всех заказов пользователя с пагинацией ────────────────────────
     static async getUserOrders(userId, filters = {}) {
         try {
-            const { status = null, limit = 50, offset = 0 } = filters;
-            const orders = await OrderModel.findByUser(userId, status, limit, offset);
-            const stats  = await OrderModel.getStats(userId);
+            const { status = null, tag_id = null, client_id = null, deadline_filter = null, limit = 50, offset = 0 } = filters;
+            const queryFilters = { status, tag_id, client_id, deadline_filter };
+
+            const [orders, total] = await Promise.all([
+                OrderModel.findByUser(userId, queryFilters, limit, offset),
+                OrderModel.countByUser(userId, queryFilters),
+            ]);
 
             return {
                 success: true,
                 data: orders,
-                pagination: {
-                    limit,
-                    offset,
-                    total: parseInt(stats.total_orders) || 0
-                },
-                filters: { status }
+                pagination: { limit, offset, total },
+                filters: queryFilters,
             };
         } catch (error) {
             console.error('Ошибка при получении заказов:', error);
@@ -133,7 +136,7 @@ class OrderService {
                 throw new Error(`Недопустимый статус. Допустимые значения: ${validStatuses.join(', ')}`);
             }
 
-            const updatedOrder = await OrderModel.updateStatus(orderId, userId, status);
+            await OrderModel.updateStatus(orderId, userId, status);
 
             // Обработка инвентаря при смене статуса
             if (order.material_id && order.total_weight_grams > 0) {
@@ -172,9 +175,12 @@ class OrderService {
                 in_progress: 'Заказ возобновлён'
             };
 
+            // Перечитываем с JOIN-ами (printer, material, client, tags)
+            const fullUpdatedOrder = await OrderModel.findById(orderId, userId);
+
             return {
                 success: true,
-                data: updatedOrder,
+                data: fullUpdatedOrder,
                 message: statusMessages[status] || 'Статус заказа обновлён'
             };
         } catch (error) {

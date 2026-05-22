@@ -234,9 +234,40 @@ class OrderModel {
         return this.#flattenResult(result.rows[0]);
     }
 
+    // ─── Построение WHERE-условий из объекта фильтров ────────────────────────────
+    static #buildFilters(userId, filters = {}) {
+        const { status = null, tag_id = null, client_id = null, deadline_filter = null } = filters;
+        const params = [userId];
+        let where = 'WHERE o.user_id = $1';
+
+        if (status) {
+            params.push(status);
+            where += ` AND o.status = $${params.length}`;
+        }
+        if (tag_id) {
+            params.push(tag_id);
+            where += ` AND EXISTS (SELECT 1 FROM order_tags ot2 WHERE ot2.order_id = o.id AND ot2.tag_id = $${params.length})`;
+        }
+        if (client_id) {
+            params.push(client_id);
+            where += ` AND o.client_id = $${params.length}`;
+        }
+        if (deadline_filter === 'has_deadline') {
+            where += ` AND o.deadline IS NOT NULL`;
+        } else if (deadline_filter === 'overdue') {
+            where += ` AND o.deadline IS NOT NULL AND o.deadline < CURRENT_DATE AND o.status = 'in_progress'`;
+        } else if (deadline_filter === 'this_week') {
+            where += ` AND o.deadline IS NOT NULL AND o.deadline >= CURRENT_DATE AND o.deadline <= CURRENT_DATE + INTERVAL '7 days'`;
+        }
+
+        return { where, params };
+    }
+
     // ─── Получение всех заказов пользователя ─────────────────────────────────────
-    static async findByUser(userId, status = null, limit = 50, offset = 0) {
-        let query = `
+    static async findByUser(userId, filters = {}, limit = 50, offset = 0) {
+        const { where, params } = this.#buildFilters(userId, filters);
+
+        const query = `
         SELECT o.*,
                p.name as printer_name, p.type as printer_type,
                m.name as material_name, m.category as material_category, m.type as material_type,
@@ -246,23 +277,27 @@ class OrderModel {
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
                     WHERE ot.order_id = o.id),
                    '[]'::json
-               ) AS tags
+               ) AS tags,
+               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
         LEFT JOIN printers  p ON o.printer_id  = p.id
         LEFT JOIN materials m ON o.material_id = m.id
         LEFT JOIN clients   c ON o.client_id   = c.id
-        WHERE o.user_id = $1
-    `;
-        const params = [userId];
-        if (status) {
-            query += ` AND o.status = $2`;
-            params.push(status);
-        }
-        query += ` ORDER BY o.created_at DESC
-               LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        ${where}
+        ORDER BY o.created_at DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+        `;
         params.push(limit, offset);
         const result = await pool.query(query, params);
         return result.rows.map(this.#flattenResult.bind(this));
+    }
+
+    // ─── Количество заказов с учётом фильтров (для пагинации) ────────────────────
+    static async countByUser(userId, filters = {}) {
+        const { where, params } = this.#buildFilters(userId, filters);
+        const query = `SELECT COUNT(*) FROM orders o ${where}`;
+        const result = await pool.query(query, params);
+        return parseInt(result.rows[0].count) || 0;
     }
 
     // ─── Получение заказа по ID ───────────────────────────────────────────────────
@@ -277,7 +312,8 @@ class OrderModel {
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
                     WHERE ot.order_id = o.id),
                    '[]'::json
-               ) AS tags
+               ) AS tags,
+               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
         LEFT JOIN printers  p ON o.printer_id  = p.id
         LEFT JOIN materials m ON o.material_id = m.id

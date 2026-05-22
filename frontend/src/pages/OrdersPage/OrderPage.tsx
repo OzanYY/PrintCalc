@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Plus,
-  Printer,
+  Printer as PrinterIco,
   Package,
   Clock,
   Weight,
@@ -24,6 +24,7 @@ import {
   User,
   Phone,
   Mail,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OrderClientField } from '@/components/orders/OrderClientField';
@@ -74,6 +75,10 @@ import { useAuth } from '@/context/AuthContext';
 import type { Order, CreateOrderData } from '@/api/orders';
 import { tagsAPI } from '@/api/tags';
 import type { Tag } from '@/api/tags';
+import { printersAPI } from '@/api/printers';
+import type { Printer } from '@/api/printers';
+import { materialsAPI } from '@/api/materials';
+import type { Material } from '@/api/materials';
 import { toast } from 'sonner';
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
@@ -676,6 +681,12 @@ export default function OrdersPage() {
     error,
     statusFilter,
     setStatusFilter,
+    tagFilter,
+    setTagFilter,
+    clientFilter,
+    setClientFilter,
+    deadlineFilter,
+    setDeadlineFilter,
     currentPage,
     setCurrentPage,
     createOrder,
@@ -708,6 +719,8 @@ export default function OrdersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   // Форма
@@ -729,13 +742,19 @@ export default function OrdersPage() {
   const [editDeadline, setEditDeadline] = useState<string | null>(null);
   const [editOrderTags, setEditOrderTags] = useState<import('@/api/tags').Tag[]>([]);
 
-  // Фильтр по тегам
-  const [filterTagId, setFilterTagId] = useState<number | null>(null);
   const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+  const [allClients, setAllClients] = useState<import('@/api/clients').Client[]>([]);
 
-  // Загружаем теги для фильтра при монтировании
+  // Принтеры и материалы для формы
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
+
+  // Загружаем теги, клиентов, принтеры и материалы при монтировании
   useEffect(() => {
     tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => { });
+    printersAPI.getAll().then(r => setPrinters(r.data.data)).catch(() => { });
+    materialsAPI.getAll().then(r => setMaterials(r.data.data)).catch(() => { });
+    import('@/api/clients').then(m => m.clientsAPI.getAll().then(r => setAllClients(r.data.data)).catch(() => {}));
   }, []);
 
   const handleFormChange = (name: string, value: string) =>
@@ -776,6 +795,11 @@ export default function OrdersPage() {
   const openDelete = (order: Order) => {
     setSelectedOrder(order);
     setIsDeleteOpen(true);
+  };
+
+  const openView = (order: Order) => {
+    setViewOrder(order);
+    setIsViewOpen(true);
   };
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
@@ -911,8 +935,8 @@ export default function OrdersPage() {
       </div>
 
       {/* Фильтры */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1 relative">
+      <div className="flex flex-col md:flex-row gap-2 mb-6 flex-wrap">
+        <div className="flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Поиск по названию или номеру..."
@@ -926,7 +950,7 @@ export default function OrdersPage() {
           value={statusFilter ?? 'all'}
           onValueChange={v => setStatusFilter(v === 'all' ? null : v as OrderStatus)}
         >
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-44">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Все статусы" />
           </SelectTrigger>
@@ -940,10 +964,10 @@ export default function OrdersPage() {
 
         {allTags.length > 0 && (
           <Select
-            value={filterTagId?.toString() ?? 'all'}
-            onValueChange={v => setFilterTagId(v === 'all' ? null : Number(v))}
+            value={tagFilter?.toString() ?? 'all'}
+            onValueChange={v => setTagFilter(v === 'all' ? null : Number(v))}
           >
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Все теги" />
             </SelectTrigger>
             <SelectContent>
@@ -951,10 +975,44 @@ export default function OrdersPage() {
               {allTags.map(t => (
                 <SelectItem key={t.id} value={t.id.toString()}>
                   <span className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} />
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
                     {t.name}
                   </span>
                 </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <Select
+          value={deadlineFilter ?? 'all'}
+          onValueChange={v => setDeadlineFilter(v === 'all' ? null : v as any)}
+        >
+          <SelectTrigger className="w-[160px]">
+            <CalendarDays className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Дедлайн" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все дедлайны</SelectItem>
+            <SelectItem value="has_deadline">Есть дедлайн</SelectItem>
+            <SelectItem value="overdue">Просроченные</SelectItem>
+            <SelectItem value="this_week">На этой неделе</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {allClients.length > 0 && (
+          <Select
+            value={clientFilter?.toString() ?? 'all'}
+            onValueChange={v => setClientFilter(v === 'all' ? null : Number(v))}
+          >
+            <SelectTrigger className="w-[160px]">
+              <User className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Все клиенты" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все клиенты</SelectItem>
+              {allClients.map(c => (
+                <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1008,7 +1066,11 @@ export default function OrdersPage() {
 
             const deadlineBorder = getDeadlineBorderClass((order as any).deadline, order.status);
             return (
-              <Card key={order.id} className={`hover:shadow-lg transition-shadow flex flex-col ${deadlineBorder}`}>
+              <Card
+              key={order.id}
+              className={`hover:shadow-lg transition-shadow flex flex-col cursor-pointer ${deadlineBorder}`}
+              onClick={() => openView(order)}
+            >
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
@@ -1020,73 +1082,83 @@ export default function OrdersPage() {
                       </CardTitle>
                       <CardDescription>Заказ #{order.id} · {formatDate(order.created_at)}</CardDescription>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" disabled={isMutating}>
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                        {order.status === 'in_progress' && (
-                          <DropdownMenuItem onClick={() => openEdit(order)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Редактировать
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => cloneOrder(order.id)}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Клонировать
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {order.status === 'in_progress' && (
-                          <DropdownMenuItem onClick={() => completeOrder(order.id)}>
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                            Завершить
-                          </DropdownMenuItem>
-                        )}
-                        {order.status === 'in_progress' && (
-                          <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
-                            <XCircle className="mr-2 h-4 w-4 text-orange-500" />
-                            Отменить
-                          </DropdownMenuItem>
-                        )}
-                        {order.status !== 'completed' && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600" onClick={() => openDelete(order)}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Удалить
+                    <div onClick={e => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" disabled={isMutating}>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                          {order.status === 'in_progress' && (
+                            <DropdownMenuItem onClick={() => openEdit(order)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Редактировать
                             </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          )}
+                          <DropdownMenuItem onClick={() => cloneOrder(order.id)}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Скопировать
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {order.status === 'in_progress' && (
+                            <DropdownMenuItem onClick={() => completeOrder(order.id)}>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                              Завершить
+                            </DropdownMenuItem>
+                          )}
+                          {order.status === 'in_progress' && (
+                            <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
+                              <XCircle className="mr-2 h-4 w-4 text-orange-500" />
+                              Отменить
+                            </DropdownMenuItem>
+                          )}
+                          {order.status !== 'completed' && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-red-600" onClick={() => openDelete(order)}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Удалить
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </CardHeader>
 
                 <CardContent className="flex-1">
                   <div className="space-y-3">
-                    <div className='flex'>
-                      <StatusBadge status={order.status} />
-                      {(order as any).tags?.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pl-3">
-                          {(order as any).tags.map((tag: any) => (
-                            <span
-                              key={tag.id}
-                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                              style={{ backgroundColor: tag.color }}
-                            >
-                              {tag.name}
-                            </span>
-                          ))}
-                        </div>
+                    <div className='flex items-center justify-between'>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <StatusBadge status={order.status} />
+                        {(order as any).tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pl-1">
+                            {(order as any).tags.map((tag: any) => (
+                              <span
+                                key={tag.id}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                                style={{ backgroundColor: tag.color }}
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {(order.comments_count ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          {order.comments_count}
+                        </span>
                       )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="flex items-center gap-2">
-                        <Printer className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <PrinterIco className="h-4 w-4 text-muted-foreground shrink-0" />
                         <span className="truncate">{order.printer_name ?? '—'}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1326,6 +1398,151 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Диалог просмотра */}
+      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          {viewOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="pr-6">{viewOrder.name}</DialogTitle>
+                <DialogDescription>
+                  Заказ #{viewOrder.id} · {formatDate(viewOrder.created_at)}
+                  {viewOrder.completed_at && ` · Завершён ${formatDate(viewOrder.completed_at)}`}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {/* Статус и теги */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={viewOrder.status} />
+                  {(viewOrder as any).tags?.map((tag: any) => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+
+                <Separator />
+
+                {/* Клиент */}
+                {(viewOrder as any).client_name && (
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium flex items-center gap-1.5">
+                      <User className="h-4 w-4 text-muted-foreground" />Клиент
+                    </div>
+                    <div className="pl-5 space-y-0.5 text-sm">
+                      <div className="font-medium">{(viewOrder as any).client_name}</div>
+                      {(viewOrder as any).client_phone && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5" />{(viewOrder as any).client_phone}
+                        </div>
+                      )}
+                      {(viewOrder as any).client_email && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5" />{(viewOrder as any).client_email}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Дедлайн */}
+                {(viewOrder as any).deadline && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="font-medium">Дедлайн:</span>
+                    <span className={getDeadlineTextClass((viewOrder as any).deadline, viewOrder.status)}>
+                      {formatDeadline((viewOrder as any).deadline)}
+                    </span>
+                  </div>
+                )}
+
+                {((viewOrder as any).client_name || (viewOrder as any).deadline) && <Separator />}
+
+                {/* Принтер и материал */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <PrinterIco className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">Принтер:</span>
+                    <span>{viewOrder.printer_name ?? '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">Материал:</span>
+                    <span>{viewOrder.material_name ?? '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Weight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">Вес:</span>
+                    <span>{getTotalWeightGrams(viewOrder).toFixed(1)} г</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">Время:</span>
+                    <span>{formatTime(getPrintTimeMinutes(viewOrder))}</span>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Финансы */}
+                <div className="bg-muted/40 rounded-lg p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Себестоимость</span>
+                    <span>{formatMoney(getTotalCost(viewOrder))}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Итоговая цена</span>
+                    <span className="font-medium">{formatMoney(getFinalPrice(viewOrder))}</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <TrendingUp className="h-3.5 w-3.5" />Прибыль
+                    </span>
+                    <span className={getProfit(viewOrder) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                      {getProfit(viewOrder) >= 0 ? '+' : ''}{formatMoney(getProfit(viewOrder))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Примечание */}
+                {viewOrder.notes && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">Примечание</div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewOrder.notes}</p>
+                    </div>
+                  </>
+                )}
+
+                <Separator />
+
+                {/* Комментарии */}
+                <OrderComments
+                  orderId={viewOrder.id}
+                  currentUserId={currentUserId ?? 0}
+                />
+              </div>
+
+              <DialogFooter>
+                {viewOrder.status === 'in_progress' && (
+                  <Button variant="outline" onClick={() => { setIsViewOpen(false); openEdit(viewOrder); }}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Редактировать
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setIsViewOpen(false)}>Закрыть</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Диалог создания */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1333,7 +1550,7 @@ export default function OrdersPage() {
             <DialogTitle>Создание нового заказа</DialogTitle>
             <DialogDescription>Заполните параметры заказа на 3D-печать</DialogDescription>
           </DialogHeader>
-          <OrderForm data={formData} onChange={handleFormChange} />
+          <OrderForm data={formData} onChange={handleFormChange} printers={printers} materials={materials} />
 
           <div className="grid gap-4 pb-2">
             <Separator />
@@ -1388,7 +1605,7 @@ export default function OrdersPage() {
             <DialogTitle>Редактирование заказа #{selectedOrder?.id}</DialogTitle>
             <DialogDescription>Измените параметры заказа и пересчитайте стоимость</DialogDescription>
           </DialogHeader>
-          <OrderForm data={formData} onChange={handleFormChange} isEdit />
+          <OrderForm data={formData} onChange={handleFormChange} printers={printers} materials={materials} isEdit />
 
           {selectedOrder && (
             <div className="grid gap-4 pb-2">
@@ -1435,12 +1652,6 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <Separator />
-
-              <OrderComments
-                orderId={selectedOrder.id}
-                currentUserId={currentUserId ?? 0}
-              />
             </div>
           )}
           <DialogFooter>
