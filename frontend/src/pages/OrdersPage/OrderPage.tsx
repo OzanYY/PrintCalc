@@ -26,10 +26,10 @@ import {
   Mail,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { OrderClientField }   from '@/components/orders/OrderClientField';
-import { OrderTagsField }     from '@/components/orders/OrderTagsField';
+import { OrderClientField } from '@/components/orders/OrderClientField';
+import { OrderTagsField } from '@/components/orders/OrderTagsField';
 import { OrderDeadlineField, OrderDeadlineBadge } from '@/components/orders/OrderDeadlineField';
-import { OrderComments }      from '@/components/orders/OrderComments';
+import { OrderComments } from '@/components/orders/OrderComments';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -145,7 +145,7 @@ function getDeadlineBorderClass(deadline: string | null | undefined, status: str
   today.setHours(0, 0, 0, 0);
   const d = parseLocalDate(deadline);
   const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0)  return 'border-2 border-red-500 shadow-red-100 dark:shadow-red-950';
+  if (diffDays < 0) return 'border-2 border-red-500 shadow-red-100 dark:shadow-red-950';
   if (diffDays <= 2) return 'border-2 border-orange-400 shadow-orange-100 dark:shadow-orange-950';
   if (diffDays <= 7) return 'border-2 border-yellow-400 shadow-yellow-100 dark:shadow-yellow-950';
   return '';
@@ -157,7 +157,7 @@ function getDeadlineTextClass(deadline: string | null | undefined, status: strin
   today.setHours(0, 0, 0, 0);
   const d = parseLocalDate(deadline);
   const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0)  return 'text-red-500';
+  if (diffDays < 0) return 'text-red-500';
   if (diffDays <= 2) return 'text-orange-400';
   if (diffDays <= 7) return 'text-yellow-400';
   return '';
@@ -212,79 +212,79 @@ const emptyForm = (): OrderFormData => ({
 });
 
 const formFromOrder = (order: Order): OrderFormData => {
-  const m  = order.calc_materials    || {};
-  const e  = order.calc_electricity  || {};
-  const d  = order.calc_depreciation || {};
-  const l  = order.calc_labor        || {};
-  const a  = order.calc_additional   || {};
+  const m = order.calc_materials || {};
+  const e = order.calc_electricity || {};
+  const d = order.calc_depreciation || {};
+  const l = order.calc_labor || {};
+  const a = order.calc_additional || {};
   const printMin = e.printTime ?? 0;
 
   return {
-    name:     order.name,
-    notes:    order.notes ?? '',
-    printer_id:  order.printer_id?.toString()  ?? '',
+    name: order.name,
+    notes: order.notes ?? '',
+    printer_id: order.printer_id?.toString() ?? '',
     material_id: order.material_id?.toString() ?? '',
-    modelWeight:               (m.modelWeight   ?? '').toString(),
-    supportWeight:             (m.supportWeight  ?? 0).toString(),
-    filamentPrice:             (m.filamentPrice  ?? '').toString(),
-    powerConsumption:          (e.powerConsumption ?? '').toString(),
-    printTimeHours:            Math.floor(printMin / 60).toString(),
-    printTimeMinutes:          (printMin % 60).toString(),
-    electricityPrice:          (e.electricityPrice  ?? '').toString(),
-    printerCost:               (d.printerCost   ?? '').toString(),
-    printResource:             (d.printResource ?? '').toString(),
-    hourlyRate:                (l.hourlyRate    ?? '').toString(),
-    workTime:                  (l.workTime      ?? '').toString(),
+    modelWeight: (m.modelWeight ?? '').toString(),
+    supportWeight: (m.supportWeight ?? 0).toString(),
+    filamentPrice: (m.filamentPrice ?? '').toString(),
+    powerConsumption: (e.powerConsumption ?? '').toString(),
+    printTimeHours: Math.floor(printMin / 60).toString(),
+    printTimeMinutes: (printMin % 60).toString(),
+    electricityPrice: (e.electricityPrice ?? '').toString(),
+    printerCost: (d.printerCost ?? '').toString(),
+    printResource: (d.printResource ?? '').toString(),
+    hourlyRate: (l.hourlyRate ?? '').toString(),
+    workTime: (l.workTime ?? '').toString(),
     additionalExpensesPercent: (a.additionalExpensesPercent ?? 0).toString(),
-    marginPercent:             (a.marginPercent ?? 20).toString(),
+    marginPercent: (a.marginPercent ?? 20).toString(),
   };
 };
 
 /** Строит calc_result из формы. В реальном проекте вызывается CalculatorContext. */
 const buildCalcResult = (f: OrderFormData) => {
-  const modelW    = parseFloat(f.modelWeight)    || 0;
-  const supportW  = parseFloat(f.supportWeight)  || 0;
-  const filamentP = parseFloat(f.filamentPrice)  || 0;
-  const printMin  = (parseInt(f.printTimeHours) || 0) * 60 + (parseInt(f.printTimeMinutes) || 0);
-  const power     = parseFloat(f.powerConsumption) || 0;
-  const elPrice   = parseFloat(f.electricityPrice)  || 0;
-  const pCost     = parseFloat(f.printerCost)    || 0;
-  const pRes      = parseFloat(f.printResource)  || 1;
-  const rate      = parseFloat(f.hourlyRate)     || 0;
-  const work      = parseFloat(f.workTime)       || 0;
-  const addPct    = parseFloat(f.additionalExpensesPercent) || 0;
-  const margin    = parseFloat(f.marginPercent)  || 0;
+  const modelW = parseFloat(f.modelWeight) || 0;
+  const supportW = parseFloat(f.supportWeight) || 0;
+  const filamentP = parseFloat(f.filamentPrice) || 0;
+  const printMin = (parseInt(f.printTimeHours) || 0) * 60 + (parseInt(f.printTimeMinutes) || 0);
+  const power = parseFloat(f.powerConsumption) || 0;
+  const elPrice = parseFloat(f.electricityPrice) || 0;
+  const pCost = parseFloat(f.printerCost) || 0;
+  const pRes = parseFloat(f.printResource) || 1;
+  const rate = parseFloat(f.hourlyRate) || 0;
+  const work = parseFloat(f.workTime) || 0;
+  const addPct = parseFloat(f.additionalExpensesPercent) || 0;
+  const margin = parseFloat(f.marginPercent) || 0;
 
   const totalWeight = modelW + supportW;
-  const matCost     = (totalWeight / 1000) * filamentP;
-  const elCost      = (power / 1000) * (printMin / 60) * elPrice;
-  const deprCost    = pRes > 0 ? (pCost / pRes) * (printMin / 60) : 0;
-  const laborCost   = rate * (work / 60);
-  const primeCost   = matCost + elCost + deprCost + laborCost;
-  const addCost     = primeCost * (addPct / 100);
-  const fullCost    = primeCost + addCost;
-  const marginVal   = fullCost * (margin / 100);
-  const finalPrice  = fullCost + marginVal;
+  const matCost = (totalWeight / 1000) * filamentP;
+  const elCost = (power / 1000) * (printMin / 60) * elPrice;
+  const deprCost = pRes > 0 ? (pCost / pRes) * (printMin / 60) : 0;
+  const laborCost = rate * (work / 60);
+  const primeCost = matCost + elCost + deprCost + laborCost;
+  const addCost = primeCost * (addPct / 100);
+  const fullCost = primeCost + addCost;
+  const marginVal = fullCost * (margin / 100);
+  const finalPrice = fullCost + marginVal;
   const pricePerGram = totalWeight > 0 ? finalPrice / totalWeight : 0;
 
   const fmt = (v: number) => ({ value: v, formatted: formatMoney(v), currency: '₽' });
 
   return {
     materials: {
-      model:   fmt((modelW   / 1000) * filamentP),
+      model: fmt((modelW / 1000) * filamentP),
       support: fmt((supportW / 1000) * filamentP),
-      total:   fmt(matCost),
+      total: fmt(matCost),
     },
-    electricity:        fmt(elCost),
-    depreciation:       fmt(deprCost),
-    labor:              fmt(laborCost),
-    primeCost:          fmt(primeCost),
+    electricity: fmt(elCost),
+    depreciation: fmt(deprCost),
+    labor: fmt(laborCost),
+    primeCost: fmt(primeCost),
     additionalExpenses: { ...fmt(addCost), percent: `${addPct}%` },
-    fullCost:           fmt(fullCost),
-    margin:             { ...fmt(marginVal), percent: `${margin}%` },
-    finalPrice:         fmt(finalPrice),
-    pricePerGram:       { value: pricePerGram, formatted: `${pricePerGram.toFixed(2)} ₽/г`, unit: '₽/г' },
-    totalWeight:        { grams: totalWeight, kg: totalWeight / 1000 },
+    fullCost: fmt(fullCost),
+    margin: { ...fmt(marginVal), percent: `${margin}%` },
+    finalPrice: fmt(finalPrice),
+    pricePerGram: { value: pricePerGram, formatted: `${pricePerGram.toFixed(2)} ₽/г`, unit: '₽/г' },
+    totalWeight: { grams: totalWeight, kg: totalWeight / 1000 },
   };
 };
 
@@ -295,29 +295,29 @@ const buildCreateData = (f: OrderFormData): CreateOrderData => {
   return {
     name: f.name,
     notes: f.notes || undefined,
-    printer_id:  f.printer_id  ? parseInt(f.printer_id)  : null,
+    printer_id: f.printer_id ? parseInt(f.printer_id) : null,
     material_id: f.material_id ? parseInt(f.material_id) : null,
     calc_materials: {
-      modelWeight:   parseFloat(f.modelWeight)   || 0,
+      modelWeight: parseFloat(f.modelWeight) || 0,
       supportWeight: parseFloat(f.supportWeight) || 0,
       filamentPrice: parseFloat(f.filamentPrice) || 0,
     },
     calc_electricity: {
       powerConsumption: parseFloat(f.powerConsumption) || 0,
-      printTime:        printMin,
+      printTime: printMin,
       electricityPrice: parseFloat(f.electricityPrice) || 0,
     },
     calc_depreciation: {
-      printerCost:   parseFloat(f.printerCost)   || 0,
+      printerCost: parseFloat(f.printerCost) || 0,
       printResource: parseFloat(f.printResource) || 0,
     },
     calc_labor: {
       hourlyRate: parseFloat(f.hourlyRate) || 0,
-      workTime:   parseFloat(f.workTime)   || 0,
+      workTime: parseFloat(f.workTime) || 0,
     },
     calc_additional: {
       additionalExpensesPercent: parseFloat(f.additionalExpensesPercent) || 0,
-      marginPercent:             parseFloat(f.marginPercent) || 0,
+      marginPercent: parseFloat(f.marginPercent) || 0,
     },
     calc_result,
   };
@@ -327,7 +327,7 @@ const buildCreateData = (f: OrderFormData): CreateOrderData => {
 
 const StatusBadge = ({ status }: { status: OrderStatus }) => {
   if (status === 'in_progress') return <Badge className="bg-blue-500 text-white">В процессе</Badge>;
-  if (status === 'completed')   return <Badge className="bg-green-500 text-white">Завершён</Badge>;
+  if (status === 'completed') return <Badge className="bg-green-500 text-white">Завершён</Badge>;
   return <Badge variant="destructive">Отменён</Badge>;
 };
 
@@ -706,7 +706,7 @@ export default function OrdersPage() {
 
   // Диалоги
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen,   setIsEditOpen]   = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
@@ -714,20 +714,20 @@ export default function OrdersPage() {
   const [formData, setFormData] = useState<OrderFormData>(emptyForm());
 
   // Поля для create-диалога
-  const [clientId,    setClientId]    = useState<number | null>(null);
-  const [clientName,  setClientName]  = useState<string | null>(null);
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [clientName, setClientName] = useState<string | null>(null);
   const [clientPhone, setClientPhone] = useState<string | null>(null);
   const [clientEmail, setClientEmail] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<string | null>(null);
-  const [tagIds, setTagIds]     = useState<number[]>([]);
+  const [tagIds, setTagIds] = useState<number[]>([]);
 
   // Поля для edit-диалога (независимые от selectedOrder, чтобы не ломать state при onChange)
-  const [editClientId,   setEditClientId]   = useState<number | null>(null);
+  const [editClientId, setEditClientId] = useState<number | null>(null);
   const [editClientName, setEditClientName] = useState<string | null>(null);
-  const [editClientPhone,setEditClientPhone]= useState<string | null>(null);
-  const [editClientEmail,setEditClientEmail]= useState<string | null>(null);
-  const [editDeadline,   setEditDeadline]   = useState<string | null>(null);
-  const [editOrderTags,  setEditOrderTags]  = useState<import('@/api/tags').Tag[]>([]);
+  const [editClientPhone, setEditClientPhone] = useState<string | null>(null);
+  const [editClientEmail, setEditClientEmail] = useState<string | null>(null);
+  const [editDeadline, setEditDeadline] = useState<string | null>(null);
+  const [editOrderTags, setEditOrderTags] = useState<import('@/api/tags').Tag[]>([]);
 
   // Фильтр по тегам
   const [filterTagId, setFilterTagId] = useState<number | null>(null);
@@ -735,7 +735,7 @@ export default function OrdersPage() {
 
   // Загружаем теги для фильтра при монтировании
   useEffect(() => {
-    tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => {});
+    tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => { });
   }, []);
 
   const handleFormChange = (name: string, value: string) =>
@@ -785,7 +785,7 @@ export default function OrdersPage() {
     const result = await createOrder({
       ...buildCreateData(formData),
       client_id: clientId ?? undefined,
-      deadline:  deadline ?? undefined,
+      deadline: deadline ?? undefined,
     } as any);
     if (result) {
       // После создания применяем теги если выбраны
@@ -804,19 +804,19 @@ export default function OrdersPage() {
     if (!selectedOrder || !formData.name.trim()) return;
     const data = buildCreateData(formData);
     const result = await updateOrder(selectedOrder.id, {
-      name:              data.name,
-      notes:             data.notes || null,
-      printer_id:        data.printer_id,
-      material_id:       data.material_id,
-      calc_materials:    data.calc_materials,
-      calc_electricity:  data.calc_electricity,
+      name: data.name,
+      notes: data.notes || null,
+      printer_id: data.printer_id,
+      material_id: data.material_id,
+      calc_materials: data.calc_materials,
+      calc_electricity: data.calc_electricity,
       calc_depreciation: data.calc_depreciation,
-      calc_labor:        data.calc_labor,
-      calc_additional:   data.calc_additional,
-      calc_result:       data.calc_result,
+      calc_labor: data.calc_labor,
+      calc_additional: data.calc_additional,
+      calc_result: data.calc_result,
       // Берём из edit-state (обновляется при каждом изменении в полях диалога)
       client_id: editClientId,
-      deadline:  editDeadline,
+      deadline: editDeadline,
     } as any);
     if (result) {
       setIsEditOpen(false);
@@ -843,11 +843,11 @@ export default function OrdersPage() {
   // ─── Статистика из хука ─────────────────────────────────────────────────────
 
   const summary = stats?.summary;
-  const totalOrders     = parseInt(summary?.total_orders      ?? '0');
-  const inProgress      = parseInt(summary?.in_progress_orders ?? '0');
-  const completed       = parseInt(summary?.completed_orders   ?? '0');
-  const totalRevenue    = parseFloat(summary?.total_revenue    ?? '0');
-  const totalProfit     = parseFloat(summary?.total_profit     ?? '0');
+  const totalOrders = parseInt(summary?.total_orders ?? '0');
+  const inProgress = parseInt(summary?.in_progress_orders ?? '0');
+  const completed = parseInt(summary?.completed_orders ?? '0');
+  const totalRevenue = parseFloat(summary?.total_revenue ?? '0');
+  const totalProfit = parseFloat(summary?.total_profit ?? '0');
 
   // ─── Пагинация ─────────────────────────────────────────────────────────────
 
@@ -893,11 +893,11 @@ export default function OrdersPage() {
       {/* Статистика */}
       <div className="grid gap-4 md:grid-cols-5 mb-6">
         {[
-          { label: 'Всего заказов',   value: totalOrders,                 color: '' },
-          { label: 'В процессе',      value: inProgress,                  color: 'text-blue-600' },
-          { label: 'Завершено',        value: completed,                   color: 'text-green-600' },
-          { label: 'Выручка',         value: formatMoney(totalRevenue),   color: '' },
-          { label: 'Прибыль',         value: formatMoney(totalProfit),    color: 'text-green-600' },
+          { label: 'Всего заказов', value: totalOrders, color: '' },
+          { label: 'В процессе', value: inProgress, color: 'text-blue-600' },
+          { label: 'Завершено', value: completed, color: 'text-green-600' },
+          { label: 'Выручка', value: formatMoney(totalRevenue), color: '' },
+          { label: 'Прибыль', value: formatMoney(totalProfit), color: 'text-green-600' },
         ].map(({ label, value, color }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
@@ -1000,11 +1000,11 @@ export default function OrdersPage() {
       {!isLoading && filteredOrders.length > 0 && viewMode === 'cards' && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredOrders.map(order => {
-            const profit     = getProfit(order);
+            const profit = getProfit(order);
             const finalPrice = getFinalPrice(order);
-            const totalCost  = getTotalCost(order);
-            const weight     = getTotalWeightGrams(order);
-            const printTime  = getPrintTimeMinutes(order);
+            const totalCost = getTotalCost(order);
+            const weight = getTotalWeightGrams(order);
+            const printTime = getPrintTimeMinutes(order);
 
             const deadlineBorder = getDeadlineBorderClass((order as any).deadline, order.status);
             return (
@@ -1067,8 +1067,21 @@ export default function OrdersPage() {
 
                 <CardContent className="flex-1">
                   <div className="space-y-3">
-                    <div>
+                    <div className='flex'>
                       <StatusBadge status={order.status} />
+                      {(order as any).tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pl-3">
+                          {(order as any).tags.map((tag: any) => (
+                            <span
+                              key={tag.id}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                              style={{ backgroundColor: tag.color }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1119,24 +1132,11 @@ export default function OrdersPage() {
                       </>
                     )}
 
-                    {/* Клиент, дедлайн, теги */}
+                    {/* Клиент, дедлайн */}
                     {((order as any).client_name || (order as any).deadline || ((order as any).tags?.length > 0)) && (
                       <>
                         <Separator />
                         <div className="space-y-1.5">
-                          {(order as any).tags?.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {(order as any).tags.map((tag: any) => (
-                                <span
-                                  key={tag.id}
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                                  style={{ backgroundColor: tag.color }}
-                                >
-                                  {tag.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                           {(order as any).client_name && (
                             <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                               <User className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -1199,11 +1199,11 @@ export default function OrdersPage() {
             </TableHeader>
             <TableBody>
               {filteredOrders.map(order => {
-                const profit     = getProfit(order);
+                const profit = getProfit(order);
                 const finalPrice = getFinalPrice(order);
-                const totalCost  = getTotalCost(order);
-                const weight     = getTotalWeightGrams(order);
-                const printTime  = getPrintTimeMinutes(order);
+                const totalCost = getTotalCost(order);
+                const weight = getTotalWeightGrams(order);
+                const printTime = getPrintTimeMinutes(order);
 
                 return (
                   <TableRow key={order.id}>
