@@ -8,10 +8,10 @@ import {
 } from "recharts"
 import {
   Printer, Package, ShoppingCart, DollarSign, Clock, TrendingUp,
-  TrendingDown, Calendar, Download, RefreshCw, Award, CheckCircle2,
+  Calendar, Download, RefreshCw, CheckCircle2,
   Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
-  Layers, ArrowUpRight, ArrowDownRight, Minus, Info, Star, Cpu,
-  Box, FlaskConical, Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
+  ArrowUpRight, ArrowDownRight, Minus, Star,
+  Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
   ChevronDown, ChevronUp, History, Lock, Unlock, PackageMinus, PackagePlus,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -631,9 +631,7 @@ const MaterialsTab = ({
       </div>
 
       {/* ── KPI расхода ── */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        <StatCard title="Использовано за период" value={fmtWeight(totalFilament)} icon={FlaskConical} loading={isLoading} tooltip="Суммарный расход по завершённым заказам за выбранный период." />
-        <StatCard title="Прогноз / месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} sub="по истории" icon={TrendingUp} loading={isLoading} tooltip="Средний ежемесячный расход по истории заказов." />
+      <div className="grid gap-4 grid-cols-2">
         <StatCard
           title="Запасов хватит на"
           value={materialRunout != null ? (materialRunout >= 12 ? `${(materialRunout / 12).toFixed(1)} г` : `${materialRunout.toFixed(1)} мес`) : "—"}
@@ -1166,13 +1164,6 @@ export default function StatisticsPage() {
             <StatCard title="Себестоимость" value={fmt(totalExpenses)} sub={`${avgCostPerGram} ₽/г`} icon={Package} loading={isLoading} tooltip="Материалы + электроэнергия + амортизация." />
           </div>
 
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed" icon={Target} loading={isLoading} tooltip="Доля заказов, перешедших в «Завершён»." />
-            <StatCard title="Завершено" value={`${completionRate.toFixed(1)}%`} sub={`${completed} заказов`} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} tooltip="Процент завершённых заказов от общего числа." />
-            <StatCard title="Отменено" value={`${cancellationRate.toFixed(1)}%`} sub={`${cancelled} заказов`} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} tooltip="Доля отменённых заказов." />
-            <StatCard title="Время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))} / заказ` : "—"} icon={Clock} loading={isLoading} tooltip="Суммарное время печати. В подписи — среднее на заказ." />
-          </div>
-
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -1266,16 +1257,10 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ FINANCE ══════════════════════════════ */}
         <TabsContent value="finance" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Общая выручка" value={fmt(totalRevenue)} icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} tooltip="Сумма всех завершённых заказов за период." />
-            <StatCard title="Общая себестоимость" value={fmt(totalExpenses)} icon={Package} loading={isLoading} tooltip="Материалы + электроэнергия + амортизация." />
-            <StatCard title="Общая прибыль" value={fmt(totalProfit)} icon={TrendingUp} iconColor={totalProfit >= 0 ? "text-emerald-600" : "text-red-500"} loading={isLoading} accent={totalProfit >= 0 ? "border-emerald-400" : "border-red-400"} tooltip="Выручка минус себестоимость." />
             <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={isLoading} tooltip="Средний процент прибыли в цене заказа." />
-          </div>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={isLoading} tooltip="Среднее значение суммы завершённого заказа." />
             <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={isLoading} tooltip="Медиана не искажается единичными крупными заказами." />
             <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={isLoading} tooltip="Суммарные расходы на электроэнергию по всем заказам." />
-            <StatCard title="Затраты/грамм" value={`${avgCostPerGram} ₽/г`} icon={Scale} loading={isLoading} tooltip="Средняя себестоимость одного грамма материала." />
           </div>
           {monthlyData.length > 0 && (
             <Card>
@@ -1343,17 +1328,6 @@ export default function StatisticsPage() {
             <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" tooltip="Успешно выполненные заказы." />
             <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} accent="border-red-400" tooltip="Отменённые заказы. Не включаются в выручку." />
           </div>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Процент отмен" value={`${cancellationRate.toFixed(1)}%`} icon={TrendingDown} iconColor="text-red-500" loading={isLoading} tooltip="Доля отменённых от общего числа." />
-            <StatCard title="Процент завершения" value={`${completionRate.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} tooltip="Доля успешно выполненных." />
-            <StatCard title="Конверсия" value={`${conversionRate}%`} sub="in_progress → completed" icon={Target} loading={isLoading} tooltip="Доля заказов, дошедших до завершения." />
-            <StatCard title="Среднее время выполнения" value={avgCompletionDays > 0 ? `${avgCompletionDays.toFixed(1)} дн` : "—"} icon={Timer} loading={isLoading} tooltip="Среднее количество дней от создания до завершения." />
-          </div>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
-            <StatCard title="Общий расход материала" value={fmtWeight(totalFilament)} icon={Package} loading={isLoading} tooltip="Суммарный вес материала по завершённым заказам." />
-            <StatCard title="Прогноз расхода в месяц" value={monthlyFilamentAvg > 0 ? fmtWeight(monthlyFilamentAvg) : "—"} sub="на основе истории" icon={FlaskConical} loading={isLoading} tooltip="Средний ежемесячный расход по истории." />
-            <StatCard title="Общее время печати" value={fmtHours(totalPrintTime)} sub={completed > 0 ? `~${fmtHours(Math.round(totalPrintTime / completed))}/заказ` : "—"} icon={Clock} loading={isLoading} tooltip="Суммарное машинное время." />
-          </div>
           <Card>
             <CardHeader><CardTitle className="text-base">Распределение заказов</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -1372,6 +1346,12 @@ export default function StatisticsPage() {
                   </div>
                 </div>
               ))}
+              <div className="pt-3 border-t grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div><div className="text-xs text-muted-foreground">Конверсия</div><div className="font-semibold">{conversionRate}%</div></div>
+                <div><div className="text-xs text-muted-foreground">Ср. время выполнения</div><div className="font-semibold">{avgCompletionDays > 0 ? `${avgCompletionDays.toFixed(1)} дн` : "—"}</div></div>
+                <div><div className="text-xs text-muted-foreground">Расход материала</div><div className="font-semibold">{fmtWeight(totalFilament)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Время печати</div><div className="font-semibold">{fmtHours(totalPrintTime)}</div></div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1382,13 +1362,7 @@ export default function StatisticsPage() {
             <StatCard title="Всего принтеров" value={fmtNum(printers.length)} icon={Printer} loading={isLoading} tooltip="Количество принтеров в парке." />
             <StatCard title="Самый загруженный" value={busiestPrinter?.name ?? "—"} sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""} icon={Star} iconColor="text-yellow-500" loading={isLoading} tooltip="Принтер с наибольшим числом заказов." />
             <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading} tooltip="Принтеры без заказов за период." />
-            <StatCard title="Среднее заказов/принтер" value={printers.length > 0 ? (totalOrders / printers.length).toFixed(1) : "—"} icon={Hash} loading={isLoading} tooltip="Средняя загрузка принтера." />
-          </div>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Общий наработанный ресурс" value={`${usedHours.toFixed(0)} ч`} icon={Clock} loading={isLoading} tooltip="Суммарные часы работы всех принтеров." />
-            <StatCard title="Остаточный ресурс" value={`${Math.max(0, totalLifetime - usedHours).toFixed(0)} ч`} icon={Activity} loading={isLoading} tooltip="Оставшийся суммарный ресурс парка." />
-            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} tooltip="Средний процент выработанного ресурса. Свыше 70% — планировать обслуживание." />
-            <StatCard title="Загрузка (ч/день)" value={totalPrintTime > 0 ? `${(totalPrintTime / 60 / 30).toFixed(1)}` : "—"} sub="за последние 30 дней" icon={Layers} loading={isLoading} tooltip="Среднесуточная загрузка парка в часах." />
+            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} tooltip="Средний процент выработанного ресурса парка. Свыше 70% — планировать обслуживание." />
           </div>
           {printerTypeData.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2">
