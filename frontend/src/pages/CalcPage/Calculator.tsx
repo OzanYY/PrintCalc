@@ -14,22 +14,171 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2 } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { calculationAPI, type CalculationParams, type CalculationResult } from "@/api/calculator"
 import { ordersAPI, buildCreateOrderData } from "@/api/orders"
+import { tagsAPI } from "@/api/tags"
+import { OrderClientField } from "@/components/orders/OrderClientField"
+import { OrderDeadlineField } from "@/components/orders/OrderDeadlineField"
 import { PresetSmartInput, type PresetOption } from '@/components/ui/preset-smart-input'
 import { SmartInput } from '@/components/ui/smart-input'
 import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
 import { printersAPI } from "@/api/printers"
 import { materialsAPI, CATEGORY_UNIT_CONFIG } from "@/api/materials"
+
+// ─── Выбор тегов при сохранении заказа из калькулятора ────────────────────────
+
+interface CreateTagSelectorProps {
+    selectedIds: number[];
+    onChange: (ids: number[]) => void;
+}
+
+const PRESET_TAG_COLORS = [
+    '#6366f1', '#8b5cf6', '#ec4899', '#ef4444',
+    '#f97316', '#eab308', '#22c55e', '#06b6d4',
+    '#3b82f6', '#64748b',
+];
+
+function CreateTagSelector({ selectedIds, onChange }: CreateTagSelectorProps) {
+    const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
+    const [open, setOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [newColor, setNewColor] = useState('#6366f1');
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        tagsAPI.getAll().then(r => setAllTags(r.data.data));
+    }, []);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false);
+                setCreating(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const toggleTag = (id: number) =>
+        onChange(selectedIds.includes(id) ? selectedIds.filter(i => i !== id) : [...selectedIds, id]);
+
+    const handleCreateTag = async () => {
+        if (!newName.trim()) return;
+        try {
+            const r = await tagsAPI.create({ name: newName.trim(), color: newColor });
+            const tag = r.data.data;
+            setAllTags(prev => [...prev, tag]);
+            onChange([...selectedIds, tag.id]);
+            setNewName('');
+            setCreating(false);
+        } catch {
+            toast.error('Ошибка создания тега');
+        }
+    };
+
+    const selectedTags = allTags.filter(t => selectedIds.includes(t.id));
+
+    return (
+        <div ref={ref} className="relative">
+            <div className="flex flex-wrap gap-1 min-h-[28px]">
+                {selectedTags.map(tag => (
+                    <span
+                        key={tag.id}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                    >
+                        {tag.name}
+                        <button onClick={e => { e.stopPropagation(); toggleTag(tag.id); }} className="hover:opacity-70 ml-0.5">
+                            <XCircle className="h-3 w-3" />
+                        </button>
+                    </span>
+                ))}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-muted-foreground"
+                    onClick={() => setOpen(v => !v)}
+                    type="button"
+                >
+                    <TagIco className="h-3 w-3 mr-1" />
+                    {selectedTags.length === 0 ? 'Добавить теги' : <Plus className="h-3 w-3" />}
+                </Button>
+            </div>
+
+            {open && (
+                <div className="absolute z-50 mt-1 w-64 rounded-lg border bg-popover shadow-md">
+                    {!creating ? (
+                        <>
+                            <div className="max-h-48 overflow-y-auto p-1">
+                                {allTags.length === 0 && (
+                                    <div className="py-2 text-center text-sm text-muted-foreground">Нет тегов</div>
+                                )}
+                                {allTags.map(tag => (
+                                    <button
+                                        key={tag.id}
+                                        onClick={() => toggleTag(tag.id)}
+                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-sm"
+                                        type="button"
+                                    >
+                                        <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                                        <span className="flex-1 text-left">{tag.name}</span>
+                                        {selectedIds.includes(tag.id) && <CheckCircle className="h-3 w-3 text-primary" />}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="p-2 border-t">
+                                <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => setCreating(true)} type="button">
+                                    <Plus className="h-4 w-4 mr-2" />Создать тег
+                                </Button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-3 space-y-3">
+                            <div className="font-medium text-sm">Новый тег</div>
+                            <Input
+                                placeholder="Название"
+                                value={newName}
+                                onChange={e => setNewName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
+                                autoFocus
+                            />
+                            <div>
+                                <div className="text-xs text-muted-foreground mb-1.5">Цвет</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {PRESET_TAG_COLORS.map(c => (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            onClick={() => setNewColor(c)}
+                                            className="h-6 w-6 rounded-full transition-transform hover:scale-110"
+                                            style={{ backgroundColor: c, outline: newColor === c ? '2px solid currentColor' : 'none', outlineOffset: '2px' }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button size="sm" onClick={handleCreateTag} disabled={!newName.trim()} type="button">Создать</Button>
+                                <Button size="sm" variant="ghost" onClick={() => setCreating(false)} type="button">Отмена</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
 
 // Генерирует базовое имя заказа по текущей дате и времени
 function generateOrderName(): string {
@@ -66,14 +215,14 @@ export default function Calc() {
     const { user } = useAuth()
 
     // ─── Пресеты (принтеры и материалы) ──────────────────────────────────────
-    const [printerPresets, setPrinterPresets]   = useState<{
+    const [printerPresets, setPrinterPresets] = useState<{
         power: PresetOption[]
-        cost:  PresetOption[]
+        cost: PresetOption[]
         hours: PresetOption[]
     }>({ power: [], cost: [], hours: [] })
 
     const [materialPresets, setMaterialPresets] = useState<PresetOption[]>([])
-    const [materialsData, setMaterialsData]     = useState<import('@/api/materials').Material[]>([])
+    const [materialsData, setMaterialsData] = useState<import('@/api/materials').Material[]>([])
     const materialsDataRef = useRef<import('@/api/materials').Material[]>([])
 
     const loadPresets = useCallback(async () => {
@@ -82,29 +231,29 @@ export default function Calc() {
                 printersAPI.getAll(),
                 materialsAPI.getAll(),
             ])
-            const printers  = pRes.data.data
+            const printers = pRes.data.data
             const materials = mRes.data.data
 
             setPrinterPresets({
                 power: printers.map(p => ({
-                    id:        p.id,
-                    label:     p.name,
-                    value:     Number(p.power_consumption),
-                    sublabel:  p.model ?? p.type,
+                    id: p.id,
+                    label: p.name,
+                    value: Number(p.power_consumption),
+                    sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
                 })),
                 cost: printers.map(p => ({
-                    id:        p.id,
-                    label:     p.name,
-                    value:     Number(p.purchase_price),
-                    sublabel:  p.model ?? p.type,
+                    id: p.id,
+                    label: p.name,
+                    value: Number(p.purchase_price),
+                    sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
                 })),
                 hours: printers.map(p => ({
-                    id:        p.id,
-                    label:     p.name,
-                    value:     Number(p.print_lifetime_hours),
-                    sublabel:  p.model ?? p.type,
+                    id: p.id,
+                    label: p.name,
+                    value: Number(p.print_lifetime_hours),
+                    sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
                 })),
             })
@@ -112,17 +261,17 @@ export default function Calc() {
             setMaterialsData(materials)
             materialsDataRef.current = materials
             setMaterialPresets(materials.map(m => ({
-                id:        m.id,
-                label:     m.name,
-                value:     Number(m.price_per_kg),
-                sublabel:  [m.brand, m.type.toUpperCase()].filter(Boolean).join(' · '),
-                color:     m.color ?? '',
+                id: m.id,
+                label: m.name,
+                value: Number(m.price_per_kg),
+                sublabel: [m.brand, m.type.toUpperCase()].filter(Boolean).join(' · '),
+                color: m.color ?? '',
                 isDefault: m.is_default,
             })))
 
             // ── Автоприменение дефолтных пресетов при первом входе ────────────
             // Применяем только если пользователь ещё ничего не выбирал (null).
-            const defaultPrinter  = printers.find(p => p.is_default)
+            const defaultPrinter = printers.find(p => p.is_default)
             const defaultMaterial = materials.find(m => m.is_default)
 
             // Читаем актуальный selectedPresets напрямую из localStorage,
@@ -140,7 +289,7 @@ export default function Calc() {
                 setDepreciation(d => {
                     const updated = {
                         ...d,
-                        printerCost:   Number(defaultPrinter.purchase_price),
+                        printerCost: Number(defaultPrinter.purchase_price),
                         printResource: Number(defaultPrinter.print_lifetime_hours),
                     }
                     localStorage.setItem('calculator_depreciation', JSON.stringify(updated))
@@ -175,29 +324,36 @@ export default function Calc() {
         if (printerId == null) return
 
         const power = printerPresets.power.find(p => p.id === printerId)
-        const cost  = printerPresets.cost.find(p  => p.id === printerId)
+        const cost = printerPresets.cost.find(p => p.id === printerId)
         const hours = printerPresets.hours.find(p => p.id === printerId)
 
         if (power) handleElectricityChange('powerConsumption', power.value)
-        if (cost)  handleDepreciationChange('printerCost', cost.value)
+        if (cost) handleDepreciationChange('printerCost', cost.value)
         if (hours) handleDepreciationChange('printResource', hours.value)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [printerPresets])
 
-    const [isLoading, setIsLoading]         = useState(false)
-    const [serverError, setServerError]     = useState('')
+    const [isLoading, setIsLoading] = useState(false)
+    const [serverError, setServerError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
-    const [results, setResults]             = useState<CalculationResult | null>(null)
+    const [results, setResults] = useState<CalculationResult | null>(null)
 
     // ─── Состояние модального окна сохранения ────────────────────────────────
-    const [saveDialogOpen, setSaveDialogOpen]   = useState(false)
-    const [stockWarning, setStockWarning]       = useState<{
+    const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+    const [stockWarning, setStockWarning] = useState<{
         type: 'impossible' | 'low'
         message: string
         detail: string
     } | null>(null)
-    const [orderTitle, setOrderTitle]           = useState('')      // доп. заголовок от пользователя
-    const [isSaving, setIsSaving]               = useState(false)
+    const [orderTitle, setOrderTitle] = useState('')      // доп. заголовок от пользователя
+    const [saveNotes, setSaveNotes] = useState('')
+    const [saveClientId, setSaveClientId] = useState<number | null>(null)
+    const [saveClientName, setSaveClientName] = useState<string | null>(null)
+    const [saveClientPhone, setSaveClientPhone] = useState<string | null>(null)
+    const [saveClientEmail, setSaveClientEmail] = useState<string | null>(null)
+    const [saveDeadline, setSaveDeadline] = useState<string | null>(null)
+    const [saveTagIds, setSaveTagIds] = useState<number[]>([])
+    const [isSaving, setIsSaving] = useState(false)
 
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
@@ -234,11 +390,11 @@ export default function Calc() {
     }, [isLoading])
 
     // ─── Обработчики полей ────────────────────────────────────────────────────
-    const handleMaterialsChange    = (field: string, value: number) => setMaterials(prev => ({ ...prev, [field]: value }))
-    const handleElectricityChange  = (field: string, value: number) => setElectricity(prev => ({ ...prev, [field]: value }))
+    const handleMaterialsChange = (field: string, value: number) => setMaterials(prev => ({ ...prev, [field]: value }))
+    const handleElectricityChange = (field: string, value: number) => setElectricity(prev => ({ ...prev, [field]: value }))
     const handleDepreciationChange = (field: string, value: number) => setDepreciation(prev => ({ ...prev, [field]: value }))
-    const handleLaborChange        = (field: string, value: number) => setLabor(prev => ({ ...prev, [field]: value }))
-    const handleAdditionalChange   = (field: string, value: number) => setAdditional(prev => ({ ...prev, [field]: value }))
+    const handleLaborChange = (field: string, value: number) => setLabor(prev => ({ ...prev, [field]: value }))
+    const handleAdditionalChange = (field: string, value: number) => setAdditional(prev => ({ ...prev, [field]: value }))
 
     /**
      * При выборе пресета принтера в любом из полей — синхронизируем все три поля
@@ -254,11 +410,11 @@ export default function Calc() {
 
         // Находим принтер в каждом массиве пресетов и обновляем все три значения
         const power = printerPresets.power.find(p => p.id === id)
-        const cost  = printerPresets.cost.find(p  => p.id === id)
+        const cost = printerPresets.cost.find(p => p.id === id)
         const hours = printerPresets.hours.find(p => p.id === id)
 
         if (power) handleElectricityChange('powerConsumption', power.value)
-        if (cost)  handleDepreciationChange('printerCost', cost.value)
+        if (cost) handleDepreciationChange('printerCost', cost.value)
         if (hours) handleDepreciationChange('printResource', hours.value)
     }
 
@@ -269,18 +425,18 @@ export default function Calc() {
         setIsLoading(true)
 
         const requestData: CalculationParams = {
-            modelWeight:               materials.modelWeight,
-            supportWeight:             materials.supportWeight,
-            filamentPrice:             materials.filamentPrice,
-            powerConsumption:          electricity.powerConsumption,
-            printTime:                 electricity.printTime,
-            electricityPrice:          electricity.electricityPrice,
-            printerCost:               depreciation.printerCost,
-            printResource:             depreciation.printResource,
-            hourlyRate:                labor.hourlyRate,
-            workTime:                  labor.workTime,
+            modelWeight: materials.modelWeight,
+            supportWeight: materials.supportWeight,
+            filamentPrice: materials.filamentPrice,
+            powerConsumption: electricity.powerConsumption,
+            printTime: electricity.printTime,
+            electricityPrice: electricity.electricityPrice,
+            printerCost: depreciation.printerCost,
+            printResource: depreciation.printResource,
+            hourlyRate: labor.hourlyRate,
+            workTime: labor.workTime,
             additionalExpensesPercent: additional.additionalExpensesPercent,
-            marginPercent:             additional.marginPercent,
+            marginPercent: additional.marginPercent,
         }
 
         try {
@@ -314,8 +470,8 @@ export default function Calc() {
                 const needed = (Number(materials.modelWeight) || 0) + (Number(materials.supportWeight) || 0)
                 const spoolW = Number(mat.weight_per_spool_grams) || 1000
                 const fmt = (g: number) => cfg.unit === 'ml'
-                    ? (g < 1000 ? `${g.toFixed(0)} мл` : `${(g/1000).toFixed(2)} л`)
-                    : (g < 1000 ? `${g.toFixed(0)} г` : `${(g/1000).toFixed(3)} кг`)
+                    ? (g < 1000 ? `${g.toFixed(0)} мл` : `${(g / 1000).toFixed(2)} л`)
+                    : (g < 1000 ? `${g.toFixed(0)} г` : `${(g / 1000).toFixed(3)} кг`)
 
                 if (needed > 0 && stock < needed) {
                     setStockWarning({
@@ -346,7 +502,14 @@ export default function Calc() {
 
     // ─── Открытие диалога сохранения ─────────────────────────────────────────
     const openSaveDialog = () => {
-        setOrderTitle('')       // сбрасываем поле при каждом открытии
+        setOrderTitle('')
+        setSaveNotes('')
+        setSaveClientId(null)
+        setSaveClientName(null)
+        setSaveClientPhone(null)
+        setSaveClientEmail(null)
+        setSaveDeadline(null)
+        setSaveTagIds([])
         setSaveDialogOpen(true)
     }
 
@@ -356,8 +519,8 @@ export default function Calc() {
 
         // Итоговое имя: "Доп. заголовок — Заказ от 27.04.2026 14:35"
         // Если пользователь ничего не ввёл — только автогенерация
-        const autoName   = generateOrderName()
-        const finalName  = orderTitle.trim()
+        const autoName = generateOrderName()
+        const finalName = orderTitle.trim()
             ? `${orderTitle.trim()} — ${autoName}`
             : autoName
 
@@ -372,16 +535,29 @@ export default function Calc() {
                 labor,
                 additional,
                 {
-                    printer_id:  selectedPresets.powerConsumption != null
+                    printer_id: selectedPresets.powerConsumption != null
                         ? Number(selectedPresets.powerConsumption)
                         : null,
                     material_id: selectedPresets.filamentPrice != null
                         ? Number(selectedPresets.filamentPrice)
                         : null,
+                    notes: saveNotes.trim() || undefined,
                 },
             )
 
-            await ordersAPI.create(orderData)
+            const response = await ordersAPI.create({
+                ...orderData,
+                client_id: saveClientId,
+                deadline: saveDeadline,
+            })
+
+            if (saveTagIds.length > 0 && response.data.data?.id) {
+                try {
+                    await tagsAPI.setOrderTags(response.data.data.id, saveTagIds)
+                } catch {
+                    // теги необязательны, ошибку не показываем
+                }
+            }
 
             setSaveDialogOpen(false)
             toast.success('Заказ успешно сохранён', { position: "top-center", duration: 3000 })
@@ -554,7 +730,7 @@ export default function Calc() {
                             <div className="flex justify-between">
                                 <CardTitle className="flex items-center gap-2">
                                     <Calculator className="h-5 w-5" />
-                                    Введите параметры печати
+                                    Калькулятор 3D печати
                                 </CardTitle>
                                 <Button
                                     className="text-destructive hover:bg-destructive/10"
@@ -882,225 +1058,225 @@ export default function Calc() {
                     </Card>
                 </div>
 
-                    {/* Правая колонка - результаты */}
-                    <div>
-                        <Card className="border h-full">
-                            <CardContent>
-                                {results ? (
-                                    <div className="space-y-6">
-                                        {/* Вес */}
-                                        <div>
-                                            <h3 className="text-sm font-medium text-gray-500 mb-2">Общий вес</h3>
-                                            <div className="text-2xl font-bold text-gray-900">
-                                                {results.totalWeight.grams} г
-                                                <span className="text-sm font-normal text-gray-500 ml-2">
-                                                    ({results.totalWeight.kg} кг)
-                                                </span>
-                                            </div>
+                {/* Правая колонка - результаты */}
+                <div>
+                    <Card className="border h-full">
+                        <CardContent>
+                            {results ? (
+                                <div className="space-y-6">
+                                    {/* Вес */}
+                                    <div>
+                                        <h3 className="text-sm font-medium text-gray-500 mb-2">Общий вес</h3>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            {results.totalWeight.grams} г
+                                            <span className="text-sm font-normal text-gray-500 ml-2">
+                                                ({results.totalWeight.kg} кг)
+                                            </span>
                                         </div>
+                                    </div>
 
-                                        <Separator />
+                                    <Separator />
 
                                     {/* Расходы по категориям */}
                                     <div className="space-y-4">
                                         <div>
                                             <h3 className="text-sm font-medium text-gray-500 mb-3">Расходы по категориям</h3>
                                             <TooltipProvider delayDuration={200}>
-                                            <div className="space-y-3">
-                                                {/* Материалы */}
-                                                <div className="space-y-1">
+                                                <div className="space-y-3">
+                                                    {/* Материалы */}
+                                                    <div className="space-y-1">
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <div className="flex justify-between items-center cursor-default">
+                                                                    <span className="text-sm flex items-center gap-2">
+                                                                        <Package className="h-4 w-4" />
+                                                                        Материалы
+                                                                    </span>
+                                                                    <span className="font-medium">{results.materials.total.formatted}</span>
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent side="right" className="max-w-xs">
+                                                                <p className="font-medium mb-1">Итого по материалам</p>
+                                                                <p className="text-xs">стоимость модели + стоимость поддержек</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                    <span className="text-sm pl-1 text-muted-foreground flex items-center gap-1">
+                                                                        Модель
+                                                                    </span>
+                                                                    <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent side="right" className="max-w-xs">
+                                                                <p className="font-mono text-xs">вес модели (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                    <span className="flex items-center gap-1 pl-1 text-muted-foreground">
+                                                                        Поддержки
+                                                                    </span>
+                                                                    <span className="text-muted-foreground">{results.materials.support.formatted}</span>
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent side="right" className="max-w-xs">
+                                                                <p className="font-mono text-xs">вес поддержек (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </div>
+
+                                                    {/* Электричество */}
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <div className="flex justify-between items-center cursor-default">
                                                                 <span className="text-sm flex items-center gap-2">
-                                                                    <Package className="h-4 w-4" />
-                                                                    Материалы
+                                                                    <Zap className="h-4 w-4" />
+                                                                    Электричество
                                                                 </span>
-                                                                <span className="font-medium">{results.materials.total.formatted}</span>
+                                                                <span className="font-medium">{results.electricity.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
                                                         <TooltipContent side="right" className="max-w-xs">
-                                                            <p className="font-medium mb-1">Итого по материалам</p>
-                                                            <p className="text-xs">стоимость модели + стоимость поддержек</p>
+                                                            <p className="font-mono text-xs">мощность (Вт) × время печати (мин) ÷ 60 <br></br>÷ 1000 × цена электричества (₽/кВт·ч)</p>
                                                         </TooltipContent>
                                                     </Tooltip>
+
+                                                    {/* Амортизация */}
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                                <span className="text-sm pl-1 text-muted-foreground flex items-center gap-1">
-                                                                    Модель
+                                                            <div className="flex justify-between items-center cursor-default">
+                                                                <span className="text-sm flex items-center gap-2">
+                                                                    <Cpu className="h-4 w-4" />
+                                                                    Амортизация
                                                                 </span>
-                                                                <span className="font-medium text-muted-foreground">{results.materials.model.formatted}</span>
+                                                                <span className="font-medium">{results.depreciation.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
                                                         <TooltipContent side="right" className="max-w-xs">
-                                                            <p className="font-mono text-xs">вес модели (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
+                                                            <p className="font-mono text-xs">стоимость принтера (₽) ÷ ресурс <br></br>принтера (ч) × время печати (мин) ÷ 60</p>
                                                         </TooltipContent>
                                                     </Tooltip>
+
+                                                    {/* Оператор */}
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                                <span className="flex items-center gap-1 pl-1 text-muted-foreground">
-                                                                    Поддержки
+                                                            <div className="flex justify-between items-center cursor-default">
+                                                                <span className="text-sm flex items-center gap-2">
+                                                                    <User className="h-4 w-4" />
+                                                                    Оператор
                                                                 </span>
-                                                                <span className="text-muted-foreground">{results.materials.support.formatted}</span>
+                                                                <span className="font-medium">{results.labor.formatted}</span>
                                                             </div>
                                                         </TooltipTrigger>
                                                         <TooltipContent side="right" className="max-w-xs">
-                                                            <p className="font-mono text-xs">вес поддержек (г) × цена <br></br>филамента (₽/кг) ÷ 1000</p>
+                                                            <p className="font-mono text-xs">ставка оператора <br></br>(₽/ч) × время работы (мин) ÷ 60</p>
                                                         </TooltipContent>
                                                     </Tooltip>
                                                 </div>
-
-                                                {/* Электричество */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <div className="flex justify-between items-center cursor-default">
-                                                            <span className="text-sm flex items-center gap-2">
-                                                                <Zap className="h-4 w-4" />
-                                                                Электричество
-                                                            </span>
-                                                            <span className="font-medium">{results.electricity.formatted}</span>
-                                                        </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="right" className="max-w-xs">
-                                                        <p className="font-mono text-xs">мощность (Вт) × время печати (мин) ÷ 60 <br></br>÷ 1000 × цена электричества (₽/кВт·ч)</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-
-                                                {/* Амортизация */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <div className="flex justify-between items-center cursor-default">
-                                                            <span className="text-sm flex items-center gap-2">
-                                                                <Cpu className="h-4 w-4" />
-                                                                Амортизация
-                                                            </span>
-                                                            <span className="font-medium">{results.depreciation.formatted}</span>
-                                                        </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="right" className="max-w-xs">
-                                                        <p className="font-mono text-xs">стоимость принтера (₽) ÷ ресурс <br></br>принтера (ч) × время печати (мин) ÷ 60</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-
-                                                {/* Оператор */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <div className="flex justify-between items-center cursor-default">
-                                                            <span className="text-sm flex items-center gap-2">
-                                                                <User className="h-4 w-4" />
-                                                                Оператор
-                                                            </span>
-                                                            <span className="font-medium">{results.labor.formatted}</span>
-                                                        </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="right" className="max-w-xs">
-                                                        <p className="font-mono text-xs">ставка оператора <br></br>(₽/ч) × время работы (мин) ÷ 60</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </div>
                                             </TooltipProvider>
                                         </div>
 
-                                            <Separator />
+                                        <Separator />
 
                                         {/* Себестоимость */}
                                         <TooltipProvider delayDuration={200}>
-                                        <div className="space-y-1">
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="flex justify-between items-center cursor-default">
-                                                        <span className="font-semibold flex items-center gap-1">
-                                                            Полная себестоимость
-                                                        </span>
-                                                        <span className="font-bold">{results.fullCost.formatted}</span>
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="font-mono text-xs">себестоимость + доп. расходы (%)</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                        <span className="text-sm text-muted-foreground pl-1 flex items-center gap-1">
-                                                            Себестоимость
-                                                        </span>
-                                                        <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="font-mono text-xs">материалы + электричество <br></br>+ амортизация + оператор</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
-                                                        <span className="flex items-center gap-1 text-muted-foreground pl-1">
-                                                            <Percent className="h-3 w-3" />
-                                                            Доп. расходы ({results.additionalExpenses.percent})
-                                                        </span>
-                                                        <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="font-mono text-xs">себестоимость × доп. расходы (%)</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </div>
-                                        <Separator />
+                                            <div className="space-y-1">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center cursor-default">
+                                                            <span className="font-semibold flex items-center gap-1">
+                                                                Полная себестоимость
+                                                            </span>
+                                                            <span className="font-bold">{results.fullCost.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">себестоимость + доп. расходы (%)</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                            <span className="text-sm text-muted-foreground pl-1 flex items-center gap-1">
+                                                                Себестоимость
+                                                            </span>
+                                                            <span className="font-medium text-muted-foreground">{results.primeCost.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">материалы + электричество <br></br>+ амортизация + оператор</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
+                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                            <span className="flex items-center gap-1 text-muted-foreground pl-1">
+                                                                <Percent className="h-3 w-3" />
+                                                                Доп. расходы ({results.additionalExpenses.percent})
+                                                            </span>
+                                                            <span className="text-muted-foreground">+{results.additionalExpenses.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">себестоимость × доп. расходы (%)</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                            <Separator />
 
-                                        {/* Итоговая цена */}
-                                        <div className="bg-primary/5 p-4 rounded-lg">
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="flex justify-between items-center mb-2 cursor-default">
-                                                        <span className="font-semibold flex items-center gap-1">
-                                                            Маржа ({results.margin.percent})
-                                                        </span>
-                                                        <span className="font-bold text-primary">+{results.margin.formatted}</span>
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="font-mono text-xs">полная себестоимость × маржа (%)</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <div className="flex justify-between items-center pt-3 border-t border-primary/20 cursor-default">
-                                                        <span className="text-lg font-bold flex items-center gap-1">
-                                                            Итоговая цена
-                                                        </span>
-                                                        <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
-                                                    </div>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="right" className="max-w-xs">
-                                                    <p className="font-mono text-xs">полная себестоимость + маржа</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </div>
+                                            {/* Итоговая цена */}
+                                            <div className="bg-primary/5 p-4 rounded-lg">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center mb-2 cursor-default">
+                                                            <span className="font-semibold flex items-center gap-1">
+                                                                Маржа ({results.margin.percent})
+                                                            </span>
+                                                            <span className="font-bold text-primary">+{results.margin.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">полная себестоимость × маржа (%)</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex justify-between items-center pt-3 border-t border-primary/20 cursor-default">
+                                                            <span className="text-lg font-bold flex items-center gap-1">
+                                                                Итоговая цена
+                                                            </span>
+                                                            <span className="text-2xl font-bold text-primary">{results.finalPrice.formatted}</span>
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="max-w-xs">
+                                                        <p className="font-mono text-xs">полная себестоимость + маржа</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
 
-                                        {/* Стоимость за грамм */}
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div className="text-center p-3 bg-gray-50 rounded-lg cursor-default">
-                                                    <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
-                                                        Стоимость печати за грамм
+                                            {/* Стоимость за грамм */}
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="text-center p-3 bg-gray-50 rounded-lg cursor-default">
+                                                        <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
+                                                            Стоимость печати за грамм
+                                                        </div>
+                                                        <div className="text-xl font-bold text-gray-900">
+                                                            {results.pricePerGram.formatted}
+                                                        </div>
                                                     </div>
-                                                    <div className="text-xl font-bold text-gray-900">
-                                                        {results.pricePerGram.formatted}
-                                                    </div>
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right" className="max-w-xs">
-                                                <p className="font-mono text-xs">итоговая цена ÷ общий вес (г)</p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right" className="max-w-xs">
+                                                    <p className="font-mono text-xs">итоговая цена ÷ общий вес (г)</p>
+                                                </TooltipContent>
+                                            </Tooltip>
                                         </TooltipProvider>
                                     </div>
                                 </div>
@@ -1158,13 +1334,13 @@ export default function Calc() {
             </Dialog>
 
             <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Сохранить заказ</DialogTitle>
                     </DialogHeader>
 
                     <div className="space-y-4 py-2">
-                        {/* Доп. заголовок */}
+                        {/* Название */}
                         <div className="space-y-2">
                             <Label htmlFor="orderTitle">
                                 Название заказа
@@ -1175,7 +1351,6 @@ export default function Calc() {
                                 placeholder="Например: Корпус для робота"
                                 value={orderTitle}
                                 onChange={(e) => setOrderTitle(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && !isSaving && handleSaveOrder()}
                                 disabled={isSaving}
                                 autoFocus
                             />
@@ -1189,6 +1364,68 @@ export default function Calc() {
                                 : generateOrderName()
                             }
                         </div>
+
+                        <Separator />
+
+                        {/* Клиент */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-1.5">
+                                <User className="h-3.5 w-3.5" />Клиент
+                                <span className="text-muted-foreground font-normal">(необязательно)</span>
+                            </Label>
+                            <OrderClientField
+                                clientId={saveClientId}
+                                clientName={saveClientName}
+                                clientPhone={saveClientPhone}
+                                clientEmail={saveClientEmail}
+                                onClientChange={(id, client) => {
+                                    setSaveClientId(id)
+                                    setSaveClientName(client?.name ?? null)
+                                    setSaveClientPhone(client?.phone ?? null)
+                                    setSaveClientEmail(client?.email ?? null)
+                                }}
+                            />
+                        </div>
+
+                        {/* Дедлайн */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-1.5">
+                                <CalendarDays className="h-3.5 w-3.5" />Дедлайн
+                                <span className="text-muted-foreground font-normal">(необязательно)</span>
+                            </Label>
+                            <OrderDeadlineField
+                                deadline={saveDeadline}
+                                status="in_progress"
+                                onChange={setSaveDeadline}
+                            />
+                        </div>
+
+                        {/* Теги */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-1.5">
+                                <TagIco className="h-3.5 w-3.5" />Теги
+                                <span className="text-muted-foreground font-normal">(необязательно)</span>
+                            </Label>
+                            <CreateTagSelector selectedIds={saveTagIds} onChange={setSaveTagIds} />
+                        </div>
+
+                        {/* Примечания */}
+                        <div className="space-y-2">
+                            <Label htmlFor="saveNotes">
+                                Примечания
+                                <span className="text-muted-foreground font-normal ml-1">(необязательно)</span>
+                            </Label>
+                            <Textarea
+                                id="saveNotes"
+                                placeholder="Дополнительная информация..."
+                                value={saveNotes}
+                                onChange={(e) => setSaveNotes(e.target.value)}
+                                disabled={isSaving}
+                                rows={2}
+                            />
+                        </div>
+
+                        <Separator />
 
                         {/* Краткая сводка расчёта */}
                         {results && (

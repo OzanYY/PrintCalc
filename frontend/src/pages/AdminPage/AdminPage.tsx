@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { adminAPI, type AdminUser, type TableInfo, type ColumnInfo } from '@/api/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
@@ -373,8 +374,10 @@ function TablesSection() {
     useEffect(() => {
         if (activeTable) {
             setSearch('');
+            setSearchCol('');
             loadRows(activeTable, 1, '', '');
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTable]);
 
     const handleSearch = () => {
@@ -386,7 +389,10 @@ function TablesSection() {
         const form: Record<string, string> = {};
         columns.forEach(col => {
             if (col.column_name !== 'id') {
-                form[col.column_name] = row[col.column_name] != null ? String(row[col.column_name]) : '';
+                const val = row[col.column_name];
+                form[col.column_name] = val != null
+                    ? (typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val))
+                    : '';
             }
         });
         setEditForm(form);
@@ -459,8 +465,8 @@ function TablesSection() {
 
     if (loading) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
 
-    // Колонки для отображения (скрываем слишком длинные)
-    const visibleCols = columns.filter(c => !['activation_link', 'reset_password_token'].includes(c.column_name));
+    const HIDDEN_COLS = ['activation_link', 'reset_password_token', 'password_hash'];
+    const visibleCols = columns.filter(c => !HIDDEN_COLS.includes(c.column_name));
 
     return (
         <div className="flex gap-4 h-full">
@@ -597,16 +603,31 @@ function TablesSection() {
                         <DialogTitle>Редактировать запись #{String(editRow?.id)}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
-                        {Object.keys(editForm).map(key => (
-                            <div key={key}>
-                                <label className="text-xs font-medium mb-1 block text-muted-foreground">{key}</label>
-                                <Input
-                                    value={editForm[key]}
-                                    onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
-                                    className="text-sm font-mono"
-                                />
-                            </div>
-                        ))}
+                        {Object.keys(editForm).map(key => {
+                            const col = columns.find(c => c.column_name === key);
+                            const isLong = col && ['jsonb', 'json', 'text'].includes(col.data_type);
+                            return (
+                                <div key={key}>
+                                    <label className="text-xs font-medium mb-1 block text-muted-foreground">
+                                        {key}
+                                        {col && <span className="ml-1 opacity-50">({col.data_type})</span>}
+                                    </label>
+                                    {isLong ? (
+                                        <Textarea
+                                            value={editForm[key]}
+                                            onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                                            className="text-xs font-mono min-h-[80px]"
+                                        />
+                                    ) : (
+                                        <Input
+                                            value={editForm[key]}
+                                            onChange={e => setEditForm(f => ({ ...f, [key]: e.target.value }))}
+                                            className="text-sm font-mono"
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEditRow(null)}>Отмена</Button>
@@ -622,17 +643,33 @@ function TablesSection() {
                         <DialogTitle>Добавить запись в {activeTable}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
-                        {Object.keys(createForm).map(key => (
-                            <div key={key}>
-                                <label className="text-xs font-medium mb-1 block text-muted-foreground">{key}</label>
-                                <Input
-                                    value={createForm[key]}
-                                    onChange={e => setCreateForm(f => ({ ...f, [key]: e.target.value }))}
-                                    className="text-sm font-mono"
-                                    placeholder={columns.find(c => c.column_name === key)?.data_type || ''}
-                                />
-                            </div>
-                        ))}
+                        {Object.keys(createForm).map(key => {
+                            const col = columns.find(c => c.column_name === key);
+                            const isLong = col && ['jsonb', 'json', 'text'].includes(col.data_type);
+                            return (
+                                <div key={key}>
+                                    <label className="text-xs font-medium mb-1 block text-muted-foreground">
+                                        {key}
+                                        {col && <span className="ml-1 opacity-50">({col.data_type})</span>}
+                                    </label>
+                                    {isLong ? (
+                                        <Textarea
+                                            value={createForm[key]}
+                                            onChange={e => setCreateForm(f => ({ ...f, [key]: e.target.value }))}
+                                            className="text-xs font-mono min-h-[80px]"
+                                            placeholder={col?.data_type || ''}
+                                        />
+                                    ) : (
+                                        <Input
+                                            value={createForm[key]}
+                                            onChange={e => setCreateForm(f => ({ ...f, [key]: e.target.value }))}
+                                            className="text-sm font-mono"
+                                            placeholder={col?.data_type || ''}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>

@@ -68,7 +68,8 @@ class AdminController {
     // Белый список таблиц
     static #ALLOWED_TABLES = [
         'users', 'tokens', 'token_denylist',
-        'printers', 'materials', 'orders', 'material_transactions'
+        'printers', 'materials', 'orders', 'material_transactions',
+        'clients', 'tags', 'order_comments',
     ];
 
     static #validateTable(table) {
