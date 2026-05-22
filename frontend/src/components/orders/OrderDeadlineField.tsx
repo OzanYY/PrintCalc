@@ -1,5 +1,5 @@
 // frontend/src/components/orders/OrderDeadlineField.tsx
-import { CalendarDays, AlertTriangle, Clock, CheckCircle } from 'lucide-react';
+import { CalendarDays, AlertTriangle, Clock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -37,7 +37,7 @@ export function OrderDeadlineBadge({ deadline, status }: Pick<Props, 'deadline' 
     if (!deadline) return null;
     const state = getDeadlineState(deadline, status);
     const { icon: Icon, label, className } = STATE_CONFIG[state];
-    const formatted = new Date(deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const formatted = new Date(deadline).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     return (
         <span className={cn('inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium', className)}>
