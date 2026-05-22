@@ -271,7 +271,7 @@ class OrderModel {
     static async findOverdueAndUrgent(userId) {
         const query = `
         SELECT o.*,
-               c.name as client_name, c.phone as client_phone
+               c.name as client_name, c.phone as client_phone, c.email as client_email
         FROM orders o
         LEFT JOIN clients c ON o.client_id = c.id
         WHERE o.user_id = $1
