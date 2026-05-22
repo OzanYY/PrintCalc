@@ -62,6 +62,21 @@ export function OrderClientField({ clientId, clientName, clientPhone, clientEmai
         }
     };
 
+    const handleDeleteClient = async (client: Client, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm(`Удалить клиента «${client.name}»?`)) return;
+        try {
+            await clientsAPI.delete(client.id);
+            setClients(p => p.filter(c => c.id !== client.id));
+            // Если удалённый клиент был выбран в заказе — сбрасываем
+            if (clientId === client.id) {
+                onClientChange(null, null);
+            }
+        } catch {
+            toast.error('Ошибка удаления клиента');
+        }
+    };
+
     if (clientId) {
         return (
             <div className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
@@ -119,16 +134,24 @@ export function OrderClientField({ clientId, clientName, clientPhone, clientEmai
                                     <div className="py-3 text-center text-sm text-muted-foreground">Клиенты не найдены</div>
                                 )}
                                 {clients.map(c => (
-                                    <button
-                                        key={c.id}
-                                        className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
-                                        onClick={() => { onClientChange(c.id, c); setOpen(false); }}
-                                    >
-                                        <div className="font-medium">{c.name}</div>
-                                        {(c.phone || c.email) && (
-                                            <div className="text-xs text-muted-foreground">{c.phone || c.email}</div>
-                                        )}
-                                    </button>
+                                    <div key={c.id} className="flex items-center group hover:bg-accent">
+                                        <button
+                                            className="flex-1 text-left px-3 py-2 text-sm"
+                                            onClick={() => { onClientChange(c.id, c); setOpen(false); }}
+                                        >
+                                            <div className="font-medium">{c.name}</div>
+                                            {(c.phone || c.email) && (
+                                                <div className="text-xs text-muted-foreground">{c.phone || c.email}</div>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={e => handleDeleteClient(c, e)}
+                                            className="px-2 py-2 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+                                            title="Удалить клиента"
+                                        >
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                             <div className="p-2 border-t">

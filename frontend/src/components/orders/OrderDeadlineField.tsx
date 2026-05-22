@@ -12,10 +12,18 @@ interface Props {
 
 type DeadlineState = 'overdue' | 'urgent' | 'upcoming' | 'ok' | 'none';
 
-/** Нормализует дату к формату YYYY-MM-DD, обрезая время/timezone если есть */
-const normalizeDate = (date: string | null): string => {
+/** Нормализует дату к формату YYYY-MM-DD.
+ *  Принимает строку YYYY-MM-DD, ISO-строку или JS Date.
+ *  Всегда использует UTC-компоненты чтобы избежать сдвига в UTC+ зонах. */
+const normalizeDate = (date: string | null | Date): string => {
     if (!date) return '';
-    return date.slice(0, 10); // '2025-06-15T00:00:00.000Z' → '2025-06-15'
+    if (date instanceof Date) {
+        const y = date.getUTCFullYear();
+        const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(date.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    return String(date).slice(0, 10);
 };
 
 /**

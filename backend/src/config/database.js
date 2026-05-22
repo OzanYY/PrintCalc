@@ -1,4 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// OID 1082 = DATE. По умолчанию pg может вернуть JS Date (UTC midnight),
+// что в UTC+ зонах при сериализации сдвигает день назад.
+// Принудительно возвращаем DATE как строку YYYY-MM-DD.
+types.setTypeParser(1082, (val) => val); // val уже строка 'YYYY-MM-DD' из pg wire
 
 // Настраиваем параметры бд
 const pool = new Pool({

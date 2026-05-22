@@ -762,7 +762,7 @@ export default function OrdersPage() {
     setEditClientName((order as any).client_name ?? null);
     setEditClientPhone((order as any).client_phone ?? null);
     setEditClientEmail((order as any).client_email ?? null);
-    setEditDeadline((order as any).deadline ?? null);
+    setEditDeadline((order as any).deadline ? String((order as any).deadline).slice(0, 10) : null);
     // Загружаем теги заказа (они не приходят в списке)
     try {
       const r = await tagsAPI.getOrderTags(order.id);
@@ -816,7 +816,7 @@ export default function OrdersPage() {
       calc_result: data.calc_result,
       // Берём из edit-state (обновляется при каждом изменении в полях диалога)
       client_id: editClientId,
-      deadline: editDeadline,
+      deadline: editDeadline ? editDeadline.slice(0, 10) : null,
     } as any);
     if (result) {
       setIsEditOpen(false);

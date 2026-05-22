@@ -78,6 +78,23 @@ export function OrderTagsField({ orderId, initialTags = [], onChange }: Props) {
         }
     };
 
+    const handleDeleteTag = async (tag: Tag, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm(`Удалить тег «${tag.name}»? Он будет удалён у всех заказов.`)) return;
+        try {
+            await tagsAPI.delete(tag.id);
+            setAllTags(p => p.filter(t => t.id !== tag.id));
+            // Если тег был на заказе — убираем его локально
+            if (orderTags.some(t => t.id === tag.id)) {
+                const updated = orderTags.filter(t => t.id !== tag.id);
+                setOrderTags(updated);
+                onChange?.(updated);
+            }
+        } catch {
+            toast.error('Ошибка удаления тега');
+        }
+    };
+
     const removeFromOrder = async (tag: Tag, e: React.MouseEvent) => {
         e.stopPropagation();
         try {
@@ -124,18 +141,29 @@ export function OrderTagsField({ orderId, initialTags = [], onChange }: Props) {
                                     <div className="py-2 text-center text-sm text-muted-foreground">Нет тегов</div>
                                 )}
                                 {allTags.map(tag => (
-                                    <button
+                                    <div
                                         key={tag.id}
-                                        onClick={() => toggleTag(tag)}
-                                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent text-sm"
+                                        className="flex items-center group rounded hover:bg-accent"
                                     >
-                                        <span
-                                            className="h-3 w-3 rounded-full shrink-0"
-                                            style={{ backgroundColor: tag.color }}
-                                        />
-                                        <span className="flex-1 text-left">{tag.name}</span>
-                                        {isSelected(tag) && <Check className="h-3 w-3 text-primary" />}
-                                    </button>
+                                        <button
+                                            onClick={() => toggleTag(tag)}
+                                            className="flex-1 flex items-center gap-2 px-2 py-1.5 text-sm"
+                                        >
+                                            <span
+                                                className="h-3 w-3 rounded-full shrink-0"
+                                                style={{ backgroundColor: tag.color }}
+                                            />
+                                            <span className="flex-1 text-left">{tag.name}</span>
+                                            {isSelected(tag) && <Check className="h-3 w-3 text-primary" />}
+                                        </button>
+                                        <button
+                                            onClick={e => handleDeleteTag(tag, e)}
+                                            className="px-1.5 py-1.5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                                            title="Удалить тег"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                             <div className="p-2 border-t">

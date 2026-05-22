@@ -158,8 +158,20 @@ class OrderModel {
     static #flattenResult(row) {
         if (!row) return row;
         const r = row.calc_result || {};
+
+        // pg возвращает DATE как JS Date (UTC midnight), при JSON-сериализации
+        // в часовых поясах UTC+ это даёт предыдущий день. Нормализуем в YYYY-MM-DD.
+        let deadline = row.deadline;
+        if (deadline instanceof Date) {
+            const y = deadline.getUTCFullYear();
+            const m = String(deadline.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(deadline.getUTCDate()).padStart(2, '0');
+            deadline = `${y}-${m}-${d}`;
+        }
+
         return {
             ...row,
+            deadline,
             // Плоские алиасы (read-only, не хранятся в БД отдельно)
             material_cost: r.materials?.total?.value ?? 0,
             electricity_cost: r.electricity?.value ?? 0,
