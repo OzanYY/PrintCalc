@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -197,6 +197,53 @@ interface HistoryEntry {
 const HISTORY_KEY = 'calculator_history'
 const HISTORY_MAX = 20
 
+// ─── Строка таблицы параметров сравнения ──────────────────────────────────────
+
+function CompareRow({ label, unit, aVal, bVal, onA, onB, step = '1' }: {
+    label: string; unit: string; step?: string
+    aVal: number; bVal: number
+    onA: (v: number) => void; onB: (v: number) => void
+}) {
+    const diff = Math.abs(aVal - bVal) > 0.0001
+    return (
+        <tr className={diff ? 'bg-amber-50/50 dark:bg-amber-950/10' : ''}>
+            <td className="py-1.5 pr-3 text-sm text-muted-foreground whitespace-nowrap">{label}</td>
+            <td className="py-1.5 px-2">
+                <div className="relative">
+                    <SmartInput min="0" step={step} value={aVal} onChange={onA} className="h-8 text-sm pr-10" />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">{unit}</span>
+                </div>
+            </td>
+            <td className="py-1.5 px-2">
+                <div className={`relative ${diff ? 'ring-1 ring-amber-400/60 rounded-md' : ''}`}>
+                    <SmartInput min="0" step={step} value={bVal} onChange={onB} className="h-8 text-sm pr-10" />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">{unit}</span>
+                </div>
+            </td>
+        </tr>
+    )
+}
+
+// ─── Строка таблицы результатов сравнения ─────────────────────────────────────
+
+function ResultCompareRow({ label, aRaw, bRaw, aFmt, bFmt, bold = false }: {
+    label: string; aRaw: number; bRaw: number; aFmt: string; bFmt: string; bold?: boolean
+}) {
+    const diff = bRaw - aRaw
+    const same = Math.abs(diff) < 0.005
+    const pct = aRaw !== 0 ? (diff / Math.abs(aRaw)) * 100 : 0
+    return (
+        <tr className={`border-b last:border-0 ${!same ? 'bg-muted/30' : ''}`}>
+            <td className={`py-2 pr-4 text-sm ${bold ? 'font-semibold' : 'text-muted-foreground'}`}>{label}</td>
+            <td className={`py-2 px-2 text-right text-sm ${bold ? 'font-semibold' : ''}`}>{aFmt}</td>
+            <td className={`py-2 px-2 text-right text-sm ${bold ? 'font-semibold' : ''}`}>{bFmt}</td>
+            <td className={`py-2 pl-2 text-right text-xs tabular-nums ${same ? 'text-muted-foreground' : diff > 0 ? 'text-orange-500 dark:text-orange-400' : 'text-blue-500 dark:text-blue-400'}`}>
+                {same ? '—' : `${diff > 0 ? '+' : ''}${pct.toFixed(1)}%`}
+            </td>
+        </tr>
+    )
+}
+
 // Генерирует базовое имя заказа по текущей дате и времени
 function generateOrderName(): string {
     const now = new Date()
@@ -378,6 +425,17 @@ export default function Calc() {
     })
     const [historyOpen, setHistoryOpen] = useState(false)
 
+    // ─── Режим сравнения ──────────────────────────────────────────────────────
+    const [compareActive, setCompareActive] = useState(false)
+    const [compareParams, setCompareParams] = useState({
+        materials:    { modelWeight: 100, supportWeight: 20, filamentPrice: 1500 },
+        electricity:  { powerConsumption: 200, printTime: 300, electricityPrice: 6.5 },
+        depreciation: { printerCost: 50000, printResource: 5000 },
+        labor:        { hourlyRate: 500, workTime: 60 },
+        additional:   { additionalExpensesPercent: 15, marginPercent: 30 },
+    })
+    const [compareResults, setCompareResults] = useState<CalculationResult | null>(null)
+
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
         if (hasCalculated) {
@@ -412,12 +470,19 @@ export default function Calc() {
         }
     }, [isLoading])
 
-    // ─── Обработчики полей ────────────────────────────────────────────────────
+    // ─── Обработчики полей (Вариант А) ───────────────────────────────────────
     const handleMaterialsChange = (field: string, value: number) => setMaterials(prev => ({ ...prev, [field]: value }))
     const handleElectricityChange = (field: string, value: number) => setElectricity(prev => ({ ...prev, [field]: value }))
     const handleDepreciationChange = (field: string, value: number) => setDepreciation(prev => ({ ...prev, [field]: value }))
     const handleLaborChange = (field: string, value: number) => setLabor(prev => ({ ...prev, [field]: value }))
     const handleAdditionalChange = (field: string, value: number) => setAdditional(prev => ({ ...prev, [field]: value }))
+
+    // ─── Обработчики полей (Вариант Б) ───────────────────────────────────────
+    const handleCompareMat  = (f: string, v: number) => setCompareParams(p => ({ ...p, materials:    { ...p.materials,    [f]: v } }))
+    const handleCompareElec = (f: string, v: number) => setCompareParams(p => ({ ...p, electricity:  { ...p.electricity,  [f]: v } }))
+    const handleCompareDepr = (f: string, v: number) => setCompareParams(p => ({ ...p, depreciation: { ...p.depreciation, [f]: v } }))
+    const handleCompareLab  = (f: string, v: number) => setCompareParams(p => ({ ...p, labor:        { ...p.labor,        [f]: v } }))
+    const handleCompareAdd  = (f: string, v: number) => setCompareParams(p => ({ ...p, additional:   { ...p.additional,   [f]: v } }))
 
     /**
      * При выборе пресета принтера в любом из полей — синхронизируем все три поля
@@ -611,6 +676,54 @@ export default function Calc() {
         }
     }
 
+    // ─── Режим сравнения ──────────────────────────────────────────────────────
+    const activateCompare = () => {
+        setCompareParams({
+            materials:    { ...materials },
+            electricity:  { ...electricity },
+            depreciation: { ...depreciation },
+            labor:        { ...labor },
+            additional:   { ...additional },
+        })
+        setCompareResults(null)
+        setCompareActive(true)
+    }
+
+    const calculateBoth = async () => {
+        setIsLoading(true)
+        const buildReq = (p: typeof compareParams) => ({
+            modelWeight: p.materials.modelWeight, supportWeight: p.materials.supportWeight,
+            filamentPrice: p.materials.filamentPrice,
+            powerConsumption: p.electricity.powerConsumption, printTime: p.electricity.printTime,
+            electricityPrice: p.electricity.electricityPrice,
+            printerCost: p.depreciation.printerCost, printResource: p.depreciation.printResource,
+            hourlyRate: p.labor.hourlyRate, workTime: p.labor.workTime,
+            additionalExpensesPercent: p.additional.additionalExpensesPercent,
+            marginPercent: p.additional.marginPercent,
+        })
+        const paramsA = { materials, electricity, depreciation, labor, additional }
+        try {
+            const [resA, resB] = await Promise.allSettled([
+                calculationAPI.calculate(buildReq(paramsA as typeof compareParams)),
+                calculationAPI.calculate(buildReq(compareParams)),
+            ])
+            if (resA.status === 'fulfilled' && resA.value.data.success && resA.value.data.data) {
+                const r = resA.value.data.data
+                setResults(r)
+                setHasCalculated(true)
+                localStorage.setItem('calculator_results', JSON.stringify(r))
+            }
+            if (resB.status === 'fulfilled' && resB.value.data.success && resB.value.data.data) {
+                setCompareResults(resB.value.data.data)
+            }
+            if (resA.status === 'rejected' || resB.status === 'rejected') {
+                toast.error('Ошибка при расчёте', { position: 'top-center' })
+            }
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     // ─── Восстановление из истории ────────────────────────────────────────────
     const restoreFromHistory = (entry: HistoryEntry) => {
         setMaterials(entry.materials)
@@ -782,7 +895,120 @@ export default function Calc() {
 
     return (
         <div className="max-w-7xl mx-auto pt-4 md:pt-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* ─── Режим сравнения ────────────────────────────────────────────────── */}
+        {compareActive && (
+            <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <ArrowLeftRight className="h-5 w-5" />
+                        Режим сравнения
+                    </h2>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => { setCompareActive(false); setCompareResults(null) }}>
+                            Выйти
+                        </Button>
+                        <Button size="sm" onClick={calculateBoth} disabled={isLoading}>
+                            {isLoading && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+                            Рассчитать оба
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Таблица параметров */}
+                <Card>
+                    <CardContent className="pt-4 overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b">
+                                    <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-3">Параметр</th>
+                                    <th className="pb-2 px-2">
+                                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                                            <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                                            Вариант А
+                                        </div>
+                                    </th>
+                                    <th className="pb-2 px-2">
+                                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                                            <div className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                                            Вариант Б
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colSpan={3} className="pt-4 pb-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><Package className="h-3 w-3" />Материалы</span></td></tr>
+                                <CompareRow label="Вес модели" unit="г" step="0.1" aVal={materials.modelWeight} bVal={compareParams.materials.modelWeight} onA={v => handleMaterialsChange('modelWeight', v)} onB={v => handleCompareMat('modelWeight', v)} />
+                                <CompareRow label="Вес поддержек" unit="г" step="0.1" aVal={materials.supportWeight} bVal={compareParams.materials.supportWeight} onA={v => handleMaterialsChange('supportWeight', v)} onB={v => handleCompareMat('supportWeight', v)} />
+                                <CompareRow label="Цена филамента" unit="₽/кг" step="10" aVal={materials.filamentPrice} bVal={compareParams.materials.filamentPrice} onA={v => handleMaterialsChange('filamentPrice', v)} onB={v => handleCompareMat('filamentPrice', v)} />
+
+                                <tr><td colSpan={3} className="pt-4 pb-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><Zap className="h-3 w-3" />Электричество</span></td></tr>
+                                <CompareRow label="Мощность принтера" unit="Вт" step="10" aVal={electricity.powerConsumption} bVal={compareParams.electricity.powerConsumption} onA={v => handleElectricityChange('powerConsumption', v)} onB={v => handleCompareElec('powerConsumption', v)} />
+                                <CompareRow label="Время печати" unit="мин" step="1" aVal={electricity.printTime} bVal={compareParams.electricity.printTime} onA={v => handleElectricityChange('printTime', v)} onB={v => handleCompareElec('printTime', v)} />
+                                <CompareRow label="Цена электричества" unit="₽/кВт·ч" step="0.1" aVal={electricity.electricityPrice} bVal={compareParams.electricity.electricityPrice} onA={v => handleElectricityChange('electricityPrice', v)} onB={v => handleCompareElec('electricityPrice', v)} />
+
+                                <tr><td colSpan={3} className="pt-4 pb-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><Cpu className="h-3 w-3" />Амортизация</span></td></tr>
+                                <CompareRow label="Стоимость принтера" unit="₽" step="1000" aVal={depreciation.printerCost} bVal={compareParams.depreciation.printerCost} onA={v => handleDepreciationChange('printerCost', v)} onB={v => handleCompareDepr('printerCost', v)} />
+                                <CompareRow label="Ресурс печати" unit="ч" step="100" aVal={depreciation.printResource} bVal={compareParams.depreciation.printResource} onA={v => handleDepreciationChange('printResource', v)} onB={v => handleCompareDepr('printResource', v)} />
+
+                                <tr><td colSpan={3} className="pt-4 pb-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><User className="h-3 w-3" />Оператор</span></td></tr>
+                                <CompareRow label="Ставка оператора" unit="₽/ч" step="50" aVal={labor.hourlyRate} bVal={compareParams.labor.hourlyRate} onA={v => handleLaborChange('hourlyRate', v)} onB={v => handleCompareLab('hourlyRate', v)} />
+                                <CompareRow label="Время работы" unit="мин" step="5" aVal={labor.workTime} bVal={compareParams.labor.workTime} onA={v => handleLaborChange('workTime', v)} onB={v => handleCompareLab('workTime', v)} />
+
+                                <tr><td colSpan={3} className="pt-4 pb-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5"><Percent className="h-3 w-3" />Дополнительно</span></td></tr>
+                                <CompareRow label="Доп. расходы" unit="%" step="1" aVal={additional.additionalExpensesPercent} bVal={compareParams.additional.additionalExpensesPercent} onA={v => handleAdditionalChange('additionalExpensesPercent', v)} onB={v => handleCompareAdd('additionalExpensesPercent', v)} />
+                                <CompareRow label="Маржа" unit="%" step="5" aVal={additional.marginPercent} bVal={compareParams.additional.marginPercent} onA={v => handleAdditionalChange('marginPercent', v)} onB={v => handleCompareAdd('marginPercent', v)} />
+                            </tbody>
+                        </table>
+                    </CardContent>
+                </Card>
+
+                {/* Таблица результатов */}
+                {results && compareResults && (
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-base">Результаты сравнения</CardTitle>
+                        </CardHeader>
+                        <CardContent className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b">
+                                        <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Показатель</th>
+                                        <th className="text-right text-sm font-medium pb-2 px-2">
+                                            <span className="flex items-center justify-end gap-1"><div className="h-2 w-2 rounded-full bg-primary" />А</span>
+                                        </th>
+                                        <th className="text-right text-sm font-medium pb-2 px-2">
+                                            <span className="flex items-center justify-end gap-1"><div className="h-2 w-2 rounded-full bg-orange-500" />Б</span>
+                                        </th>
+                                        <th className="text-right text-xs font-medium text-muted-foreground pb-2 pl-2 w-16">Δ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <ResultCompareRow label="Материалы"           aRaw={results.materials.total.value}  bRaw={compareResults.materials.total.value}  aFmt={results.materials.total.formatted}  bFmt={compareResults.materials.total.formatted} />
+                                    <ResultCompareRow label="Электричество"        aRaw={results.electricity.value}      bRaw={compareResults.electricity.value}      aFmt={results.electricity.formatted}      bFmt={compareResults.electricity.formatted} />
+                                    <ResultCompareRow label="Амортизация"          aRaw={results.depreciation.value}     bRaw={compareResults.depreciation.value}     aFmt={results.depreciation.formatted}     bFmt={compareResults.depreciation.formatted} />
+                                    <ResultCompareRow label="Оператор"             aRaw={results.labor.value}            bRaw={compareResults.labor.value}            aFmt={results.labor.formatted}            bFmt={compareResults.labor.formatted} />
+                                    <ResultCompareRow label="Себестоимость"        aRaw={results.primeCost.value}        bRaw={compareResults.primeCost.value}        aFmt={results.primeCost.formatted}        bFmt={compareResults.primeCost.formatted} bold />
+                                    <ResultCompareRow label="+ Доп. расходы"       aRaw={results.fullCost.value}         bRaw={compareResults.fullCost.value}         aFmt={results.fullCost.formatted}         bFmt={compareResults.fullCost.formatted} />
+                                    <ResultCompareRow label="Маржа"                aRaw={results.margin.value}           bRaw={compareResults.margin.value}           aFmt={results.margin.formatted}           bFmt={compareResults.margin.formatted} />
+                                    <ResultCompareRow label="Итоговая цена"        aRaw={results.finalPrice.value}       bRaw={compareResults.finalPrice.value}       aFmt={results.finalPrice.formatted}       bFmt={compareResults.finalPrice.formatted} bold />
+                                    <ResultCompareRow label="Цена за грамм"        aRaw={results.pricePerGram.value}     bRaw={compareResults.pricePerGram.value}     aFmt={results.pricePerGram.formatted}     bFmt={compareResults.pricePerGram.formatted} />
+                                    <ResultCompareRow label="Общий вес"            aRaw={results.totalWeight.grams}      bRaw={compareResults.totalWeight.grams}      aFmt={`${results.totalWeight.grams} г`}   bFmt={`${compareResults.totalWeight.grams} г`} />
+                                </tbody>
+                            </table>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {(results && !compareResults) || (!results && !compareResults) ? (
+                    <p className="text-center text-sm text-muted-foreground">
+                        Нажмите «Рассчитать оба» чтобы увидеть сравнение результатов
+                    </p>
+                ) : null}
+            </div>
+        )}
+
+        {/* ─── Обычный режим ──────────────────────────────────────────────────── */}
+        {!compareActive && (<><div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Левая колонка - форма */}
                 <div className="lg:col-span-2">
                     <Card className="border">
@@ -808,12 +1034,24 @@ export default function Calc() {
                                         Калькулятор 3D печати
                                     </CardTitle>
                                 </div>
-                                <Button
-                                    className="text-destructive hover:bg-destructive/10"
-                                    onClick={resetValues}
-                                    disabled={isLoading}>
-                                    Сбросить
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1.5"
+                                        onClick={activateCompare}
+                                        title="Сравнить два варианта параметров"
+                                    >
+                                        <ArrowLeftRight className="h-3.5 w-3.5" />
+                                        Сравнить
+                                    </Button>
+                                    <Button
+                                        className="text-destructive hover:bg-destructive/10"
+                                        onClick={resetValues}
+                                        disabled={isLoading}>
+                                        Сбросить
+                                    </Button>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -1390,6 +1628,7 @@ export default function Calc() {
                     </Button>
                 </div>
             )}
+        </>)}
 
             {/* ─── История расчётов: drawer ─────────────────────────────────────── */}
             {historyOpen && (
