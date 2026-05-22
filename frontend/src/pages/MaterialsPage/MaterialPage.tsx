@@ -763,6 +763,7 @@ function formatAvailable(grams: number, category: MaterialCategory): string {
 }
 
 function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
+    const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
     const stockGrams = Number(material.stock_grams) || 0
@@ -773,7 +774,7 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
     const isLowStock = availableGrams < spoolWeight * 0.2
 
     return (
-        <Card className={`${material.is_default ? 'border-primary' : ''} ${isLowStock ? 'border-orange-400' : ''}`}>
+        <Card className={`${material.is_default ? 'border-primary' : ''} ${isLowStock ? 'border-orange-400' : ''}`} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
             <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 min-w-0 pr-2">
@@ -802,7 +803,7 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             {[material.brand, material.type.toUpperCase()].filter(Boolean).join(' · ')}
                         </CardDescription>
                     </div>
-                    <DropdownMenu>
+                    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="shrink-0">
                                 <MoreVertical className="h-4 w-4" />

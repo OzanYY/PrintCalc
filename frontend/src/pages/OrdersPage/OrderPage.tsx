@@ -714,6 +714,7 @@ export default function OrdersPage() {
   // Локальные фильтры (поиск — только клиентский)
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
   // Диалоги
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -1070,6 +1071,7 @@ export default function OrdersPage() {
               key={order.id}
               className={`hover:shadow-lg transition-shadow flex flex-col cursor-pointer ${deadlineBorder}`}
               onClick={() => openView(order)}
+              onContextMenu={e => { e.preventDefault(); setOpenMenuId(order.id) }}
             >
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start gap-2">
@@ -1083,7 +1085,7 @@ export default function OrdersPage() {
                       <CardDescription>Заказ #{order.id} · {formatDate(order.created_at)}</CardDescription>
                     </div>
                     <div onClick={e => e.stopPropagation()}>
-                      <DropdownMenu>
+                      <DropdownMenu open={openMenuId === order.id} onOpenChange={v => setOpenMenuId(v ? order.id : null)}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" disabled={isMutating}>
                             <MoreVertical className="h-4 w-4" />
@@ -1250,8 +1252,9 @@ export default function OrdersPage() {
 
       {/* Таблица */}
       {!isLoading && filteredOrders.length > 0 && viewMode === 'table' && (
-        <Card>
-          <Table>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+          <Table className="min-w-[1100px]">
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
@@ -1266,7 +1269,7 @@ export default function OrdersPage() {
                 <TableHead>Цена</TableHead>
                 <TableHead>Прибыль</TableHead>
                 <TableHead>Дата</TableHead>
-                <TableHead className="text-right">Действия</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1278,7 +1281,7 @@ export default function OrdersPage() {
                 const printTime = getPrintTimeMinutes(order);
 
                 return (
-                  <TableRow key={order.id}>
+                  <TableRow key={order.id} className="cursor-pointer hover:bg-muted/60" onClick={() => openView(order)} onContextMenu={e => { e.preventDefault(); setOpenMenuId(order.id) }}>
                     <TableCell className="font-medium">#{order.id}</TableCell>
                     <TableCell className="max-w-45 truncate">{order.name}</TableCell>
                     <TableCell><StatusBadge status={order.status} /></TableCell>
@@ -1322,43 +1325,39 @@ export default function OrdersPage() {
                       {profit >= 0 ? '+' : ''}{formatMoney(profit)}
                     </TableCell>
                     <TableCell>{formatDate(order.created_at)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <DropdownMenu open={openMenuId === order.id} onOpenChange={v => setOpenMenuId(v ? order.id : null)}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" disabled={isMutating}>
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Действия</DropdownMenuLabel>
                           {order.status === 'in_progress' && (
                             <DropdownMenuItem onClick={() => openEdit(order)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Редактировать
+                              <Edit className="mr-2 h-4 w-4" />Редактировать
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => cloneOrder(order.id)}>
-                            <Copy className="mr-2 h-4 w-4" />
-                            Клонировать
+                            <Copy className="mr-2 h-4 w-4" />Скопировать
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           {order.status === 'in_progress' && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => completeOrder(order.id)}>
-                                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                                Завершить
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
-                                <XCircle className="mr-2 h-4 w-4 text-orange-500" />
-                                Отменить
-                              </DropdownMenuItem>
-                            </>
+                            <DropdownMenuItem onClick={() => completeOrder(order.id)}>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />Завершить
+                            </DropdownMenuItem>
+                          )}
+                          {order.status === 'in_progress' && (
+                            <DropdownMenuItem onClick={() => cancelOrder(order.id)}>
+                              <XCircle className="mr-2 h-4 w-4 text-orange-500" />Отменить
+                            </DropdownMenuItem>
                           )}
                           {order.status !== 'completed' && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-red-600" onClick={() => openDelete(order)}>
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Удалить
+                                <Trash2 className="mr-2 h-4 w-4" />Удалить
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1370,6 +1369,7 @@ export default function OrdersPage() {
               })}
             </TableBody>
           </Table>
+          </div>
         </Card>
       )}
 

@@ -1046,6 +1046,7 @@ export default function Calc() {
                                         Сравнить
                                     </Button>
                                     <Button
+                                        variant="ghost"
                                         className="text-destructive hover:bg-destructive/10"
                                         onClick={resetValues}
                                         disabled={isLoading}>
@@ -1380,10 +1381,10 @@ export default function Calc() {
                                 <div className="space-y-6">
                                     {/* Вес */}
                                     <div>
-                                        <h3 className="text-sm font-medium text-gray-500 mb-2">Общий вес</h3>
-                                        <div className="text-2xl font-bold text-gray-900">
+                                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Общий вес</h3>
+                                        <div className="text-2xl font-bold text-foreground">
                                             {results.totalWeight.grams} г
-                                            <span className="text-sm font-normal text-gray-500 ml-2">
+                                            <span className="text-sm font-normal text-muted-foreground ml-2">
                                                 ({results.totalWeight.kg} кг)
                                             </span>
                                         </div>
@@ -1394,7 +1395,7 @@ export default function Calc() {
                                     {/* Расходы по категориям */}
                                     <div className="space-y-4">
                                         <div>
-                                            <h3 className="text-sm font-medium text-gray-500 mb-3">Расходы по категориям</h3>
+                                            <h3 className="text-sm font-medium text-muted-foreground mb-3">Расходы по категориям</h3>
                                             <TooltipProvider delayDuration={200}>
                                                 <div className="space-y-3">
                                                     {/* Материалы */}
@@ -1417,7 +1418,7 @@ export default function Calc() {
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
                                                                 <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-border"></div>
                                                                     <span className="text-sm pl-1 text-muted-foreground flex items-center gap-1">
                                                                         Модель
                                                                     </span>
@@ -1431,7 +1432,7 @@ export default function Calc() {
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
                                                                 <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-border"></div>
                                                                     <span className="flex items-center gap-1 pl-1 text-muted-foreground">
                                                                         Поддержки
                                                                     </span>
@@ -1516,7 +1517,7 @@ export default function Calc() {
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
                                                         <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-border"></div>
                                                             <span className="text-sm text-muted-foreground pl-1 flex items-center gap-1">
                                                                 Себестоимость
                                                             </span>
@@ -1530,7 +1531,7 @@ export default function Calc() {
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
                                                         <div className="flex justify-between items-center text-sm pl-4 relative cursor-default">
-                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-300"></div>
+                                                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-px bg-border"></div>
                                                             <span className="flex items-center gap-1 text-muted-foreground pl-1">
                                                                 <Percent className="h-3 w-3" />
                                                                 Доп. расходы ({results.additionalExpenses.percent})
@@ -1578,11 +1579,11 @@ export default function Calc() {
                                             {/* Стоимость за грамм */}
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <div className="text-center p-3 bg-gray-50 rounded-lg cursor-default">
-                                                        <div className="text-sm text-gray-600 flex items-center justify-center gap-1">
+                                                    <div className="text-center p-3 bg-muted/50 rounded-lg cursor-default">
+                                                        <div className="text-sm text-muted-foreground flex items-center justify-center gap-1">
                                                             Стоимость печати за грамм
                                                         </div>
-                                                        <div className="text-xl font-bold text-gray-900">
+                                                        <div className="text-xl font-bold text-foreground">
                                                             {results.pricePerGram.formatted}
                                                         </div>
                                                     </div>
@@ -1596,9 +1597,9 @@ export default function Calc() {
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                                    <Calculator className="h-12 w-12 text-gray-300 mb-4" />
-                                    <p className="text-gray-500 mb-2">Нет данных для отображения</p>
-                                    <p className="text-sm text-gray-400">
+                                    <Calculator className="h-12 w-12 text-muted mb-4" />
+                                    <p className="text-muted-foreground mb-2">Нет данных для отображения</p>
+                                    <p className="text-sm text-muted-foreground/70">
                                         Заполните параметры и нажмите "Рассчитать стоимость"
                                     </p>
                                 </div>

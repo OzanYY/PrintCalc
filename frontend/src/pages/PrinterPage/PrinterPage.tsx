@@ -465,11 +465,12 @@ interface PrinterCardProps {
 }
 
 function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: PrinterCardProps) {
+    const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(printer.settings)
     const hasSettings = settingsEntries.length > 0
 
     return (
-        <Card className={printer.is_default ? 'border-primary' : ''}>
+        <Card className={printer.is_default ? 'border-primary' : ''} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
             <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 min-w-0 pr-2">
@@ -484,7 +485,7 @@ function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: P
                         </CardTitle>
                         <CardDescription>{printer.model ?? '—'}</CardDescription>
                     </div>
-                    <DropdownMenu>
+                    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="shrink-0">
                                 <MoreVertical className="h-4 w-4" />

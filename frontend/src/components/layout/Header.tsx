@@ -1,5 +1,5 @@
 import { Button } from "../ui/button"
-import { Sigma, User } from 'lucide-react'
+import { Sigma, User, Sun, Moon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
     Avatar,
@@ -7,6 +7,7 @@ import {
     AvatarImage,
 } from "@/components/ui/avatar"
 import { useAuth } from "@/context/AuthContext"
+import { useTheme } from "@/context/ThemeContext"
 
 const getInitials = (name: string) =>
     name.split(/[\s_]/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -14,6 +15,7 @@ const getInitials = (name: string) =>
 export default function Header() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { theme, toggleTheme } = useTheme();
 
     // ── Данные пользователя ───────────────────────────────────────────────────
 
@@ -68,19 +70,33 @@ export default function Header() {
                 </div>
             }
             {!user ?
-                <div className="flex">
+                <div className="flex items-center">
                     <Button
                         className="hover:bg-accent bg-transparent text-foreground"
-                        onClick={() => navigate('/login')}  // ← на страницу авторизации
+                        size="icon"
+                        onClick={toggleTheme}
+                    >
+                        {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </Button>
+                    <Button
+                        className="hover:bg-accent bg-transparent text-foreground"
+                        onClick={() => navigate('/login')}
                     >
                         <User />
                     </Button>
                 </div>
                 :
-                <div className="flex">
+                <div className="flex items-center">
+                    <Button
+                        className="hover:bg-accent bg-transparent text-foreground"
+                        size="icon"
+                        onClick={toggleTheme}
+                    >
+                        {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </Button>
                     <Button
                         className="hover:bg-accent bg-transparent text-foreground pl-1"
-                        onClick={() => navigate('/profile')}  // ← на страницу профиля
+                        onClick={() => navigate('/profile')}
                     >
                         <div className='flex'>
                             <Avatar className="w-8 h-8 border border-primary/10 mr-3">
