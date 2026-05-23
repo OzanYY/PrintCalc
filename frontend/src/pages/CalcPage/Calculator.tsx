@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight, FileUp } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight, FileUp, Trash2 } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -425,6 +425,7 @@ export default function Calc() {
         try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
     })
     const [historyOpen, setHistoryOpen] = useState(false)
+    const [historyCompareIds, setHistoryCompareIds] = useState<string[]>([])
 
     // ─── Режим сравнения ──────────────────────────────────────────────────────
     const [compareActive, setCompareActive] = useState(false)
@@ -736,6 +737,51 @@ export default function Calc() {
         } finally {
             setIsLoading(false)
         }
+    }
+
+    // ─── Удаление записи из истории ──────────────────────────────────────────
+    const deleteHistoryEntry = (id: string) => {
+        setHistory(prev => {
+            const updated = prev.filter(e => e.id !== id)
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+            return updated
+        })
+        setHistoryCompareIds(prev => prev.filter(cid => cid !== id))
+    }
+
+    // ─── Сравнение двух записей из истории ───────────────────────────────────
+    const compareFromHistory = (idA: string, idB: string) => {
+        const entryA = history.find(e => e.id === idA)
+        const entryB = history.find(e => e.id === idB)
+        if (!entryA || !entryB) return
+
+        setMaterials(entryA.materials)
+        setElectricity(entryA.electricity)
+        setDepreciation(entryA.depreciation)
+        setLabor(entryA.labor)
+        setAdditional(entryA.additional)
+        setResults(entryA.result)
+        setHasCalculated(true)
+        localStorage.setItem('calculator_results', JSON.stringify(entryA.result))
+        if (entryA.selectedPresets.powerConsumption != null) {
+            setSelectedPrinter(entryA.selectedPresets.powerConsumption)
+        } else {
+            setSelectedPrinter(null)
+        }
+        setSelectedPreset('filamentPrice', entryA.selectedPresets.filamentPrice ?? null)
+
+        setCompareParams({
+            materials: entryB.materials,
+            electricity: entryB.electricity,
+            depreciation: entryB.depreciation,
+            labor: entryB.labor,
+            additional: entryB.additional,
+        })
+        setCompareResults(entryB.result)
+        setCompareActive(true)
+        setHistoryOpen(false)
+        setHistoryCompareIds([])
+        toast.success('Загружено для сравнения')
     }
 
     // ─── Восстановление из истории ────────────────────────────────────────────
@@ -1801,7 +1847,7 @@ export default function Calc() {
                                 Очистить
                             </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setHistoryOpen(false)}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setHistoryOpen(false); setHistoryCompareIds([]) }}>
                             <X className="h-4 w-4" />
                         </Button>
                     </div>
@@ -1814,34 +1860,92 @@ export default function Calc() {
                             Нет сохранённых расчётов
                         </div>
                     ) : (
-                        history.map(entry => (
-                            <div
-                                key={entry.id}
-                                className="rounded-md border px-3 py-2.5 space-y-1.5 hover:bg-muted/40 transition-colors"
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold text-sm">{entry.result.finalPrice.formatted}</span>
-                                    <span className="text-xs text-muted-foreground">{entry.result.totalWeight.grams} г · {entry.electricity.printTime} мин</span>
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                    {new Date(entry.timestamp).toLocaleString('ru-RU', {
-                                        day: '2-digit', month: '2-digit', year: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    })}
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full h-7 text-xs mt-0.5"
-                                    onClick={() => { restoreFromHistory(entry); setHistoryOpen(false) }}
+                        history.map(entry => {
+                            const isSelected = historyCompareIds.includes(entry.id)
+                            const selectionOrder = historyCompareIds.indexOf(entry.id)
+                            return (
+                                <div
+                                    key={entry.id}
+                                    className={`rounded-md border px-3 py-2.5 space-y-1.5 transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
                                 >
-                                    <RotateCcw className="h-3 w-3 mr-1.5" />
-                                    Восстановить параметры
-                                </Button>
-                            </div>
-                        ))
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            {isSelected && (
+                                                <span className="shrink-0 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[9px] flex items-center justify-center font-bold">
+                                                    {selectionOrder + 1}
+                                                </span>
+                                            )}
+                                            <span className="font-semibold text-sm truncate">{entry.result.finalPrice.formatted}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <span className="text-xs text-muted-foreground">{entry.result.totalWeight.grams} г · {entry.electricity.printTime} мин</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                                                onClick={() => deleteHistoryEntry(entry.id)}
+                                                title="Удалить"
+                                            >
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {new Date(entry.timestamp).toLocaleString('ru-RU', {
+                                            day: '2-digit', month: '2-digit', year: '2-digit',
+                                            hour: '2-digit', minute: '2-digit',
+                                        })}
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="flex-1 h-7 text-xs"
+                                            onClick={() => { restoreFromHistory(entry); setHistoryOpen(false) }}
+                                        >
+                                            <RotateCcw className="h-3 w-3 mr-1.5" />
+                                            Восстановить
+                                        </Button>
+                                        <Button
+                                            variant={isSelected ? 'default' : 'outline'}
+                                            size="sm"
+                                            className="h-7 px-2 text-xs"
+                                            disabled={!isSelected && historyCompareIds.length >= 2}
+                                            onClick={() =>
+                                                setHistoryCompareIds(prev =>
+                                                    isSelected
+                                                        ? prev.filter(id => id !== entry.id)
+                                                        : [...prev, entry.id]
+                                                )
+                                            }
+                                            title={isSelected ? 'Убрать из сравнения' : 'Выбрать для сравнения'}
+                                        >
+                                            <ArrowLeftRight className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )
+                        })
                     )}
                 </div>
+                {historyCompareIds.length > 0 && (
+                    <div className="px-3 py-2.5 border-t bg-background">
+                        {historyCompareIds.length === 2 ? (
+                            <Button
+                                size="sm"
+                                className="w-full gap-1.5"
+                                onClick={() => compareFromHistory(historyCompareIds[0], historyCompareIds[1])}
+                            >
+                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                                Сравнить выбранные
+                            </Button>
+                        ) : (
+                            <p className="text-xs text-center text-muted-foreground">
+                                Выберите ещё один расчёт для сравнения
+                            </p>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ─── Модальное окно сохранения заказа ─────────────────────────────── */}
