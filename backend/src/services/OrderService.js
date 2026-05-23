@@ -138,30 +138,43 @@ class OrderService {
 
             await OrderModel.updateStatus(orderId, userId, status);
 
-            // Обработка инвентаря при смене статуса
+            // Обработка инвентаря при смене статуса.
+            // Материал принадлежит создателю заказа, поэтому используем order.user_id.
+            const inventoryUserId = order.user_id;
             if (order.material_id && order.total_weight_grams > 0) {
                 const amountGrams = parseFloat(order.total_weight_grams);
                 try {
                     if (status === 'completed' && order.status === 'in_progress') {
-                        // Фактическое списание: снимаем бронь и вычитаем из остатка
                         await MaterialInventoryService.consume({
                             materialId:  order.material_id,
-                            userId,
+                            userId:      inventoryUserId,
                             orderId,
                             amountGrams,
                         });
                     } else if (status === 'cancelled' && order.status === 'in_progress') {
-                        // Отмена: возвращаем забронированное
                         const reserved = await MaterialInventoryService.getReservedForOrder(
-                            orderId, order.material_id, userId
+                            orderId, order.material_id, inventoryUserId
                         );
                         if (reserved > 0) {
                             await MaterialInventoryService.release({
                                 materialId:  order.material_id,
-                                userId,
+                                userId:      inventoryUserId,
                                 orderId,
                                 amountGrams: reserved,
                             });
+                        }
+                    } else if (status === 'in_progress' && order.status === 'completed') {
+                        // Откат завершённого заказа: возвращаем бронирование материала
+                        try {
+                            await MaterialInventoryService.reserve({
+                                materialId:  order.material_id,
+                                userId:      inventoryUserId,
+                                orderId,
+                                amountGrams,
+                                note: `Возобновление заказа #${orderId}`,
+                            });
+                        } catch (reserveErr) {
+                            console.error('Ошибка повторного бронирования материала при откате заказа:', reserveErr);
                         }
                     }
                 } catch (invErr) {

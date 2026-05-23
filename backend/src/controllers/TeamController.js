@@ -428,7 +428,7 @@ class TeamController {
                          COUNT(*)                                                  AS total_orders,
                          COUNT(CASE WHEN status = 'completed' THEN 1 END)         AS completed_orders,
                          COALESCE(SUM(CASE WHEN status = 'completed'
-                                          THEN (calc_result->>'finalPrice')::numeric
+                                          THEN (calc_result->'finalPrice'->>'value')::numeric
                                           ELSE 0 END), 0)                         AS total_profit
                      FROM orders
                      WHERE team_id = $1 AND order_mode = 'team'`,
@@ -462,7 +462,7 @@ class TeamController {
                      COUNT(o.id)                                                     AS total_orders,
                      COUNT(CASE WHEN o.status = 'completed' THEN 1 END)             AS completed_orders,
                      COALESCE(SUM(CASE WHEN o.status = 'completed'
-                                      THEN (o.calc_result->>'finalPrice')::numeric
+                                      THEN (o.calc_result->'finalPrice'->>'value')::numeric
                                       ELSE 0 END), 0)                               AS total_profit
                  FROM team_members tm
                  JOIN users u ON u.id = tm.user_id

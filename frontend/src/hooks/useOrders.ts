@@ -63,6 +63,7 @@ interface UseOrdersReturn {
   // ─── Смена статуса ────────────────────────────────────────────────────────
   completeOrder: (id: number) => Promise<Order | null>;
   cancelOrder: (id: number) => Promise<Order | null>;
+  reopenOrder: (id: number) => Promise<Order | null>;
   updateStatus: (id: number, status: OrderStatus) => Promise<Order | null>;
 
   // ─── Массовые операции ────────────────────────────────────────────────────
@@ -304,6 +305,11 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     [updateStatus],
   );
 
+  const reopenOrder = useCallback(
+    (id: number) => updateStatus(id, 'in_progress'),
+    [updateStatus],
+  );
+
   // ─── Bulk status ────────────────────────────────────────────────────────────
   const bulkUpdateStatus = useCallback(
     async (ids: number[], status: OrderStatus): Promise<boolean> => {
@@ -421,6 +427,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     cloneOrder,
     completeOrder,
     cancelOrder,
+    reopenOrder,
     updateStatus,
     bulkUpdateStatus,
     exportCSV,

@@ -27,6 +27,7 @@ import {
   Phone,
   Mail,
   MessageSquare,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OrderClientField } from '@/components/orders/OrderClientField';
@@ -699,6 +700,7 @@ export default function OrdersPage() {
     cloneOrder,
     completeOrder,
     cancelOrder,
+    reopenOrder,
     updateStatus,
     exportCSV,
     clearError,
@@ -1172,6 +1174,12 @@ export default function OrdersPage() {
                               Отменить
                             </DropdownMenuItem>
                           )}
+                          {order.status === 'completed' && (
+                            <DropdownMenuItem onClick={() => reopenOrder(order.id)}>
+                              <RotateCcw className="mr-2 h-4 w-4 text-blue-500" />
+                              Возобновить
+                            </DropdownMenuItem>
+                          )}
                           {order.status !== 'completed' && (
                             <>
                               <DropdownMenuSeparator />
@@ -1620,11 +1628,51 @@ export default function OrdersPage() {
                 />
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-wrap gap-2">
                 {viewOrder.status === 'in_progress' && (
                   <Button variant="outline" onClick={() => { setIsViewOpen(false); openEdit(viewOrder); }}>
                     <Edit className="mr-2 h-4 w-4" />
                     Редактировать
+                  </Button>
+                )}
+                {viewOrder.status === 'in_progress' && (
+                  <Button
+                    variant="outline"
+                    className="text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-950/30"
+                    onClick={async () => { await completeOrder(viewOrder.id); setIsViewOpen(false); }}
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Завершить
+                  </Button>
+                )}
+                {viewOrder.status === 'in_progress' && (
+                  <Button
+                    variant="outline"
+                    className="text-orange-500 border-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                    onClick={async () => { await cancelOrder(viewOrder.id); setIsViewOpen(false); }}
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Отменить
+                  </Button>
+                )}
+                {viewOrder.status === 'completed' && (
+                  <Button
+                    variant="outline"
+                    className="text-blue-500 border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                    onClick={async () => { await reopenOrder(viewOrder.id); setIsViewOpen(false); }}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Возобновить
+                  </Button>
+                )}
+                {viewOrder.status !== 'completed' && (
+                  <Button
+                    variant="outline"
+                    className="text-red-600 border-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    onClick={() => { setIsViewOpen(false); openDelete(viewOrder); }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Удалить
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => setIsViewOpen(false)}>Закрыть</Button>

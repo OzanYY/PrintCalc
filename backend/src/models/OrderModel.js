@@ -535,7 +535,13 @@ class OrderModel {
             SET status       = $1::VARCHAR,
                 completed_at = CASE WHEN $1::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
                 updated_at   = CURRENT_TIMESTAMP
-            WHERE id = $2 AND user_id = $3
+            WHERE id = $2 AND (
+                user_id = $3
+                OR (order_mode = 'team' AND EXISTS (
+                    SELECT 1 FROM team_members tm
+                    WHERE tm.team_id = orders.team_id AND tm.user_id = $3
+                ))
+            )
             RETURNING *
         `;
         const result = await pool.query(query, [status, id, userId]);
