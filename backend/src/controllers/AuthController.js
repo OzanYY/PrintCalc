@@ -187,14 +187,16 @@ class AuthController {
 
     // ==================== АКТИВАЦИЯ ====================
     static async activate(req, res) {
+        const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
         try {
             const { link } = req.params;
-            if (!link) return res.status(400).json({ error: 'Activation link required' });
-            const user = await UserService.activateAccount(link);
-            res.json({ message: 'Account activated successfully', user });
+            if (!link) return res.redirect(`${clientUrl}/activation-success?error=invalid`);
+            await UserService.activateAccount(link);
+            res.redirect(`${clientUrl}/activation-success`);
         } catch (error) {
             console.error('Activation error:', error);
-            res.status(400).json({ error: error.message });
+            const errorCode = error.message.includes('already activated') ? 'already_activated' : 'invalid';
+            res.redirect(`${clientUrl}/activation-success?error=${errorCode}`);
         }
     }
 

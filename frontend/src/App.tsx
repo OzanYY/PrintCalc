@@ -11,6 +11,7 @@ import OrdersPage from './pages/OrdersPage/OrderPage'
 import StatisticsPage from './pages/dashboardPage/dashboardPage'
 import { ProtectedRoute, GuestRoute } from './components/ProtectedRoute';
 import AdminPage from './pages/AdminPage/AdminPage';
+import ActivationPage from './pages/ActivationPage/ActivationPage';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Routes>
             {/* Публичные маршруты */}
             <Route path="/" element={<CalcPage />} />
+            <Route path="/activation-success" element={<ActivationPage />} />
             <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
 
             {/* Защищенные маршруты */}
