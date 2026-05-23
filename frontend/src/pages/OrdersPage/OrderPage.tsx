@@ -22,6 +22,8 @@ import {
   Tag as TagIco,
   CalendarDays,
   User,
+  UserCheck,
+  Users,
   Phone,
   Mail,
   MessageSquare,
@@ -78,6 +80,7 @@ import { printersAPI } from '@/api/printers';
 import type { Printer } from '@/api/printers';
 import { materialsAPI } from '@/api/materials';
 import type { Material } from '@/api/materials';
+import { teamsAPI, type Team, type TeamMember } from '@/api/teams';
 import { toast } from 'sonner';
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
@@ -686,6 +689,8 @@ export default function OrdersPage() {
     setClientFilter,
     deadlineFilter,
     setDeadlineFilter,
+    orderModeFilter,
+    setOrderModeFilter,
     currentPage,
     setCurrentPage,
     createOrder,
@@ -746,17 +751,51 @@ export default function OrdersPage() {
   const [allTags, setAllTags] = useState<{ id: number; name: string; color: string }[]>([]);
   const [allClients, setAllClients] = useState<import('@/api/clients').Client[]>([]);
 
-  // Принтеры и материалы для формы
+  // Принтеры и материалы для фор��ы
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
 
-  // Загружаем теги, клиентов, принтеры и материалы при монтировании
+  // Командный режим создания заказа
+  const [myTeams, setMyTeams]                       = useState<Team[]>([]);
+  const [orderMode, setOrderMode]                   = useState<'personal' | 'team'>('personal');
+  const [selectedTeamId, setSelectedTeamId]         = useState<number | null>(null);
+  const [teamMembers, setTeamMembers]               = useState<TeamMember[]>([]);
+  const [assignedToUserId, setAssignedToUserId]     = useState<number | null>(null);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+
+  // Загружаем теги, клиентов, принтеры и материалы при мо��тировании
   useEffect(() => {
     tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => { });
     printersAPI.getAll().then(r => setPrinters(r.data.data)).catch(() => { });
     materialsAPI.getAll().then(r => setMaterials(r.data.data)).catch(() => { });
     import('@/api/clients').then(m => m.clientsAPI.getAll().then(r => setAllClients(r.data.data)).catch(() => {}));
+    teamsAPI.getMyTeams().then(r => setMyTeams(r.data.data)).catch(() => {});
   }, []);
+
+  // Ресурсы выбранной команды для формы создания заказа
+  const [teamPrinters, setTeamPrinters]   = useState<any[]>([]);
+  const [teamMaterials, setTeamMaterials] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!selectedTeamId) {
+      setTeamMembers([]); setAssignedToUserId(null);
+      setTeamPrinters([]); setTeamMaterials([]);
+      return;
+    }
+    setTeamMembersLoading(true);
+    Promise.all([
+      teamsAPI.getMembers(selectedTeamId),
+      teamsAPI.getTeamPrinters(selectedTeamId),
+      teamsAPI.getTeamMaterials(selectedTeamId),
+    ])
+      .then(([membRes, prRes, matRes]) => {
+        setTeamMembers(membRes.data.data);
+        setTeamPrinters(prRes.data.data);
+        setTeamMaterials(matRes.data.data);
+      })
+      .catch(() => {})
+      .finally(() => setTeamMembersLoading(false));
+  }, [selectedTeamId]);
 
   const handleFormChange = (name: string, value: string) =>
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -771,6 +810,10 @@ export default function OrdersPage() {
     setClientEmail(null);
     setDeadline(null);
     setTagIds([]);
+    setOrderMode('personal');
+    setSelectedTeamId(null);
+    setAssignedToUserId(null);
+    setTeamMembers([]);
     setIsCreateOpen(true);
   };
 
@@ -811,6 +854,9 @@ export default function OrdersPage() {
       ...buildCreateData(formData),
       client_id: clientId ?? undefined,
       deadline: deadline ?? undefined,
+      order_mode: orderMode,
+      team_id: orderMode === 'team' ? selectedTeamId ?? undefined : undefined,
+      assigned_to_user_id: orderMode === 'team' ? assignedToUserId ?? undefined : undefined,
     } as any);
     if (result) {
       // После создания применяем теги если выбраны
@@ -1009,6 +1055,26 @@ export default function OrdersPage() {
           </Select>
         )}
 
+        {myTeams.length > 0 && (
+          <div className="flex gap-1 border rounded-lg p-1">
+            <Button
+              variant={orderModeFilter === null ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setOrderModeFilter(null)}
+            >Все</Button>
+            <Button
+              variant={orderModeFilter === 'personal' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setOrderModeFilter('personal')}
+            >Мои</Button>
+            <Button
+              variant={orderModeFilter === 'team' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setOrderModeFilter('team')}
+            ><Users className="h-3.5 w-3.5 mr-1" />Командные</Button>
+          </div>
+        )}
+
         <div className="flex gap-1 border rounded-lg p-1">
           <Button variant={viewMode === 'cards' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('cards')}>
             Карточки
@@ -1193,6 +1259,25 @@ export default function OrdersPage() {
                       <>
                         <Separator />
                         <p className="text-sm text-muted-foreground line-clamp-2">{order.notes}</p>
+                      </>
+                    )}
+
+                    {/* Команда / назначение */}
+                    {order.order_mode === 'team' && (order.team_name || order.assigned_to_username) && (
+                      <>
+                        <Separator />
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {order.team_name && (
+                            <span className="inline-flex items-center gap-1 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2 py-0.5 font-medium">
+                              <Users className="h-3 w-3" />{order.team_name}
+                            </span>
+                          )}
+                          {order.assigned_to_username && (
+                            <span className="inline-flex items-center gap-1">
+                              <UserCheck className="h-3 w-3" />{order.assigned_to_username}
+                            </span>
+                          )}
+                        </div>
                       </>
                     )}
 
@@ -1451,6 +1536,22 @@ export default function OrdersPage() {
                   </div>
                 )}
 
+                {/* Команда */}
+                {viewOrder.order_mode === 'team' && (viewOrder.team_name || viewOrder.assigned_to_username) && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {viewOrder.team_name && (
+                      <span className="inline-flex items-center gap-1.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2.5 py-0.5 font-medium">
+                        <Users className="h-3.5 w-3.5" />{viewOrder.team_name}
+                      </span>
+                    )}
+                    {viewOrder.assigned_to_username && (
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                        <UserCheck className="h-4 w-4" />Исполнитель: {viewOrder.assigned_to_username}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {((viewOrder as any).client_name || (viewOrder as any).deadline) && <Separator />}
 
                 {/* Принтер и материал */}
@@ -1540,7 +1641,28 @@ export default function OrdersPage() {
             <DialogTitle>Создание нового заказа</DialogTitle>
             <DialogDescription>Заполните параметры заказа на 3D-печать</DialogDescription>
           </DialogHeader>
-          <OrderForm data={formData} onChange={handleFormChange} printers={printers} materials={materials} />
+          <OrderForm
+            data={formData}
+            onChange={handleFormChange}
+            printers={orderMode === 'team' && selectedTeamId
+              ? [
+                  ...printers.map(p => ({ ...p, _label: p.name })),
+                  ...teamPrinters
+                    .filter(tp => !printers.some(p => p.id === tp.id))
+                    .map(tp => ({ ...tp, name: `${tp.name} (команда)` })),
+                ]
+              : printers
+            }
+            materials={orderMode === 'team' && selectedTeamId
+              ? [
+                  ...materials.map(m => ({ ...m })),
+                  ...teamMaterials
+                    .filter(tm => !materials.some(m => m.id === tm.id))
+                    .map(tm => ({ ...tm, name: `${tm.name} (команда)` })),
+                ]
+              : materials
+            }
+          />
 
           <div className="grid gap-4 pb-2">
             <Separator />
@@ -1577,10 +1699,74 @@ export default function OrdersPage() {
               </Label>
               <CreateTagSelector selectedIds={tagIds} onChange={setTagIds} />
             </div>
+
+            {myTeams.length > 0 && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                  <Users className="h-3.5 w-3.5" />Режим заказа
+                </Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button" size="sm"
+                    variant={orderMode === 'personal' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => { setOrderMode('personal'); setSelectedTeamId(null); setAssignedToUserId(null); }}
+                  >Личный</Button>
+                  <Button
+                    type="button" size="sm"
+                    variant={orderMode === 'team' ? 'default' : 'outline'}
+                    className="flex-1"
+                    onClick={() => setOrderMode('team')}
+                  >Командный</Button>
+                </div>
+                {orderMode === 'team' && (
+                  <div className="space-y-2">
+                    <Select
+                      value={selectedTeamId?.toString() ?? ''}
+                      onValueChange={v => { setSelectedTeamId(Number(v)); setAssignedToUserId(null); }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите команду" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {myTeams.map(t => (
+                          <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedTeamId && (
+                      <Select
+                        value={assignedToUserId?.toString() ?? 'none'}
+                        onValueChange={v => setAssignedToUserId(v === 'none' ? null : Number(v))}
+                      >
+                        <SelectTrigger>
+                          {teamMembersLoading
+                            ? <span className="text-muted-foreground text-sm">Загрузка...</span>
+                            : <SelectValue placeholder="Назначить участнику (необязательно)" />
+                          }
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Без назначения</SelectItem>
+                          {teamMembers.map(m => (
+                            <SelectItem key={m.user_id} value={m.user_id.toString()}>
+                              {m.username}
+                              {m.role === 'owner' ? ' (владелец)' : m.role === 'admin' ? ' (адм.)' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Отмена</Button>
-            <Button onClick={handleCreate} disabled={isMutating || !formData.name.trim()}>
+            <Button
+              onClick={handleCreate}
+              disabled={isMutating || !formData.name.trim() || (orderMode === 'team' && !selectedTeamId)}
+            >
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Создать заказ
             </Button>

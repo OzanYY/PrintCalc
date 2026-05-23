@@ -196,9 +196,9 @@ class OrderModel {
         const {
             printer_id,
             material_id,
-            client_id,          // ← НОВОЕ
+            client_id,
             name,
-            deadline,           // ← НОВОЕ
+            deadline,
             calc_materials = {},
             calc_electricity = {},
             calc_depreciation = {},
@@ -207,6 +207,9 @@ class OrderModel {
             calc_result = {},
             notes,
             settings = {},
+            order_mode = 'personal',
+            team_id = null,
+            assigned_to_user_id = null,
         } = orderData;
 
         const query = `
@@ -214,12 +217,14 @@ class OrderModel {
             user_id, printer_id, material_id, client_id, name, status,
             calc_materials, calc_electricity, calc_depreciation,
             calc_labor, calc_additional, calc_result,
-            notes, settings, deadline
+            notes, settings, deadline,
+            order_mode, team_id, assigned_to_user_id
         ) VALUES (
             $1, $2, $3, $4, $5, 'in_progress',
             $6, $7, $8,
             $9, $10, $11,
-            $12, $13, $14
+            $12, $13, $14,
+            $15, $16, $17
         )
         RETURNING *
     `;
@@ -227,7 +232,7 @@ class OrderModel {
             userId,
             printer_id || null,
             material_id || null,
-            client_id || null,    // ← НОВОЕ
+            client_id || null,
             name,
             JSON.stringify(calc_materials),
             JSON.stringify(calc_electricity),
@@ -237,7 +242,10 @@ class OrderModel {
             JSON.stringify(calc_result),
             notes || null,
             JSON.stringify(settings),
-            deadline || null,    // ← НОВОЕ
+            deadline || null,
+            order_mode,
+            team_id || null,
+            assigned_to_user_id || null,
         ];
         const result = await pool.query(query, values);
         return this.#flattenResult(result.rows[0]);
@@ -245,9 +253,15 @@ class OrderModel {
 
     // ─── Построение WHERE-условий из объекта фильтров ────────────────────────────
     static #buildFilters(userId, filters = {}) {
-        const { status = null, tag_id = null, client_id = null, deadline_filter = null } = filters;
+        const { status = null, tag_id = null, client_id = null, deadline_filter = null, order_mode = null } = filters;
         const params = [userId];
         let where = 'WHERE o.user_id = $1';
+
+        if (order_mode === 'personal') {
+            where += ` AND o.order_mode = 'personal'`;
+        } else if (order_mode === 'team') {
+            where += ` AND o.order_mode = 'team'`;
+        }
 
         if (status) {
             params.push(status);
@@ -281,6 +295,8 @@ class OrderModel {
                p.name as printer_name, p.type as printer_type,
                m.name as material_name, m.category as material_category, m.type as material_type,
                c.name as client_name, c.phone as client_phone, c.email as client_email,
+               tm.name as team_name,
+               au.username as assigned_to_username,
                COALESCE(
                    (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
@@ -289,9 +305,11 @@ class OrderModel {
                ) AS tags,
                (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
-        LEFT JOIN printers  p ON o.printer_id  = p.id
-        LEFT JOIN materials m ON o.material_id = m.id
-        LEFT JOIN clients   c ON o.client_id   = c.id
+        LEFT JOIN printers  p  ON o.printer_id          = p.id
+        LEFT JOIN materials m  ON o.material_id         = m.id
+        LEFT JOIN clients   c  ON o.client_id           = c.id
+        LEFT JOIN teams     tm ON o.team_id             = tm.id
+        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
         ${where}
         ORDER BY o.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -316,6 +334,8 @@ class OrderModel {
                p.name as printer_name, p.type as printer_type,
                m.name as material_name, m.category as material_category, m.type as material_type,
                c.name as client_name, c.phone as client_phone, c.email as client_email,
+               tm.name as team_name,
+               au.username as assigned_to_username,
                COALESCE(
                    (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
@@ -324,9 +344,11 @@ class OrderModel {
                ) AS tags,
                (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
-        LEFT JOIN printers  p ON o.printer_id  = p.id
-        LEFT JOIN materials m ON o.material_id = m.id
-        LEFT JOIN clients   c ON o.client_id   = c.id
+        LEFT JOIN printers  p  ON o.printer_id          = p.id
+        LEFT JOIN materials m  ON o.material_id         = m.id
+        LEFT JOIN clients   c  ON o.client_id           = c.id
+        LEFT JOIN teams     tm ON o.team_id             = tm.id
+        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
         WHERE o.id = $1 AND o.user_id = $2
     `;
         const result = await pool.query(query, [id, userId]);
@@ -350,6 +372,62 @@ class OrderModel {
     `;
         const result = await pool.query(query, [userId, tagId, limit, offset]);
         return result.rows.map(this.#flattenResult.bind(this));
+    }
+
+    // ─── Все заказы команды ───────────────────────────────────────────────────────
+    static async findByTeam(teamId, filters = {}, limit = 50, offset = 0) {
+        const { status = null, assigned_to = null } = filters;
+        const params = [teamId];
+        let where = `WHERE o.team_id = $1 AND o.order_mode = 'team'`;
+
+        if (status) {
+            params.push(status);
+            where += ` AND o.status = $${params.length}`;
+        }
+        if (assigned_to) {
+            params.push(assigned_to);
+            where += ` AND o.assigned_to_user_id = $${params.length}`;
+        }
+
+        const query = `
+        SELECT o.*,
+               p.name  as printer_name,  p.type  as printer_type,
+               m.name  as material_name, m.category as material_category, m.type as material_type,
+               c.name  as client_name,   c.phone as client_phone, c.email as client_email,
+               tm.name as team_name,
+               au.username as assigned_to_username,
+               uo.username as owner_username, uo.avatar as owner_avatar,
+               COALESCE(
+                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
+                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
+                    WHERE ot.order_id = o.id),
+                   '[]'::json
+               ) AS tags,
+               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
+        FROM orders o
+        LEFT JOIN printers  p  ON o.printer_id          = p.id
+        LEFT JOIN materials m  ON o.material_id         = m.id
+        LEFT JOIN clients   c  ON o.client_id           = c.id
+        LEFT JOIN teams     tm ON o.team_id             = tm.id
+        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
+        LEFT JOIN users     uo ON o.user_id             = uo.id
+        ${where}
+        ORDER BY o.created_at DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+        `;
+        params.push(limit, offset);
+        const result = await pool.query(query, params);
+        return result.rows.map(this.#flattenResult.bind(this));
+    }
+
+    static async countByTeam(teamId, filters = {}) {
+        const { status = null, assigned_to = null } = filters;
+        const params = [teamId];
+        let where = `WHERE o.team_id = $1 AND o.order_mode = 'team'`;
+        if (status) { params.push(status); where += ` AND o.status = $${params.length}`; }
+        if (assigned_to) { params.push(assigned_to); where += ` AND o.assigned_to_user_id = $${params.length}`; }
+        const result = await pool.query(`SELECT COUNT(*) FROM orders o ${where}`, params);
+        return parseInt(result.rows[0].count) || 0;
     }
 
     static async findOverdueAndUrgent(userId) {
@@ -487,6 +565,18 @@ class OrderModel {
 
     // ─── Общая статистика ─────────────────────────────────────────────────────────
     // Используем вычисляемые столбцы total_cost / final_price для агрегации
+    // Общий WHERE-фрагмент учёта merge_stats:
+    // Включает личные заказы всегда + командные только если merge_stats_with_personal = TRUE
+    static #mergeStatsWhere(userId) {
+        return `AND (
+            order_mode = 'personal'
+            OR (order_mode = 'team' AND team_id IN (
+                SELECT team_id FROM team_members
+                WHERE user_id = ${userId} AND merge_stats_with_personal = TRUE
+            ))
+        )`;
+    }
+
     static async getStats(userId, period = 'all') {
         let dateFilter = '';
         const params = [userId];
@@ -498,6 +588,8 @@ class OrderModel {
         } else if (period === 'year') {
             dateFilter = "AND created_at >= date_trunc('year', CURRENT_DATE)";
         }
+
+        const mergeFilter = this.#mergeStatsWhere(userId);
 
         const query = `
             SELECT
@@ -517,7 +609,7 @@ class OrderModel {
                 MAX(final_price)                                                              AS max_order_value,
                 MIN(CASE WHEN status = 'completed' THEN final_price END)                     AS min_order_value
             FROM orders
-            WHERE user_id = $1
+            WHERE user_id = $1 ${mergeFilter}
             ${dateFilter}
         `;
 
@@ -528,6 +620,7 @@ class OrderModel {
     // ─── Статистика по месяцам ────────────────────────────────────────────────────
     static async getMonthlyStats(userId, year = null) {
         if (!year) year = new Date().getFullYear();
+        const mergeFilter = this.#mergeStatsWhere(userId);
 
         const query = `
             SELECT
@@ -538,7 +631,7 @@ class OrderModel {
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN final_price        ELSE 0 END), 0) AS revenue,
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN total_weight_grams ELSE 0 END), 0) AS filament_used
             FROM orders
-            WHERE user_id = $1 AND EXTRACT(YEAR FROM created_at) = $2
+            WHERE user_id = $1 ${mergeFilter} AND EXTRACT(YEAR FROM created_at) = $2
             GROUP BY EXTRACT(MONTH FROM created_at)
             ORDER BY month
         `;
@@ -548,6 +641,7 @@ class OrderModel {
 
     // ─── Статистика по статусам ───────────────────────────────────────────────────
     static async getStatusStats(userId) {
+        const mergeFilter = this.#mergeStatsWhere(userId);
         const query = `
             SELECT
                 status,
@@ -555,7 +649,7 @@ class OrderModel {
                 COALESCE(SUM(final_price), 0)        AS total_value,
                 COALESCE(SUM(total_weight_grams), 0) AS total_weight
             FROM orders
-            WHERE user_id = $1
+            WHERE user_id = $1 ${mergeFilter}
             GROUP BY status
             ORDER BY
                 CASE status

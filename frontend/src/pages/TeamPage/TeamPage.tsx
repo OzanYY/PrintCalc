@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { teamsAPI, type Team, type TeamMember, type TeamInvitation, type TeamStats, type MemberStat } from '@/api/teams';
+import { teamsAPI, type Team, type TeamMember, type TeamInvitation, type TeamStats, type MemberStat, type TeamResource } from '@/api/teams';
+import { printersAPI } from '@/api/printers';
+import { materialsAPI } from '@/api/materials';
+import type { Order } from '@/api/orders';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +15,9 @@ import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
     Dialog, DialogContent, DialogDescription,
     DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -21,8 +27,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
     Users, UserPlus, Settings, Trash2, MoreVertical, LogOut,
-    Crown, Shield, UserCheck, Printer, Package, CheckCircle,
-    DollarSign, Loader2, ArrowLeft, Clock, X,
+    Shield, UserCheck, Printer, Package, CheckCircle,
+    DollarSign, Loader2, ArrowLeft, X, Share2, ClipboardList,
+    Clock, Weight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
@@ -43,30 +50,346 @@ function getInitials(name: string) {
     return name.split(/[\s_]/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+// ─── Вкладка Заказы ──────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<string, string> = {
+    in_progress: 'В процессе',
+    completed:   'Завершён',
+    cancelled:   'Отменён',
+};
+const STATUS_COLOR: Record<string, string> = {
+    in_progress: 'bg-blue-500 text-white',
+    completed:   'bg-green-500 text-white',
+    cancelled:   'bg-destructive text-white',
+};
+
+function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMember[] }) {
+    const [orders, setOrders]   = useState<Order[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [total, setTotal]     = useState(0);
+    const [page, setPage]       = useState(1);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [memberFilter, setMemberFilter] = useState<string>('all');
+
+    const limit = 20;
+
+    useEffect(() => {
+        load();
+    }, [teamId, page, statusFilter, memberFilter]);
+
+    async function load() {
+        setLoading(true);
+        try {
+            const res = await teamsAPI.getTeamOrders(teamId, {
+                status:      statusFilter !== 'all' ? statusFilter as any : undefined,
+                assigned_to: memberFilter !== 'all' ? Number(memberFilter) : undefined,
+                limit,
+                page,
+            });
+            setOrders(res.data.data);
+            setTotal(res.data.pagination.total);
+        } catch {
+            toast.error('Не удалось загрузить заказы');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const totalPages = Math.ceil(total / limit);
+
+    const formatMoney = (v: number | string) =>
+        Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+
+    const formatTime = (min: number) => {
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* Фильтры */}
+            <div className="flex flex-wrap gap-3">
+                <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+                    <SelectTrigger className="w-40">
+                        <SelectValue placeholder="Статус" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Все статусы</SelectItem>
+                        <SelectItem value="in_progress">В процессе</SelectItem>
+                        <SelectItem value="completed">Завершённые</SelectItem>
+                        <SelectItem value="cancelled">Отменённые</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={memberFilter} onValueChange={v => { setMemberFilter(v); setPage(1); }}>
+                    <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Исполнитель" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Все участники</SelectItem>
+                        {members.map(m => (
+                            <SelectItem key={m.user_id} value={String(m.user_id)}>
+                                {m.username}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground self-center ml-auto">
+                    Всего: {total}
+                </span>
+            </div>
+
+            {loading ? (
+                <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+            ) : orders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+                    <ClipboardList className="h-10 w-10 opacity-25" />
+                    <p className="text-sm">
+                        {statusFilter !== 'all' || memberFilter !== 'all'
+                            ? 'Заказы не найдены по выбранным фильтрам'
+                            : 'В команде ещё нет заказов'}
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {orders.map(order => (
+                        <div key={order.id} className="flex items-start justify-between p-3 rounded-xl border bg-muted/20 gap-3">
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm font-medium truncate">{order.name}</p>
+                                    <Badge className={cn('text-xs shrink-0', STATUS_COLOR[order.status])}>
+                                        {STATUS_LABEL[order.status]}
+                                    </Badge>
+                                </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
+                                    {order.owner_username && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Users className="h-3 w-3" />
+                                            {order.owner_username}
+                                        </span>
+                                    )}
+                                    {order.assigned_to_username && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <UserCheck className="h-3 w-3" />
+                                            {order.assigned_to_username}
+                                        </span>
+                                    )}
+                                    {order.print_time_minutes > 0 && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Clock className="h-3 w-3" />
+                                            {formatTime(order.print_time_minutes)}
+                                        </span>
+                                    )}
+                                    {order.total_weight_grams > 0 && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Weight className="h-3 w-3" />
+                                            {Number(order.total_weight_grams).toFixed(1)} г
+                                        </span>
+                                    )}
+                                    {order.deadline && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <CheckCircle className="h-3 w-3" />
+                                            до {new Date(order.deadline + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    {formatMoney(order.final_price)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    {new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Пагинация */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-2">
+                    <Button
+                        variant="outline" size="sm"
+                        disabled={page <= 1}
+                        onClick={() => setPage(p => p - 1)}
+                    >Назад</Button>
+                    <span className="text-sm text-muted-foreground">{page} / {totalPages}</span>
+                    <Button
+                        variant="outline" size="sm"
+                        disabled={page >= totalPages}
+                        onClick={() => setPage(p => p + 1)}
+                    >Вперёд</Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Вкладка Ресурсы ─────────────────────────────────────────────────────────
+
+function ResourcesTab({ teamId }: { teamId: number }) {
+    const [printers, setPrinters]   = useState<any[]>([]);
+    const [materials, setMaterials] = useState<any[]>([]);
+    const [shared, setShared]       = useState<Set<string>>(new Set());
+    const [loading, setLoading]     = useState(true);
+    const [toggling, setToggling]   = useState<Set<string>>(new Set());
+
+    const sharedKey = (type: 'printer' | 'material', id: number) => `${type}:${id}`;
+
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            try {
+                const [p, m, s] = await Promise.all([
+                    printersAPI.getAll(),
+                    materialsAPI.getAll(),
+                    teamsAPI.getMyShared(teamId),
+                ]);
+                setPrinters(p.data.data);
+                setMaterials(m.data.data);
+                const sharedSet = new Set<string>(
+                    s.data.data.map((r: TeamResource) => sharedKey(r.resource_type, r.resource_id))
+                );
+                setShared(sharedSet);
+            } catch {
+                toast.error('Не удалось загрузить ресурсы');
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, [teamId]);
+
+    const toggle = async (type: 'printer' | 'material', id: number) => {
+        const key = sharedKey(type, id);
+        if (toggling.has(key)) return;
+        setToggling(prev => new Set([...prev, key]));
+        const isShared = shared.has(key);
+        try {
+            if (isShared) {
+                await teamsAPI.unshareResource(teamId, type, id);
+                setShared(prev => { const s = new Set(prev); s.delete(key); return s; });
+            } else {
+                await teamsAPI.shareResource(teamId, { resource_type: type, resource_id: id });
+                setShared(prev => new Set([...prev, key]));
+            }
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error ?? 'Ошибка при изменении шаринга');
+        } finally {
+            setToggling(prev => { const s = new Set(prev); s.delete(key); return s; });
+        }
+    };
+
+    if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+
+    const ResourceRow = ({ type, item, label }: { type: 'printer' | 'material'; item: any; label: string }) => {
+        const key = sharedKey(type, item.id);
+        const isShared = shared.has(key);
+        const isToggling = toggling.has(key);
+        return (
+            <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
+                <div className="flex items-center gap-3">
+                    <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                        isShared ? 'bg-primary/15' : 'bg-muted')}>
+                        {type === 'printer'
+                            ? <Printer className={cn('h-4 w-4', isShared ? 'text-primary' : 'text-muted-foreground')} />
+                            : <Package className={cn('h-4 w-4', isShared ? 'text-primary' : 'text-muted-foreground')} />
+                        }
+                    </div>
+                    <div>
+                        <p className="text-sm font-medium">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    {isShared && <Badge variant="outline" className="text-xs text-primary border-primary/30 bg-primary/5">Доступно команде</Badge>}
+                    {isToggling
+                        ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        : <Switch checked={isShared} onCheckedChange={() => toggle(type, item.id)} />
+                    }
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+                Включите тумблер, чтобы сделать ресурс доступным для всех участников команды.
+            </p>
+
+            {printers.length > 0 && (
+                <div>
+                    <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                        <Printer className="h-4 w-4" />Принтеры
+                    </h3>
+                    <div className="space-y-2">
+                        {printers.map(p => (
+                            <ResourceRow key={p.id} type="printer" item={p} label={`${p.type} · ${p.model ?? '—'}`} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {materials.length > 0 && (
+                <div>
+                    <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                        <Package className="h-4 w-4" />Материалы
+                    </h3>
+                    <div className="space-y-2">
+                        {materials.map(m => (
+                            <ResourceRow key={m.id} type="material" item={m} label={`${m.type ?? m.category ?? '—'} · ${m.price_per_kg ?? '—'} ₽/кг`} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {printers.length === 0 && materials.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground">
+                    <Share2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">У вас пока нет принтеров или материалов для шаринга</p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Главная страница команды ─────────────────────────────────────────────────
+
 export default function TeamPage() {
     const { id }   = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
     const teamId   = Number(id);
 
-    const [team, setTeam]             = useState<Team | null>(null);
-    const [members, setMembers]       = useState<TeamMember[]>([]);
+    const [team, setTeam]               = useState<Team | null>(null);
+    const [members, setMembers]         = useState<TeamMember[]>([]);
     const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
-    const [stats, setStats]           = useState<TeamStats | null>(null);
+    const [stats, setStats]             = useState<TeamStats | null>(null);
     const [memberStats, setMemberStats] = useState<MemberStat[]>([]);
-    const [isLoading, setIsLoading]   = useState(true);
-    const [myRole, setMyRole]         = useState<'owner' | 'admin' | 'member' | null>(null);
+    const [isLoading, setIsLoading]     = useState(true);
+    const [myRole, setMyRole]           = useState<'owner' | 'admin' | 'member' | null>(null);
 
     // ── Диалоги ───────────────────────────────────────────────────────────────
     const [isInviteOpen, setIsInviteOpen]   = useState(false);
     const [isEditOpen, setIsEditOpen]       = useState(false);
     const [isDeleteOpen, setIsDeleteOpen]   = useState(false);
-    const [inviteUsername, setInviteUsername] = useState('');
     const [inviteMessage, setInviteMessage]   = useState('');
     const [isInviting, setIsInviting]         = useState(false);
     const [editForm, setEditForm]             = useState({ name: '', description: '' });
     const [isSavingEdit, setIsSavingEdit]     = useState(false);
     const [isDeleting, setIsDeleting]         = useState(false);
+
+    // ── Поиск пользователей для приглашения ───────────────────────────────────
+    const [inviteSearchQuery, setInviteSearchQuery] = useState('');
+    const [inviteSearchResults, setInviteSearchResults] = useState<{ id: number; username: string; avatar: string | null }[]>([]);
+    const [inviteSearchLoading, setInviteSearchLoading] = useState(false);
+    const [selectedInviteUser, setSelectedInviteUser] = useState<{ id: number; username: string } | null>(null);
+    const inviteSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => { load(); }, [teamId]);
 
@@ -110,14 +433,38 @@ export default function TeamPage() {
         } catch { /* silent */ }
     }
 
+    const handleInviteSearch = useCallback((q: string) => {
+        setInviteSearchQuery(q);
+        setSelectedInviteUser(null);
+        if (inviteSearchTimer.current) clearTimeout(inviteSearchTimer.current);
+        if (q.trim().length < 2) { setInviteSearchResults([]); return; }
+        setInviteSearchLoading(true);
+        inviteSearchTimer.current = setTimeout(async () => {
+            try {
+                const res = await teamsAPI.searchUsers(teamId, q.trim());
+                setInviteSearchResults(res.data.data);
+            } catch {
+                setInviteSearchResults([]);
+            } finally {
+                setInviteSearchLoading(false);
+            }
+        }, 300);
+    }, [teamId]);
+
+    function resetInviteDialog() {
+        setInviteSearchQuery('');
+        setInviteSearchResults([]);
+        setSelectedInviteUser(null);
+        setInviteMessage('');
+    }
+
     async function handleInvite() {
-        if (!inviteUsername.trim()) return;
+        if (!selectedInviteUser) return;
         setIsInviting(true);
         try {
-            await teamsAPI.invite(teamId, { username: inviteUsername.trim(), message: inviteMessage.trim() || undefined });
-            toast.success(`Приглашение отправлено пользователю ${inviteUsername}`);
-            setInviteUsername('');
-            setInviteMessage('');
+            await teamsAPI.invite(teamId, { username: selectedInviteUser.username, message: inviteMessage.trim() || undefined });
+            toast.success(`Приглашение отправлено пользователю ${selectedInviteUser.username}`);
+            resetInviteDialog();
             setIsInviteOpen(false);
         } catch (err: any) {
             toast.error(err?.response?.data?.error ?? 'Ошибка при отправке приглашения');
@@ -203,18 +550,13 @@ export default function TeamPage() {
     const myMember = members.find(m => m.user_id === Number(user?.id));
 
     if (isLoading) {
-        return (
-            <div className="flex justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-        );
+        return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
     }
-
     if (!team) return null;
 
     return (
         <div className="container mx-auto p-6 max-w-5xl">
-            {/* Шапка */}
+            {/* ── Шапка ── */}
             <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" size="icon" onClick={() => navigate('/teams')}>
                     <ArrowLeft className="h-4 w-4" />
@@ -226,175 +568,182 @@ export default function TeamPage() {
                 </Avatar>
                 <div className="flex-1">
                     <h1 className="text-2xl font-bold">{team.name}</h1>
-                    {team.description && (
-                        <p className="text-sm text-muted-foreground">{team.description}</p>
+                    {team.description && <p className="text-sm text-muted-foreground">{team.description}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                    {/* Кнопка приглашения — всегда на виду для admin/owner */}
+                    {isAdmin && (
+                        <Button onClick={() => setIsInviteOpen(true)}>
+                            <UserPlus className="mr-2 h-4 w-4" />Пригласить
+                        </Button>
+                    )}
+                    {isAdmin && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon"><MoreVertical className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
+                                    <Settings className="mr-2 h-4 w-4" />Редактировать
+                                </DropdownMenuItem>
+                                {isOwner && (
+                                    <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem className="text-destructive" onClick={() => setIsDeleteOpen(true)}>
+                                            <Trash2 className="mr-2 h-4 w-4" />Удалить команду
+                                        </DropdownMenuItem>
+                                    </>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                 </div>
-                {isAdmin && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon"><MoreVertical className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
-                                <Settings className="mr-2 h-4 w-4" />Редактировать
-                            </DropdownMenuItem>
-                            {isOwner && (
-                                <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        className="text-destructive"
-                                        onClick={() => setIsDeleteOpen(true)}
-                                    >
-                                        <Trash2 className="mr-2 h-4 w-4" />Удалить команду
-                                    </DropdownMenuItem>
-                                </>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
             </div>
 
             <Tabs defaultValue="members" onValueChange={val => {
                 if (val === 'stats') loadStats();
                 if (val === 'invitations') loadInvitations();
             }}>
-                <TabsList className="mb-6">
+                <TabsList className="mb-6 flex-wrap h-auto gap-1">
                     <TabsTrigger value="members">
-                        <Users className="h-4 w-4 mr-2" />Участники ({members.length})
+                        <Users className="h-4 w-4 mr-1.5" />Участники ({members.length})
                     </TabsTrigger>
                     {isAdmin && (
                         <TabsTrigger value="invitations">
-                            <Clock className="h-4 w-4 mr-2" />Приглашения
+                            Приглашения
                         </TabsTrigger>
                     )}
+                    <TabsTrigger value="orders">
+                        <ClipboardList className="h-4 w-4 mr-1.5" />Заказы
+                    </TabsTrigger>
+                    <TabsTrigger value="resources">
+                        <Share2 className="h-4 w-4 mr-1.5" />Ресурсы
+                    </TabsTrigger>
                     <TabsTrigger value="stats">
-                        <CheckCircle className="h-4 w-4 mr-2" />Статистика
+                        <CheckCircle className="h-4 w-4 mr-1.5" />Статистика
                     </TabsTrigger>
                     <TabsTrigger value="settings">
-                        <Settings className="h-4 w-4 mr-2" />Настройки
+                        <Settings className="h-4 w-4 mr-1.5" />Настройки
                     </TabsTrigger>
                 </TabsList>
 
                 {/* ── Участники ── */}
                 <TabsContent value="members">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="font-semibold">Участники команды</h2>
-                        {isAdmin && (
+                    {members.length > 1 && isAdmin && (
+                        <div className="flex justify-end mb-3">
                             <Button size="sm" onClick={() => setIsInviteOpen(true)}>
                                 <UserPlus className="mr-2 h-4 w-4" />Пригласить
                             </Button>
-                        )}
-                    </div>
-                    <div className="space-y-2">
-                        {members.map(member => (
-                            <div
-                                key={member.user_id}
-                                className="flex items-center justify-between p-3 rounded-xl border bg-muted/20"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="w-10 h-10">
-                                        <AvatarImage src={member.avatar ?? undefined} />
-                                        <AvatarFallback>{getInitials(member.username)}</AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <p className="font-medium text-sm">
-                                            {member.username}
-                                            {member.user_id === Number(user?.id) && (
-                                                <span className="ml-1.5 text-xs text-muted-foreground">(вы)</span>
-                                            )}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                    )}
+                    {members.length === 1 ? (
+                        /* Пустое состояние — только владелец */
+                        <div className="flex flex-col items-center py-16 gap-4 text-center">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                <UserPlus className="h-8 w-8 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-lg">Пригласите первого участника</h3>
+                                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                                    Введите имя пользователя — он получит уведомление с предложением вступить в команду
+                                </p>
+                            </div>
+                            <Button size="lg" onClick={() => setIsInviteOpen(true)}>
+                                <UserPlus className="mr-2 h-5 w-5" />Пригласить участника
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {members.map(member => (
+                                <div key={member.user_id} className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
+                                    <div className="flex items-center gap-3">
+                                        <Avatar className="w-10 h-10">
+                                            <AvatarImage src={member.avatar ?? undefined} />
+                                            <AvatarFallback>{getInitials(member.username)}</AvatarFallback>
+                                        </Avatar>
+                                        <div>
+                                            <p className="font-medium text-sm">
+                                                {member.username}
+                                                {member.user_id === Number(user?.id) && (
+                                                    <span className="ml-1.5 text-xs text-muted-foreground">(вы)</span>
+                                                )}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">{member.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className={ROLE_COLOR[member.role]}>
+                                            {ROLE_LABEL[member.role]}
+                                        </Badge>
+                                        {isAdmin && member.role !== 'owner' && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                        <MoreVertical className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    {member.role === 'member' ? (
+                                                        <DropdownMenuItem onClick={() => handleChangeRole(member.user_id, 'admin')}>
+                                                            <Shield className="mr-2 h-4 w-4" />Сделать администратором
+                                                        </DropdownMenuItem>
+                                                    ) : (
+                                                        <DropdownMenuItem onClick={() => handleChangeRole(member.user_id, 'member')}>
+                                                            <UserCheck className="mr-2 h-4 w-4" />Понизить до участника
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem className="text-destructive" onClick={() => handleRemoveMember(member.user_id, member.username)}>
+                                                        <Trash2 className="mr-2 h-4 w-4" />Удалить из команды
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+                                        {member.user_id === Number(user?.id) && member.role !== 'owner' && (
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" title="Выйти из команды" onClick={() => handleRemoveMember(member.user_id, member.username)}>
+                                                <LogOut className="h-3.5 w-3.5" />
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className={ROLE_COLOR[member.role]}>
-                                        {ROLE_LABEL[member.role]}
-                                    </Badge>
-                                    {/* Меню действий — только admin/owner и не для самого owner */}
-                                    {isAdmin && member.role !== 'owner' && (
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                    <MoreVertical className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                {member.role === 'member' ? (
-                                                    <DropdownMenuItem onClick={() => handleChangeRole(member.user_id, 'admin')}>
-                                                        <Shield className="mr-2 h-4 w-4" />Сделать администратором
-                                                    </DropdownMenuItem>
-                                                ) : (
-                                                    <DropdownMenuItem onClick={() => handleChangeRole(member.user_id, 'member')}>
-                                                        <UserCheck className="mr-2 h-4 w-4" />Понизить до участника
-                                                    </DropdownMenuItem>
-                                                )}
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuItem
-                                                    className="text-destructive"
-                                                    onClick={() => handleRemoveMember(member.user_id, member.username)}
-                                                >
-                                                    <Trash2 className="mr-2 h-4 w-4" />Удалить из команды
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    )}
-                                    {/* Кнопка "Выйти" для себя (не owner) */}
-                                    {member.user_id === Number(user?.id) && member.role !== 'owner' && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                            title="Выйти из команды"
-                                            onClick={() => handleRemoveMember(member.user_id, member.username)}
-                                        >
-                                            <LogOut className="h-3.5 w-3.5" />
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </TabsContent>
 
                 {/* ── Приглашения ── */}
                 {isAdmin && (
                     <TabsContent value="invitations">
                         <div className="flex justify-between items-center mb-4">
-                            <h2 className="font-semibold">Исходящие приглашения</h2>
+                            <div>
+                                <h2 className="font-semibold">Исходящие приглашения</h2>
+                                <p className="text-xs text-muted-foreground mt-0.5">Пользователь получит уведомление и сможет принять или отклонить его</p>
+                            </div>
                             <Button size="sm" onClick={() => setIsInviteOpen(true)}>
                                 <UserPlus className="mr-2 h-4 w-4" />Пригласить
                             </Button>
                         </div>
                         {invitations.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-8">Нет активных приглашений</p>
+                            <div className="text-center py-12 text-muted-foreground">
+                                <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">Нет активных приглашений</p>
+                            </div>
                         ) : (
                             <div className="space-y-2">
                                 {invitations.map(inv => (
-                                    <div
-                                        key={inv.id}
-                                        className="flex items-center justify-between p-3 rounded-xl border bg-muted/20"
-                                    >
+                                    <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
                                         <div>
                                             <p className="text-sm font-medium">{inv.invitee_name ?? inv.invitee_email}</p>
                                             <p className="text-xs text-muted-foreground">
-                                                Приглашён: {inv.inviter_name} ·{' '}
-                                                {inv.status === 'pending' ? 'Ожидает' : inv.status}
+                                                от {inv.inviter_name} · {new Date(inv.created_at).toLocaleDateString('ru-RU')}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Badge variant={inv.status === 'pending' ? 'secondary' : 'outline'}>
-                                                {inv.status === 'pending' ? 'Ожидает' :
-                                                 inv.status === 'accepted' ? 'Принято' :
-                                                 inv.status === 'declined' ? 'Отклонено' : 'Отменено'}
+                                                {inv.status === 'pending' ? 'Ожидает' : inv.status === 'accepted' ? 'Принято' : inv.status === 'declined' ? 'Отклонено' : 'Отменено'}
                                             </Badge>
                                             {inv.status === 'pending' && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                                    onClick={() => handleCancelInvitation(inv.id)}
-                                                >
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleCancelInvitation(inv.id)}>
                                                     <X className="h-3.5 w-3.5" />
                                                 </Button>
                                             )}
@@ -406,12 +755,20 @@ export default function TeamPage() {
                     </TabsContent>
                 )}
 
+                {/* ── Заказы ── */}
+                <TabsContent value="orders">
+                    <TeamOrdersTab teamId={teamId} members={members} />
+                </TabsContent>
+
+                {/* ── Ресурсы ── */}
+                <TabsContent value="resources">
+                    <ResourcesTab teamId={teamId} />
+                </TabsContent>
+
                 {/* ── Статистика ── */}
                 <TabsContent value="stats">
                     {!stats ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
+                        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                     ) : (
                         <div className="space-y-6">
                             <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
@@ -432,7 +789,6 @@ export default function TeamPage() {
                                     </Card>
                                 ))}
                             </div>
-
                             <div>
                                 <h3 className="font-semibold mb-3">По участникам</h3>
                                 <div className="space-y-2">
@@ -450,9 +806,7 @@ export default function TeamPage() {
                                             </div>
                                             <div className="text-right text-sm">
                                                 <p className="font-medium">{ms.completed_orders} заказов</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {Number(ms.total_profit).toLocaleString('ru-RU')} ₽
-                                                </p>
+                                                <p className="text-xs text-muted-foreground">{Number(ms.total_profit).toLocaleString('ru-RU')} ₽</p>
                                             </div>
                                         </div>
                                     ))}
@@ -462,7 +816,7 @@ export default function TeamPage() {
                     )}
                 </TabsContent>
 
-                {/* ── Настройки (личные) ── */}
+                {/* ── Настройки ── */}
                 <TabsContent value="settings">
                     <div className="max-w-md space-y-6">
                         <Card>
@@ -470,13 +824,11 @@ export default function TeamPage() {
                                 <CardTitle className="text-base">Личные настройки</CardTitle>
                                 <CardDescription>Только для вас в этой команде</CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-sm font-medium">Объединить статистику</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Командные заказы учитываются в вашей личной статистике
-                                        </p>
+                                        <p className="text-xs text-muted-foreground">Командные заказы учитываются в вашей личной статистике</p>
                                     </div>
                                     <Switch
                                         checked={myMember?.merge_stats_with_personal ?? false}
@@ -485,18 +837,11 @@ export default function TeamPage() {
                                 </div>
                             </CardContent>
                         </Card>
-
                         {myRole !== 'owner' && (
                             <Card className="border-destructive/30">
-                                <CardHeader>
-                                    <CardTitle className="text-base text-destructive">Опасная зона</CardTitle>
-                                </CardHeader>
+                                <CardHeader><CardTitle className="text-base text-destructive">Опасная зона</CardTitle></CardHeader>
                                 <CardContent>
-                                    <Button
-                                        variant="outline"
-                                        className="border-destructive text-destructive hover:bg-destructive/10"
-                                        onClick={() => myMember && handleRemoveMember(myMember.user_id, myMember.username)}
-                                    >
+                                    <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => myMember && handleRemoveMember(myMember.user_id, myMember.username)}>
                                         <LogOut className="mr-2 h-4 w-4" />Покинуть команду
                                     </Button>
                                 </CardContent>
@@ -507,21 +852,68 @@ export default function TeamPage() {
             </Tabs>
 
             {/* ── Диалог: пригласить ── */}
-            <Dialog open={isInviteOpen} onOpenChange={open => { setIsInviteOpen(open); if (!open) { setInviteUsername(''); setInviteMessage(''); } }}>
+            <Dialog open={isInviteOpen} onOpenChange={open => { setIsInviteOpen(open); if (!open) resetInviteDialog(); }}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Пригласить в команду</DialogTitle>
-                        <DialogDescription>Введите имя пользователя</DialogDescription>
+                        <DialogTitle>Пригласить в команду «{team.name}»</DialogTitle>
+                        <DialogDescription>
+                            Найдите пользователя по имени. Он получит уведомление и сможет принять или отклонить приглашение.
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
+                        {/* Поле поиска пользователя */}
                         <div className="grid gap-2">
-                            <Label htmlFor="invite-user">Имя пользователя *</Label>
-                            <Input
-                                id="invite-user"
-                                placeholder="username"
-                                value={inviteUsername}
-                                onChange={e => setInviteUsername(e.target.value)}
-                            />
+                            <Label>Поиск пользователя *</Label>
+                            {selectedInviteUser ? (
+                                <div className="flex items-center gap-3 p-2.5 rounded-lg border bg-primary/5 border-primary/20">
+                                    <Avatar className="w-8 h-8">
+                                        <AvatarImage src={inviteSearchResults.find(u => u.id === selectedInviteUser.id)?.avatar ?? undefined} />
+                                        <AvatarFallback className="text-xs">{getInitials(selectedInviteUser.username)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="flex-1 text-sm font-medium">{selectedInviteUser.username}</span>
+                                    <Button
+                                        variant="ghost" size="icon" className="h-7 w-7"
+                                        onClick={() => { setSelectedInviteUser(null); setInviteSearchQuery(''); setInviteSearchResults([]); }}
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="relative">
+                                    <Input
+                                        placeholder="Введите имя пользователя..."
+                                        value={inviteSearchQuery}
+                                        onChange={e => handleInviteSearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                    {inviteSearchLoading && (
+                                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                                    )}
+                                    {!inviteSearchLoading && inviteSearchQuery.length >= 2 && inviteSearchResults.length === 0 && (
+                                        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border bg-popover shadow-md p-3 text-sm text-muted-foreground text-center">
+                                            Пользователи не найдены
+                                        </div>
+                                    )}
+                                    {inviteSearchResults.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border bg-popover shadow-md overflow-hidden">
+                                            {inviteSearchResults.map(u => (
+                                                <button
+                                                    key={u.id}
+                                                    type="button"
+                                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent transition-colors text-left"
+                                                    onClick={() => { setSelectedInviteUser({ id: u.id, username: u.username }); setInviteSearchResults([]); }}
+                                                >
+                                                    <Avatar className="w-7 h-7 shrink-0">
+                                                        <AvatarImage src={u.avatar ?? undefined} />
+                                                        <AvatarFallback className="text-xs">{getInitials(u.username)}</AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="text-sm">{u.username}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="invite-msg">Сообщение (необязательно)</Label>
@@ -536,7 +928,7 @@ export default function TeamPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Отмена</Button>
-                        <Button onClick={handleInvite} disabled={isInviting || !inviteUsername.trim()}>
+                        <Button onClick={handleInvite} disabled={isInviting || !selectedInviteUser}>
                             {isInviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Отправить приглашение
                         </Button>
@@ -547,51 +939,37 @@ export default function TeamPage() {
             {/* ── Диалог: редактировать ── */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Редактировать команду</DialogTitle>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Редактировать команду</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
                             <Label>Название</Label>
-                            <Input
-                                value={editForm.name}
-                                onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                                maxLength={100}
-                            />
+                            <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} maxLength={100} />
                         </div>
                         <div className="grid gap-2">
                             <Label>Описание</Label>
-                            <Textarea
-                                value={editForm.description}
-                                onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-                                rows={3}
-                            />
+                            <Textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} rows={3} />
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditOpen(false)}>Отмена</Button>
                         <Button onClick={handleSaveEdit} disabled={isSavingEdit || !editForm.name.trim()}>
-                            {isSavingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Сохранить
+                            {isSavingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Сохранить
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* ── Диалог: удалить команду ── */}
+            {/* ── Диалог: удалить ── */}
             <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Удалить команду</DialogTitle>
-                        <DialogDescription>
-                            Это действие необратимо. Все данные команды будут удалены.
-                        </DialogDescription>
+                        <DialogDescription>Это действие необратимо. Все данные команды будут удалены.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>Отмена</Button>
                         <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Удалить
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Удалить
                         </Button>
                     </DialogFooter>
                 </DialogContent>

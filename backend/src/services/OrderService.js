@@ -50,8 +50,8 @@ class OrderService {
     // ─── Получение всех заказов пользователя с пагинацией ────────────────────────
     static async getUserOrders(userId, filters = {}) {
         try {
-            const { status = null, tag_id = null, client_id = null, deadline_filter = null, limit = 50, offset = 0 } = filters;
-            const queryFilters = { status, tag_id, client_id, deadline_filter };
+            const { status = null, tag_id = null, client_id = null, deadline_filter = null, order_mode = null, limit = 50, offset = 0 } = filters;
+            const queryFilters = { status, tag_id, client_id, deadline_filter, order_mode };
 
             const [orders, total] = await Promise.all([
                 OrderModel.findByUser(userId, queryFilters, limit, offset),

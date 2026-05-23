@@ -1,4 +1,5 @@
 import api from './axios';
+import type { Order } from './orders';
 
 export interface Team {
     id: number;
@@ -126,6 +127,25 @@ export const teamsAPI = {
 
     unshareResource: (teamId: number, type: 'printer' | 'material', resourceId: number) =>
         api.delete<{ message: string }>(`/teams/${teamId}/resources/${type}/${resourceId}`),
+
+    // ─── Поиск пользователей ─────────────────────────────────────────────────
+    searchUsers: (teamId: number, q: string) =>
+        api.get<{ data: { id: number; username: string; avatar: string | null }[] }>(
+            `/teams/${teamId}/users/search`, { params: { q } }
+        ),
+
+    // ─── Заказы команды ──────────────────────────────────────────────────────
+    getTeamOrders: (teamId: number, params?: {
+        status?: 'in_progress' | 'completed' | 'cancelled';
+        assigned_to?: number;
+        limit?: number;
+        page?: number;
+    }) =>
+        api.get<{
+            success: boolean;
+            data: Order[];
+            pagination: { limit: number; offset: number; total: number; page: number };
+        }>(`/teams/${teamId}/orders`, { params }),
 
     // ─── Статистика ──────────────────────────────────────────────────────────
     getTeamStats: (teamId: number) =>

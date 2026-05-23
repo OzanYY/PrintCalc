@@ -85,7 +85,7 @@ class OrderController {
             const userId = requireAuth(req, res);
             if (!userId) return;
 
-            const { status, tag_id, client_id, deadline_filter, limit = 50, page = 1 } = req.query;
+            const { status, tag_id, client_id, deadline_filter, order_mode, limit = 50, page = 1 } = req.query;
             const parsedLimit  = parseInt(limit);
             const parsedOffset = (parseInt(page) - 1) * parsedLimit;
 
@@ -94,6 +94,7 @@ class OrderController {
                 tag_id:          tag_id ? parseInt(tag_id) : null,
                 client_id:       client_id ? parseInt(client_id) : null,
                 deadline_filter: deadline_filter || null,
+                order_mode:      order_mode || null,
                 limit:           parsedLimit,
                 offset:          parsedOffset,
             });

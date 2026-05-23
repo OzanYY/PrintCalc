@@ -3,6 +3,7 @@ const TeamMemberModel      = require('../models/TeamMemberModel');
 const TeamInvitationModel  = require('../models/TeamInvitationModel');
 const TeamResourceModel    = require('../models/TeamResourceModel');
 const NotificationModel    = require('../models/NotificationModel');
+const OrderModel           = require('../models/OrderModel');
 const UserModel            = require('../models/UserModel');
 const SSEService           = require('../services/SSEService');
 
@@ -338,6 +339,57 @@ class TeamController {
             res.json({ data: shared });
         } catch (err) {
             console.error('getMyShared error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
+    // ─── Поиск пользователей для приглашения ─────────────────────────────────
+
+    // GET /api/teams/:id/users/search?q=
+    static async searchUsers(req, res) {
+        try {
+            const q = (req.query.q || '').trim();
+            if (q.length < 2) return res.json({ data: [] });
+
+            const users = await UserModel.search(q, req.user.id, 10);
+
+            // Отфильтровываем уже состоящих в команде
+            const members = await TeamMemberModel.getMembers(req.params.id);
+            const memberIds = new Set(members.map(m => m.user_id));
+            const filtered = users.filter(u => !memberIds.has(u.id));
+
+            res.json({ data: filtered });
+        } catch (err) {
+            console.error('searchUsers error:', err);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
+    // ─── Заказы команды ──────────────────────────────────────────────────────
+
+    // GET /api/teams/:id/orders
+    static async getTeamOrders(req, res) {
+        try {
+            const teamId    = req.params.id;
+            const status    = req.query.status   || null;
+            const assignedTo = req.query.assigned_to ? Number(req.query.assigned_to) : null;
+            const limit     = Math.min(parseInt(req.query.limit) || 50, 200);
+            const page      = parseInt(req.query.page) || 1;
+            const offset    = (page - 1) * limit;
+
+            const filters = { status, assigned_to: assignedTo };
+            const [orders, total] = await Promise.all([
+                OrderModel.findByTeam(teamId, filters, limit, offset),
+                OrderModel.countByTeam(teamId, filters),
+            ]);
+
+            res.json({
+                success: true,
+                data: orders,
+                pagination: { limit, offset, total, page },
+            });
+        } catch (err) {
+            console.error('getTeamOrders error:', err);
             res.status(500).json({ error: 'Internal server error' });
         }
     }

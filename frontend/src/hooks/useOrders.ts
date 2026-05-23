@@ -47,6 +47,8 @@ interface UseOrdersReturn {
   setClientFilter: (clientId: number | null) => void;
   deadlineFilter: 'has_deadline' | 'overdue' | 'this_week' | null;
   setDeadlineFilter: (f: 'has_deadline' | 'overdue' | 'this_week' | null) => void;
+  orderModeFilter: 'personal' | 'team' | null;
+  setOrderModeFilter: (m: 'personal' | 'team' | null) => void;
   currentPage: number;
   setCurrentPage: (page: number) => void;
 
@@ -101,6 +103,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
   const [tagFilter, setTagFilter] = useState<number | null>(null);
   const [clientFilter, setClientFilter] = useState<number | null>(null);
   const [deadlineFilter, setDeadlineFilter] = useState<'has_deadline' | 'overdue' | 'this_week' | null>(null);
+  const [orderModeFilter, setOrderModeFilter] = useState<'personal' | 'team' | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Защита от race conditions
@@ -125,6 +128,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
           tag_id: tagFilter ?? undefined,
           client_id: clientFilter ?? undefined,
           deadline_filter: deadlineFilter ?? undefined,
+          order_mode: orderModeFilter ?? undefined,
           limit: pageSize,
           page,
         });
@@ -140,7 +144,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
         setIsLoading(false);
       }
     },
-    [statusFilter, tagFilter, clientFilter, deadlineFilter, currentPage, pageSize],
+    [statusFilter, tagFilter, clientFilter, deadlineFilter, orderModeFilter, currentPage, pageSize],
   );
 
   // ─── Fetch stats ────────────────────────────────────────────────────────────
@@ -355,6 +359,11 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     setCurrentPage(1);
   }, []);
 
+  const handleSetOrderModeFilter = useCallback((m: 'personal' | 'team' | null) => {
+    setOrderModeFilter(m);
+    setCurrentPage(1);
+  }, []);
+
   const handleSetCurrentPage = useCallback((page: number) => {
     setCurrentPage(page);
   }, []);
@@ -369,7 +378,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     if (autoFetch) {
       fetchOrders();
     }
-  }, [statusFilter, tagFilter, clientFilter, deadlineFilter, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [statusFilter, tagFilter, clientFilter, deadlineFilter, orderModeFilter, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoFetch) {
@@ -400,6 +409,8 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     setClientFilter: handleSetClientFilter,
     deadlineFilter,
     setDeadlineFilter: handleSetDeadlineFilter,
+    orderModeFilter,
+    setOrderModeFilter: handleSetOrderModeFilter,
     currentPage,
     setCurrentPage: handleSetCurrentPage,
     fetchOrders,

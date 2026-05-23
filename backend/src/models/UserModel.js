@@ -170,6 +170,22 @@ class UserModel {
         return result.rows[0];
     }
 
+    static async search(query, excludeUserId = null, limit = 10) {
+        const q = `%${query.toLowerCase()}%`;
+        const sql = excludeUserId
+            ? `SELECT id, username, avatar FROM users
+               WHERE is_activated = TRUE AND id != $3
+                 AND (LOWER(username) LIKE $1 OR LOWER(email) LIKE $2)
+               ORDER BY username LIMIT ${limit}`
+            : `SELECT id, username, avatar FROM users
+               WHERE is_activated = TRUE
+                 AND (LOWER(username) LIKE $1 OR LOWER(email) LIKE $2)
+               ORDER BY username LIMIT ${limit}`;
+        const params = excludeUserId ? [q, q, excludeUserId] : [q, q];
+        const result = await pool.query(sql, params);
+        return result.rows;
+    }
+
     static async delete(id) {
         const query = 'DELETE FROM users WHERE id = $1 RETURNING id';
         const result = await pool.query(query, [id]);

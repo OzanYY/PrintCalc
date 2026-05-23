@@ -23,6 +23,9 @@ router.patch ('/:id/members/:userId',  requireTeamAdmin,  TeamController.updateM
 router.delete('/:id/members/:userId',  requireTeamMember, TeamController.removeMember);
 router.patch ('/:id/settings/me',      requireTeamMember, TeamController.updateMySettings);
 
+// ─── Поиск пользователей ─────────────────────────────────────────────────────
+router.get('/:id/users/search', requireTeamAdmin, TeamController.searchUsers);
+
 // ─── Приглашения ─────────────────────────────────────────────────────────────
 router.post  ('/:id/invite',                 requireTeamAdmin, TeamController.invite);
 router.get   ('/:id/invitations',            requireTeamAdmin, TeamController.getTeamInvitations);
@@ -34,6 +37,9 @@ router.get   ('/:id/resources/materials',       requireTeamMember, TeamControlle
 router.get   ('/:id/resources/my',              requireTeamMember, TeamController.getMyShared);
 router.post  ('/:id/resources',                 requireTeamMember, TeamController.shareResource);
 router.delete('/:id/resources/:type/:resourceId', requireTeamMember, TeamController.unshareResource);
+
+// ─── Заказы команды ──────────────────────────────────────────────────────────
+router.get('/:id/orders', requireTeamMember, TeamController.getTeamOrders);
 
 // ─── Статистика ──────────────────────────────────────────────────────────────
 router.get('/:id/stats',         requireTeamMember, TeamController.getTeamStats);
