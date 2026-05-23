@@ -86,6 +86,23 @@ export default function UserPage() {
     const canSubmitPassword = !!passwordForm.current && passwordValid && passwordsMatch && !isSavingPassword;
     const resetPasswordForm = () => setPasswordForm({ current: '', next: '', confirm: '' });
 
+    // ── Повторная отправка активации ─────────────────────────────────────────
+    const [resendLoading, setResendLoading] = useState(false);
+    const [resendSent, setResendSent] = useState(false);
+
+    const handleResendActivation = async () => {
+        setResendLoading(true);
+        try {
+            await authAPI.resendActivation();
+            setResendSent(true);
+            toast.success('Письмо отправлено. Проверьте почту.');
+        } catch {
+            toast.error('Не удалось отправить письмо. Попробуйте позже.');
+        } finally {
+            setResendLoading(false);
+        }
+    };
+
     // ── Статистика ────────────────────────────────────────────────────────────
     const [stats, setStats] = useState({
         printers: 0,
@@ -97,6 +114,10 @@ export default function UserPage() {
     const [statsLoading, setStatsLoading] = useState(true);
 
     useEffect(() => {
+        if (!user?.is_activated) {
+            setStatsLoading(false);
+            return;
+        }
         const load = async () => {
             try {
                 const [printersRes, materialsRes, ordersRes] = await Promise.all([
@@ -138,7 +159,7 @@ export default function UserPage() {
             }
         };
         load();
-    }, []);
+    }, [user?.is_activated]);
 
     // ── STAT_CARDS внутри компонента, после всех хуков ───────────────────────
     const STAT_CARDS = [
@@ -256,6 +277,25 @@ export default function UserPage() {
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+
+            {/* Баннер: аккаунт не активирован */}
+            {!user?.is_activated && (
+                <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/30">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        Аккаунт не активирован. Проверьте почту или запросите новое письмо.
+                    </p>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={resendLoading || resendSent}
+                        onClick={handleResendActivation}
+                        className="shrink-0"
+                    >
+                        {resendLoading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                        {resendSent ? 'Письмо отправлено' : 'Отправить повторно'}
+                    </Button>
+                </div>
+            )}
 
             <div className="grid gap-6 md:grid-cols-7">
                 {/* ── Левая колонка ── */}

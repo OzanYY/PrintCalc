@@ -50,4 +50,8 @@ export const authAPI = {
     // DELETE /auth/delete-account — удалить аккаунт
     deleteAccount: (password: string) =>
         api.delete<{ message: string }>("/auth/delete-account", { data: { password } }),
+
+    // POST /auth/resend-activation — повторно отправить письмо активации
+    resendActivation: () =>
+        api.post<{ message: string }>("/auth/resend-activation"),
 };

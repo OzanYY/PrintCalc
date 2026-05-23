@@ -171,6 +171,20 @@ class AuthController {
         }
     }
 
+    // ==================== ПОВТОРНАЯ ОТПРАВКА ПИСЬМА АКТИВАЦИИ ====================
+    static async resendActivation(req, res) {
+        try {
+            const result = await UserService.resendActivation(req.user.id);
+            res.json(result);
+        } catch (error) {
+            console.error('Resend activation error:', error);
+            if (error.message.includes('already activated')) {
+                return res.status(400).json({ error: error.message });
+            }
+            res.status(500).json({ error: 'Failed to send activation email' });
+        }
+    }
+
     // ==================== АКТИВАЦИЯ ====================
     static async activate(req, res) {
         try {

@@ -75,6 +75,23 @@ class UserService {
         return activatedUser;
     }
 
+    // ─── Повторная отправка письма активации ─────────────────────────────────
+    static async resendActivation(userId) {
+        const user = await UserModel.findByIdWithHash(userId);
+        if (!user) throw new Error('User not found');
+        if (user.is_activated) throw new Error('Account already activated');
+
+        let { activation_link } = user;
+        if (!activation_link) {
+            activation_link = crypto.randomBytes(32).toString('hex');
+            await UserModel.setActivationLink(userId, activation_link);
+        }
+
+        const activationUrl = `${process.env.API_URL}/api/auth/activate/${activation_link}`;
+        await MailService.sendActivationMail(user.email, activationUrl);
+        return { message: 'Activation email sent' };
+    }
+
     // ─── Смена пароля ─────────────────────────────────────────────────────────
     static async changePassword(userId, oldPassword, newPassword, currentRefreshToken = null) {
         // findByIdWithHash возвращает запись включая password_hash — один запрос вместо двух

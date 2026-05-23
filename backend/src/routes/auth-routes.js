@@ -18,6 +18,7 @@ router.get('/status', AuthController.status);
 
 // Защищенные маршруты
 router.use(authMiddleware.requireAuth);
+router.post('/resend-activation', AuthController.resendActivation);
 router.get('/me', AuthController.getMe);
 router.post('/logout', AuthController.logout);
 router.post('/logout-all', AuthController.logoutAll);

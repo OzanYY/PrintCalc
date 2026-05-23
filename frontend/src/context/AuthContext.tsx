@@ -13,6 +13,7 @@ interface User {
     email: string;
     username?: string;
     role?: string;
+    is_activated?: boolean;
 }
 
 export interface AuthStatusResponse {

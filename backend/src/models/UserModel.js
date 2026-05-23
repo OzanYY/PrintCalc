@@ -94,6 +94,15 @@ class UserModel {
         return result.rows[0];
     }
 
+    static async setActivationLink(id, activation_link) {
+        const query = `
+            UPDATE users SET activation_link = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2 RETURNING id
+        `;
+        const result = await pool.query(query, [activation_link, id]);
+        return result.rows[0];
+    }
+
     static async activateUser(id) {
         const query = `
             UPDATE users 
