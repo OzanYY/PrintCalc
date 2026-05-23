@@ -255,12 +255,18 @@ class OrderModel {
     static #buildFilters(userId, filters = {}) {
         const { status = null, tag_id = null, client_id = null, deadline_filter = null, order_mode = null } = filters;
         const params = [userId];
-        let where = 'WHERE o.user_id = $1';
 
+        // Подзапрос: пользователь является участником команды заказа
+        const inTeam = `EXISTS (SELECT 1 FROM team_members tm2 WHERE tm2.team_id = o.team_id AND tm2.user_id = $1)`;
+
+        let where;
         if (order_mode === 'personal') {
-            where += ` AND o.order_mode = 'personal'`;
+            where = `WHERE o.user_id = $1 AND o.order_mode = 'personal'`;
         } else if (order_mode === 'team') {
-            where += ` AND o.order_mode = 'team'`;
+            where = `WHERE o.order_mode = 'team' AND ${inTeam}`;
+        } else {
+            // личные + командные в которых состоит пользователь
+            where = `WHERE (o.user_id = $1 OR (o.order_mode = 'team' AND ${inTeam}))`;
         }
 
         if (status) {
@@ -349,7 +355,12 @@ class OrderModel {
         LEFT JOIN clients   c  ON o.client_id           = c.id
         LEFT JOIN teams     tm ON o.team_id             = tm.id
         LEFT JOIN users     au ON o.assigned_to_user_id = au.id
-        WHERE o.id = $1 AND o.user_id = $2
+        WHERE o.id = $1 AND (
+            o.user_id = $2
+            OR (o.order_mode = 'team' AND EXISTS (
+                SELECT 1 FROM team_members tm2 WHERE tm2.team_id = o.team_id AND tm2.user_id = $2
+            ))
+        )
     `;
         const result = await pool.query(query, [id, userId]);
         return this.#flattenResult(result.rows[0]);
@@ -564,22 +575,31 @@ class OrderModel {
     }
 
     // ─── Общая статистика ─────────────────────────────────────────────────────────
-    // Используем вычисляемые столбцы total_cost / final_price для агрегации
-    // Общий WHERE-фрагмент учёта merge_stats:
-    // Включает личные заказы всегда + командные только если merge_stats_with_personal = TRUE
-    static #mergeStatsWhere(userId) {
-        return `AND (
-            order_mode = 'personal'
-            OR (order_mode = 'team' AND team_id IN (
-                SELECT team_id FROM team_members
-                WHERE user_id = ${userId} AND merge_stats_with_personal = TRUE
+    // Строит WHERE-фрагмент в зависимости от выбранного режима:
+    //   null     — личные + командные с merge_stats_with_personal = TRUE
+    //   personal — только личные заказы пользователя
+    //   team     — все командные заказы в командах пользователя
+    static #statsWhere(userId, orderMode = null) {
+        if (orderMode === 'personal') {
+            return `WHERE user_id = ${userId} AND order_mode = 'personal'`;
+        }
+        if (orderMode === 'team') {
+            return `WHERE order_mode = 'team' AND (
+                user_id = ${userId}
+                OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ${userId})
+            )`;
+        }
+        return `WHERE (
+            (user_id = ${userId} AND order_mode = 'personal')
+            OR (order_mode = 'team' AND (
+                user_id = ${userId}
+                OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ${userId})
             ))
         )`;
     }
 
-    static async getStats(userId, period = 'all') {
+    static async getStats(userId, period = 'all', orderMode = null) {
         let dateFilter = '';
-        const params = [userId];
 
         if (period === 'month') {
             dateFilter = "AND created_at >= date_trunc('month', CURRENT_DATE)";
@@ -589,7 +609,7 @@ class OrderModel {
             dateFilter = "AND created_at >= date_trunc('year', CURRENT_DATE)";
         }
 
-        const mergeFilter = this.#mergeStatsWhere(userId);
+        const statsWhere = this.#statsWhere(userId, orderMode);
 
         const query = `
             SELECT
@@ -609,18 +629,18 @@ class OrderModel {
                 MAX(final_price)                                                              AS max_order_value,
                 MIN(CASE WHEN status = 'completed' THEN final_price END)                     AS min_order_value
             FROM orders
-            WHERE user_id = $1 ${mergeFilter}
+            ${statsWhere}
             ${dateFilter}
         `;
 
-        const result = await pool.query(query, params);
+        const result = await pool.query(query);
         return result.rows[0];
     }
 
     // ─── Статистика по месяцам ────────────────────────────────────────────────────
-    static async getMonthlyStats(userId, year = null) {
+    static async getMonthlyStats(userId, year = null, orderMode = null) {
         if (!year) year = new Date().getFullYear();
-        const mergeFilter = this.#mergeStatsWhere(userId);
+        const statsWhere = this.#statsWhere(userId, orderMode);
 
         const query = `
             SELECT
@@ -631,17 +651,17 @@ class OrderModel {
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN final_price        ELSE 0 END), 0) AS revenue,
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN total_weight_grams ELSE 0 END), 0) AS filament_used
             FROM orders
-            WHERE user_id = $1 ${mergeFilter} AND EXTRACT(YEAR FROM created_at) = $2
+            ${statsWhere} AND EXTRACT(YEAR FROM created_at) = ${year}
             GROUP BY EXTRACT(MONTH FROM created_at)
             ORDER BY month
         `;
-        const result = await pool.query(query, [userId, year]);
+        const result = await pool.query(query);
         return result.rows;
     }
 
     // ─── Статистика по статусам ───────────────────────────────────────────────────
-    static async getStatusStats(userId) {
-        const mergeFilter = this.#mergeStatsWhere(userId);
+    static async getStatusStats(userId, orderMode = null) {
+        const statsWhere = this.#statsWhere(userId, orderMode);
         const query = `
             SELECT
                 status,
@@ -649,7 +669,7 @@ class OrderModel {
                 COALESCE(SUM(final_price), 0)        AS total_value,
                 COALESCE(SUM(total_weight_grams), 0) AS total_weight
             FROM orders
-            WHERE user_id = $1 ${mergeFilter}
+            ${statsWhere}
             GROUP BY status
             ORDER BY
                 CASE status
@@ -658,7 +678,7 @@ class OrderModel {
                     WHEN 'cancelled'   THEN 3
                 END
         `;
-        const result = await pool.query(query, [userId]);
+        const result = await pool.query(query);
         return result.rows;
     }
 

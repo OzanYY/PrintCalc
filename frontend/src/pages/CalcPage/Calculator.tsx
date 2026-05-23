@@ -14,7 +14,7 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog"
-import { Calculator, Package, Zap, Cpu, User, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight, FileUp, Trash2 } from 'lucide-react'
+import { Calculator, Package, Zap, Cpu, User, Users, Percent, Loader2, Tag as TagIco, CalendarDays, CheckCircle, XCircle, Plus, History, RotateCcw, X, ArrowLeftRight, FileUp, Trash2 } from 'lucide-react'
 import {
     Tooltip,
     TooltipContent,
@@ -34,6 +34,8 @@ import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
 import { printersAPI } from "@/api/printers"
 import { materialsAPI, CATEGORY_UNIT_CONFIG } from "@/api/materials"
+import { teamsAPI, type Team, type TeamMember } from "@/api/teams"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parse3mf, type Parse3mfResult } from '@/utils/parse3mf'
 
 // ─── Выбор тегов при сохранении заказа из калькулятора ────────────────────────
@@ -427,6 +429,12 @@ export default function Calc() {
     const [saveDeadline, setSaveDeadline] = useState<string | null>(null)
     const [saveTagIds, setSaveTagIds] = useState<number[]>([])
     const [isSaving, setIsSaving] = useState(false)
+    const [saveOrderMode, setSaveOrderMode] = useState<'personal' | 'team'>('personal')
+    const [myTeams, setMyTeams] = useState<Team[]>([])
+    const [saveTeamId, setSaveTeamId] = useState<number | null>(null)
+    const [saveTeamMembers, setSaveTeamMembers] = useState<TeamMember[]>([])
+    const [saveAssignedToUserId, setSaveAssignedToUserId] = useState<number | null>(null)
+    const [teamMembersLoading, setTeamMembersLoading] = useState(false)
 
     // ─── История расчётов ─────────────────────────────────────────────────────
     const [history, setHistory] = useState<HistoryEntry[]>(() => {
@@ -630,7 +638,7 @@ export default function Calc() {
     }
 
     // ─── Открытие диалога сохранения ─────────────────────────────────────────
-    const openSaveDialog = () => {
+    const openSaveDialog = async () => {
         setOrderTitle('')
         setSaveNotes('')
         setSaveClientId(null)
@@ -639,8 +647,31 @@ export default function Calc() {
         setSaveClientEmail(null)
         setSaveDeadline(null)
         setSaveTagIds([])
+        setSaveOrderMode('personal')
+        setSaveTeamId(null)
+        setSaveTeamMembers([])
+        setSaveAssignedToUserId(null)
         setSaveDialogOpen(true)
+        try {
+            const r = await teamsAPI.getMyTeams()
+            setMyTeams(r.data.data)
+        } catch {
+            // нет команд — не критично
+        }
     }
+
+    useEffect(() => {
+        if (saveTeamId === null) {
+            setSaveTeamMembers([])
+            setSaveAssignedToUserId(null)
+            return
+        }
+        setTeamMembersLoading(true)
+        teamsAPI.getMembers(saveTeamId)
+            .then(r => setSaveTeamMembers(r.data.data))
+            .catch(() => {})
+            .finally(() => setTeamMembersLoading(false))
+    }, [saveTeamId])
 
     // ─── Сохранение заказа ────────────────────────────────────────────────────
     const handleSaveOrder = async () => {
@@ -678,6 +709,9 @@ export default function Calc() {
                 ...orderData,
                 client_id: saveClientId,
                 deadline: saveDeadline,
+                order_mode: saveOrderMode,
+                team_id: saveOrderMode === 'team' ? saveTeamId : null,
+                assigned_to_user_id: saveOrderMode === 'team' ? saveAssignedToUserId : null,
             })
 
             if (saveTagIds.length > 0 && response.data.data?.id) {
@@ -2049,6 +2083,76 @@ export default function Calc() {
                             </Label>
                             <CreateTagSelector selectedIds={saveTagIds} onChange={setSaveTagIds} />
                         </div>
+
+                        {/* Тип заказа */}
+                        {myTeams.length > 0 && (
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-1.5">
+                                    <Users className="h-3.5 w-3.5" />Тип заказа
+                                </Label>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant={saveOrderMode === 'personal' ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => { setSaveOrderMode('personal'); setSaveTeamId(null) }}
+                                        disabled={isSaving}
+                                    >
+                                        Личный
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant={saveOrderMode === 'team' ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setSaveOrderMode('team')}
+                                        disabled={isSaving}
+                                    >
+                                        Командный
+                                    </Button>
+                                </div>
+
+                                {saveOrderMode === 'team' && (
+                                    <div className="space-y-2">
+                                        <Select
+                                            value={saveTeamId?.toString() ?? ''}
+                                            onValueChange={(v) => setSaveTeamId(Number(v))}
+                                            disabled={isSaving}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Выберите команду" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {myTeams.map(t => (
+                                                    <SelectItem key={t.id} value={t.id.toString()}>
+                                                        {t.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+
+                                        {saveTeamId !== null && (
+                                            <Select
+                                                value={saveAssignedToUserId?.toString() ?? 'none'}
+                                                onValueChange={(v) => setSaveAssignedToUserId(v === 'none' ? null : Number(v))}
+                                                disabled={isSaving || teamMembersLoading}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder={teamMembersLoading ? 'Загрузка...' : 'Назначить участника'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">Без назначения</SelectItem>
+                                                    {saveTeamMembers.map(m => (
+                                                        <SelectItem key={m.user_id} value={m.user_id.toString()}>
+                                                            {m.username}{m.role === 'owner' ? ' (владелец)' : m.role === 'admin' ? ' (админ)' : ''}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Примечания */}
                         <div className="space-y-2">

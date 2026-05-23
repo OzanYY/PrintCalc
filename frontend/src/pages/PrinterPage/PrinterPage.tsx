@@ -273,9 +273,12 @@ export default function PrintersPage() {
         if (ownerFilter === 'team')  return !isOwnPrinter(p)
         return true
     })
-    const ownPrinters        = printers.filter(isOwnPrinter)
-    const totalLifetimeHours = ownPrinters.reduce((s, p) => s + Number(p.print_lifetime_hours), 0)
-    const totalInvestment    = ownPrinters.reduce((s, p) => s + Number(p.purchase_price), 0)
+    const ownPrinters = printers.filter(isOwnPrinter)
+    const statsBase   = ownerFilter === 'mine' ? ownPrinters
+                      : ownerFilter === 'team' ? printers.filter(p => !isOwnPrinter(p))
+                      : printers
+    const totalLifetimeHours = statsBase.reduce((s, p) => s + Number(p.print_lifetime_hours), 0)
+    const totalInvestment    = statsBase.reduce((s, p) => s + Number(p.purchase_price), 0)
     const defaultPrinter     = ownPrinters.find(p => p.is_default)
 
     if (isLoading) {
@@ -323,9 +326,9 @@ export default function PrintersPage() {
                         <Printer className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{printers.length}</div>
+                        <div className="text-2xl font-bold">{statsBase.length}</div>
                         <p className="text-xs text-muted-foreground">
-                            {printers.filter(p => p.type === 'FDM').length} FDM · {printers.filter(p => p.type === 'SLA').length} SLA
+                            {statsBase.filter(p => p.type === 'FDM').length} FDM · {statsBase.filter(p => p.type === 'SLA').length} SLA
                         </p>
                     </CardContent>
                 </Card>
@@ -337,7 +340,7 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{totalLifetimeHours} ч</div>
                         <p className="text-xs text-muted-foreground">
-                            Среднее: {ownPrinters.length ? Math.round(totalLifetimeHours / ownPrinters.length) : 0} ч/принтер
+                            Среднее: {statsBase.length ? Math.round(totalLifetimeHours / statsBase.length) : 0} ч/принтер
                         </p>
                     </CardContent>
                 </Card>
@@ -349,7 +352,7 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{totalInvestment.toLocaleString()} ₽</div>
                         <p className="text-xs text-muted-foreground">
-                            Средняя: {ownPrinters.length ? Math.round(totalInvestment / ownPrinters.length).toLocaleString() : 0} ₽
+                            Средняя: {statsBase.length ? Math.round(totalInvestment / statsBase.length).toLocaleString() : 0} ₽
                         </p>
                     </CardContent>
                 </Card>

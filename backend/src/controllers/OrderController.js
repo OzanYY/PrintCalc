@@ -133,8 +133,8 @@ class OrderController {
             const userId = requireAuth(req, res);
             if (!userId) return;
 
-            const { period = 'all' } = req.query;
-            const result = await OrderService.getOrderStats(userId, period);
+            const { period = 'all', order_mode = null } = req.query;
+            const result = await OrderService.getOrderStats(userId, period, order_mode || null);
 
             res.status(200).json({ success: true, data: result.data, period: result.period });
         } catch (error) {

@@ -302,10 +302,10 @@ export const ordersAPI = {
   /**
    * Сводная статистика. period: 'all' | 'week' | 'month' | 'year'
    */
-  getStats: (period?: "all" | "week" | "month" | "year") =>
+  getStats: (period?: "all" | "week" | "month" | "year", order_mode?: "personal" | "team" | null) =>
     api.get<{ success: boolean; data: OrderStatsResponse; period: string }>(
       "/orders/stats",
-      { params: { period } },
+      { params: { period, order_mode: order_mode ?? undefined } },
     ),
 
   /**

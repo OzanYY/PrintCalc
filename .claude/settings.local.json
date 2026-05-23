@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Projects\\\\PrintCacl\\\\backend\" -Recurse -Filter \"*order*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

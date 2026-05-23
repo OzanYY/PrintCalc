@@ -234,12 +234,12 @@ class OrderService {
     }
 
     // ─── Статистика ───────────────────────────────────────────────────────────────
-    static async getOrderStats(userId, period = 'all') {
+    static async getOrderStats(userId, period = 'all', orderMode = null) {
         try {
             const [stats, statusStats, monthlyStats] = await Promise.all([
-                OrderModel.getStats(userId, period),
-                OrderModel.getStatusStats(userId),
-                OrderModel.getMonthlyStats(userId)
+                OrderModel.getStats(userId, period, orderMode),
+                OrderModel.getStatusStats(userId, orderMode),
+                OrderModel.getMonthlyStats(userId, null, orderMode),
             ]);
 
             const analytics = {

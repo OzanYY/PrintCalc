@@ -152,7 +152,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     async (period: 'all' | 'week' | 'month' | 'year' = 'all') => {
       setIsStatsLoading(true);
       try {
-        const res = await ordersAPI.getStats(period);
+        const res = await ordersAPI.getStats(period, orderModeFilter);
         setStats(res.data.data);
       } catch (err: any) {
         const msg = err?.response?.data?.message ?? err?.message ?? 'Ошибка загрузки статистики';
@@ -161,7 +161,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
         setIsStatsLoading(false);
       }
     },
-    [],
+    [orderModeFilter],
   );
 
   // ─── Оптимистичное обновление списка ───────────────────────────────────────
@@ -384,7 +384,7 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     if (autoFetch) {
       fetchStats();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orderModeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => {

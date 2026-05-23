@@ -400,17 +400,20 @@ export default function MaterialsPage() {
         if (ownerFilter === 'team') return !isOwnMaterial(m)
         return true
     })
-    const prices     = materials.map(m => Number(m.price_per_kg))
+    const statsBase = ownerFilter === 'mine' ? materials.filter(isOwnMaterial)
+                    : ownerFilter === 'team' ? materials.filter(m => !isOwnMaterial(m))
+                    : materials
+    const prices     = statsBase.map(m => Number(m.price_per_kg))
     const totalPrice = prices.reduce((s, p) => s + p, 0)
-    const avgPrice   = materials.length ? Math.round(totalPrice / materials.length) : 0
+    const avgPrice   = statsBase.length ? Math.round(totalPrice / statsBase.length) : 0
     const minPrice   = prices.length ? Math.min(...prices) : 0
     const maxPrice   = prices.length ? Math.max(...prices) : 0
-    const diameters  = [...new Set(materials.filter(m => m.diameter).map(m => m.diameter))]
+    const diameters  = [...new Set(statsBase.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
-    const totalQuantity = materials.reduce((s, m) => s + (m.quantity ?? 1), 0)
-    const totalStockGrams = materials.reduce((s, m) => s + (Number(m.stock_grams) || 0), 0)
-    const totalReservedGrams = materials.reduce((s, m) => s + (Number(m.reserved_grams) || 0), 0)
-    const lowStockMaterials = materials.filter(m => {
+    const totalQuantity = statsBase.reduce((s, m) => s + (m.quantity ?? 1), 0)
+    const totalStockGrams = statsBase.reduce((s, m) => s + (Number(m.stock_grams) || 0), 0)
+    const totalReservedGrams = statsBase.reduce((s, m) => s + (Number(m.reserved_grams) || 0), 0)
+    const lowStockMaterials = statsBase.filter(m => {
         const available = Number(m.stock_grams) - Number(m.reserved_grams)
         return available < (Number(m.weight_per_spool_grams) || 1000) * 0.2 // меньше 20% катушки
     })
@@ -459,12 +462,12 @@ export default function MaterialsPage() {
                         <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{materials.length}</div>
+                        <div className="text-2xl font-bold">{statsBase.length}</div>
                         <p className="text-xs text-muted-foreground">
-                            {materials.filter(m => m.category === 'filament').length} фил ·{' '}
-                            {materials.filter(m => m.category === 'resin').length} смол ·{' '}
-                            {materials.filter(m => m.category === 'powder').length} пор ·{' '}
-                            {materials.filter(m => m.category === 'other').length} др
+                            {statsBase.filter(m => m.category === 'filament').length} фил ·{' '}
+                            {statsBase.filter(m => m.category === 'resin').length} смол ·{' '}
+                            {statsBase.filter(m => m.category === 'powder').length} пор ·{' '}
+                            {statsBase.filter(m => m.category === 'other').length} др
                         </p>
                     </CardContent>
                 </Card>
