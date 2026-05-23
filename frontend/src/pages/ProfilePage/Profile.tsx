@@ -11,6 +11,7 @@ import {
     DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { AvatarCropDialog } from '@/components/AvatarCropDialog';
 import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -88,13 +89,23 @@ export default function UserPage() {
 
     // ── Аватар ────────────────────────────────────────────────────────────────
     const avatarInputRef = useRef<HTMLInputElement>(null);
+    const [cropSrc, setCropSrc] = useState<string | null>(null);
     const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setCropSrc(reader.result as string);
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    };
+
+    const handleCropConfirm = async (blob: Blob) => {
         setIsUploadingAvatar(true);
+        setCropSrc(null);
         try {
+            const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
             const res = await authAPI.uploadAvatar(file);
             setUser(res.data.user);
             toast.success('Аватар обновлён');
@@ -102,7 +113,6 @@ export default function UserPage() {
             toast.error('Не удалось загрузить аватар');
         } finally {
             setIsUploadingAvatar(false);
-            e.target.value = '';
         }
     };
 
@@ -274,7 +284,12 @@ export default function UserPage() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 className="hidden"
-                onChange={handleAvatarUpload}
+                onChange={handleFileSelected}
+            />
+            <AvatarCropDialog
+                imageSrc={cropSrc}
+                onClose={() => setCropSrc(null)}
+                onConfirm={handleCropConfirm}
             />
             {/* Шапка */}
             <div className="flex justify-between items-center mb-8">
