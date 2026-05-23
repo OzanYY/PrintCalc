@@ -6,6 +6,8 @@ export interface Parse3mfResult {
   totalWeight?: number     // г (всегда total из слайсера)
   printTime?: number       // мин
   slicer?: string
+  /** true — файл опознан как проект OrcaSlicer/BambuStudio без данных нарезки */
+  isUnslicedProject?: boolean
 }
 
 // "1h 30m 15s" / "1h30m" / "90m 5s"
@@ -53,19 +55,80 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
   // ── Bambu Studio / OrcaSlicer ──────────────────────────────────────────────
   const sliceFile = zip.file('Metadata/slice_info.config')
   if (sliceFile) {
-    try {
-      const json = JSON.parse(await sliceFile.async('text'))
-      const plate = Array.isArray(json.plate) ? json.plate[0] : undefined
-      if (plate) {
-        if (typeof plate.weight === 'number' && plate.weight > 0)
-          result.totalWeight = plate.weight
-        if (typeof plate.support_weight === 'number' && plate.support_weight >= 0)
-          result.supportWeight = plate.support_weight
-        if (typeof plate.prediction === 'number' && plate.prediction > 0)
-          result.printTime = Math.round(plate.prediction / 60)
-        result.slicer = 'Bambu Studio / OrcaSlicer'
+    const rawText = await sliceFile.async('text')
+
+    // Новые версии OrcaSlicer сохраняют slice_info.config как XML, не JSON
+    const isXml = rawText.trimStart().startsWith('<')
+
+    if (!isXml) {
+      // Старый формат BambuStudio: JSON
+      try {
+        const json = JSON.parse(rawText)
+        // plate может быть массивом или объектом в разных версиях
+        const plate = Array.isArray(json.plate) ? json.plate[0] : (json.plate ?? undefined)
+        if (plate) {
+          const w = parseFloat(plate.weight)
+          if (!isNaN(w) && w > 0) result.totalWeight = w
+
+          const sw = parseFloat(plate.support_weight)
+          if (!isNaN(sw) && sw >= 0) result.supportWeight = sw
+
+          const pred = parseFloat(plate.prediction)
+          if (!isNaN(pred) && pred > 0) result.printTime = Math.round(pred / 60)
+
+          if (result.totalWeight === undefined && Array.isArray(plate.filament)) {
+            const total = (plate.filament as any[]).reduce((sum, f) => {
+              const g = parseFloat(f.used_g)
+              return sum + (isNaN(g) ? 0 : g)
+            }, 0)
+            if (total > 0) result.totalWeight = parseFloat(total.toFixed(2))
+          }
+
+          result.slicer = 'Bambu Studio / OrcaSlicer'
+        }
+      } catch { /* ignore */ }
+    } else {
+      // Новый XML формат OrcaSlicer 2.x
+      try {
+        const doc = new DOMParser().parseFromString(rawText, 'text/xml')
+        const getMeta = (parent: Element, key: string) =>
+          parent.querySelector(`metadata[key="${key}"]`)?.getAttribute('value') ?? undefined
+
+        let foundData = false
+        doc.querySelectorAll('plate').forEach(plate => {
+          const w = parseFloat(getMeta(plate, 'weight') ?? '')
+          if (!isNaN(w) && w > 0) { result.totalWeight = w; foundData = true }
+
+          const sw = parseFloat(getMeta(plate, 'support_weight') ?? '')
+          if (!isNaN(sw) && sw >= 0) { result.supportWeight = sw; foundData = true }
+
+          const pred = parseFloat(getMeta(plate, 'prediction') ?? '')
+          if (!isNaN(pred) && pred > 0) { result.printTime = Math.round(pred / 60); foundData = true }
+
+          if (!foundData) {
+            // Суммируем из filament элементов
+            let total = 0
+            plate.querySelectorAll('filament').forEach(f => {
+              const g = parseFloat(f.getAttribute('used_g') ?? '')
+              if (!isNaN(g)) total += g
+            })
+            if (total > 0) { result.totalWeight = parseFloat(total.toFixed(2)); foundData = true }
+          }
+        })
+
+        if (foundData) result.slicer = 'OrcaSlicer'
+      } catch { /* ignore */ }
+
+      // Если XML есть, но данных нарезки нет — это проект без нарезки
+      if (result.totalWeight === undefined && result.printTime === undefined) {
+        const hasProjectConfig = !!zip.file('Metadata/project_settings.config')
+        const hasGcode = Object.keys(zip.files).some(n => /\.gcode$/i.test(n))
+        if (hasProjectConfig && !hasGcode) {
+          result.isUnslicedProject = true
+          result.slicer = 'OrcaSlicer'
+        }
       }
-    } catch { /* ignore */ }
+    }
   }
 
   // ── GCode комментарии (PrusaSlicer, SuperSlicer, Cura) ────────────────────
@@ -74,9 +137,18 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
     for (const name of gcodeNames.slice(0, 2)) {
       try {
         const buf = await zip.file(name)!.async('uint8array')
-        // Читаем только первые 64 КБ — комментарии всегда в начале gcode
-        const chunk = new TextDecoder('utf-8', { fatal: false }).decode(buf.slice(0, 65536))
-        const g = parseGcode(chunk)
+        const dec = new TextDecoder('utf-8', { fatal: false })
+        // Начало файла (PrusaSlicer, SuperSlicer, Cura)
+        const head = dec.decode(buf.slice(0, 65536))
+        const g = parseGcode(head)
+        // Конец файла (OrcaSlicer, BambuStudio размещают метаданные в хвосте)
+        if (!g.totalWeight || !g.printTime) {
+          const tail = dec.decode(buf.slice(Math.max(0, buf.length - 65536)))
+          const gt = parseGcode(tail)
+          if (!g.totalWeight && gt.totalWeight) g.totalWeight = gt.totalWeight
+          if (!g.supportWeight && gt.supportWeight) g.supportWeight = gt.supportWeight
+          if (!g.printTime && gt.printTime) g.printTime = gt.printTime
+        }
         if (!result.totalWeight && g.totalWeight) result.totalWeight = g.totalWeight
         if (!result.supportWeight && g.supportWeight) result.supportWeight = g.supportWeight
         if (!result.printTime && g.printTime) result.printTime = g.printTime

@@ -446,6 +446,8 @@ export default function Calc() {
     const [applyModelWeight, setApplyModelWeight] = useState(true)
     const [applySupportWeight, setApplySupportWeight] = useState(true)
     const [applyPrintTime, setApplyPrintTime] = useState(true)
+    // Редактируемый вес модели для режима "нет поддержек в файле"
+    const [import3mfModelWEdit, setImport3mfModelWEdit] = useState(0)
 
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
@@ -781,11 +783,19 @@ export default function Calc() {
         try {
             const parsed = await parse3mf(file)
             if (parsed.modelWeight === undefined && parsed.printTime === undefined) {
-                toast.error('Не удалось извлечь данные из файла')
+                if (parsed.isUnslicedProject) {
+                    toast.error(
+                        'Файл не содержит данных нарезки. В OrcaSlicer нарежьте модель, затем: Файл → Экспорт → Экспортировать нарезанную плиту',
+                        { duration: 8000 }
+                    )
+                } else {
+                    toast.error('Не удалось извлечь данные из файла')
+                }
                 return
             }
             setImport3mfFileName(file.name)
             setImport3mfResult(parsed)
+            setImport3mfModelWEdit(parsed.modelWeight ?? 0)
             setApplyModelWeight(parsed.modelWeight !== undefined)
             setApplySupportWeight(parsed.supportWeight !== undefined)
             setApplyPrintTime(parsed.printTime !== undefined)
@@ -799,10 +809,19 @@ export default function Calc() {
 
     const confirmImport3mf = () => {
         if (!import3mfResult) return
-        if (applyModelWeight && import3mfResult.modelWeight !== undefined)
-            handleMaterialsChange('modelWeight', import3mfResult.modelWeight)
-        if (applySupportWeight && import3mfResult.supportWeight !== undefined)
-            handleMaterialsChange('supportWeight', import3mfResult.supportWeight)
+        const derivedMode = import3mfResult.totalWeight !== undefined && import3mfResult.supportWeight === undefined
+        if (derivedMode) {
+            if (applyModelWeight) handleMaterialsChange('modelWeight', import3mfModelWEdit)
+            if (applySupportWeight) {
+                const derived = Math.max(0, parseFloat((import3mfResult.totalWeight! - import3mfModelWEdit).toFixed(2)))
+                handleMaterialsChange('supportWeight', derived)
+            }
+        } else {
+            if (applyModelWeight && import3mfResult.modelWeight !== undefined)
+                handleMaterialsChange('modelWeight', import3mfResult.modelWeight)
+            if (applySupportWeight && import3mfResult.supportWeight !== undefined)
+                handleMaterialsChange('supportWeight', import3mfResult.supportWeight)
+        }
         if (applyPrintTime && import3mfResult.printTime !== undefined)
             handleElectricityChange('printTime', import3mfResult.printTime)
         setImport3mfOpen(false)
@@ -1942,57 +1961,94 @@ export default function Calc() {
                                 <Badge variant="secondary" className="text-xs">{import3mfResult.slicer}</Badge>
                             )}
 
-                            <div className="space-y-3 rounded-md border p-3">
-                                {import3mfResult.modelWeight !== undefined && (
-                                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={applyModelWeight}
-                                            onChange={e => setApplyModelWeight(e.target.checked)}
-                                            className="accent-primary h-4 w-4"
-                                        />
-                                        <span className="text-sm flex-1">Вес модели</span>
-                                        <Badge variant="outline" className="font-mono tabular-nums">
-                                            {import3mfResult.modelWeight} г
-                                        </Badge>
-                                    </label>
-                                )}
-                                {import3mfResult.supportWeight !== undefined && (
-                                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={applySupportWeight}
-                                            onChange={e => setApplySupportWeight(e.target.checked)}
-                                            className="accent-primary h-4 w-4"
-                                        />
-                                        <span className="text-sm flex-1">Вес поддержек</span>
-                                        <Badge variant="outline" className="font-mono tabular-nums">
-                                            {import3mfResult.supportWeight} г
-                                        </Badge>
-                                    </label>
-                                )}
-                                {import3mfResult.printTime !== undefined && (
-                                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={applyPrintTime}
-                                            onChange={e => setApplyPrintTime(e.target.checked)}
-                                            className="accent-primary h-4 w-4"
-                                        />
-                                        <span className="text-sm flex-1">Время печати</span>
-                                        <Badge variant="outline" className="font-mono tabular-nums">
-                                            {import3mfResult.printTime} мин
-                                        </Badge>
-                                    </label>
-                                )}
-                            </div>
+                            {(() => {
+                                const derivedMode = import3mfResult.totalWeight !== undefined && import3mfResult.supportWeight === undefined
+                                const derivedSupport = derivedMode
+                                    ? Math.max(0, parseFloat((import3mfResult.totalWeight! - import3mfModelWEdit).toFixed(2)))
+                                    : undefined
+                                return (
+                                    <>
+                                        <div className="space-y-3 rounded-md border p-3">
+                                            {import3mfResult.modelWeight !== undefined && (
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applyModelWeight}
+                                                        onChange={e => setApplyModelWeight(e.target.checked)}
+                                                        className="accent-primary h-4 w-4 shrink-0"
+                                                    />
+                                                    <span className="text-sm flex-1">Вес модели</span>
+                                                    {derivedMode ? (
+                                                        <div className="relative w-28">
+                                                            <Input
+                                                                type="number"
+                                                                min={0}
+                                                                max={import3mfResult.totalWeight}
+                                                                step={0.1}
+                                                                value={import3mfModelWEdit}
+                                                                onChange={e => setImport3mfModelWEdit(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                                className="h-7 text-sm pr-6 font-mono"
+                                                            />
+                                                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">г</span>
+                                                        </div>
+                                                    ) : (
+                                                        <Badge variant="outline" className="font-mono tabular-nums">
+                                                            {import3mfResult.modelWeight} г
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {import3mfResult.supportWeight !== undefined ? (
+                                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applySupportWeight}
+                                                        onChange={e => setApplySupportWeight(e.target.checked)}
+                                                        className="accent-primary h-4 w-4"
+                                                    />
+                                                    <span className="text-sm flex-1">Вес поддержек</span>
+                                                    <Badge variant="outline" className="font-mono tabular-nums">
+                                                        {import3mfResult.supportWeight} г
+                                                    </Badge>
+                                                </label>
+                                            ) : derivedMode ? (
+                                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applySupportWeight}
+                                                        onChange={e => setApplySupportWeight(e.target.checked)}
+                                                        className="accent-primary h-4 w-4"
+                                                    />
+                                                    <span className="text-sm flex-1 text-muted-foreground">Вес поддержек <span className="text-xs">(вычислен)</span></span>
+                                                    <Badge variant="outline" className="font-mono tabular-nums text-muted-foreground">
+                                                        {derivedSupport} г
+                                                    </Badge>
+                                                </label>
+                                            ) : null}
+                                            {import3mfResult.printTime !== undefined && (
+                                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applyPrintTime}
+                                                        onChange={e => setApplyPrintTime(e.target.checked)}
+                                                        className="accent-primary h-4 w-4"
+                                                    />
+                                                    <span className="text-sm flex-1">Время печати</span>
+                                                    <Badge variant="outline" className="font-mono tabular-nums">
+                                                        {import3mfResult.printTime} мин
+                                                    </Badge>
+                                                </label>
+                                            )}
+                                        </div>
 
-                            {import3mfResult.totalWeight !== undefined && import3mfResult.supportWeight === undefined && (
-                                <p className="text-xs text-muted-foreground">
-                                    Суммарный вес модели и поддержек: {import3mfResult.totalWeight} г
-                                    <br />Поддержки не найдены в файле — заполнится поле «Вес модели»
-                                </p>
-                            )}
+                                        {derivedMode && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Общий вес: {import3mfResult.totalWeight} г. Поддержки не найдены в файле — введите вес модели, вес поддержек вычислится автоматически.
+                                            </p>
+                                        )}
+                                    </>
+                                )
+                            })()}
                         </div>
                     )}
 
