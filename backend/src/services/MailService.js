@@ -16,16 +16,19 @@ class MailService {
     async sendActivationMail(to, link) {
         try {
             await this.transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"PrintCalc" <${process.env.SMTP_USER}>`,
                 to,
                 subject: 'Активация аккаунта PrintCalc',
-                html: `
-                    <h2>Активация аккаунта PrintCalc</h2>
+                text: `Активация аккаунта PrintCalc\n\nДля завершения регистрации перейдите по ссылке:\n${link}\n\nЕсли вы не активируете аккаунт в течение 14 дней, он будет удалён автоматически.\nЕсли вы не регистрировались на PrintCalc, проигнорируйте это письмо.`,
+                html: `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                    <h2 style="color:#111">Активация аккаунта PrintCalc</h2>
                     <p>Для завершения регистрации перейдите по ссылке ниже.<br>
                     Если вы не активируете аккаунт в течение 14 дней, он будет удалён автоматически.</p>
-                    <p><a href="${link}">Активировать аккаунт</a></p>
-                    <p>Если вы не регистрировались на PrintCalc, проигнорируйте это письмо.</p>
-                `,
+                    <p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Активировать аккаунт</a></p>
+                    <p style="color:#666;font-size:13px">Если кнопка не работает, скопируйте эту ссылку в браузер:<br><a href="${link}">${link}</a></p>
+                    <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+                    <p style="color:#999;font-size:12px">Если вы не регистрировались на PrintCalc, проигнорируйте это письмо.</p>
+                </body></html>`,
             });
             console.log(`📧 Activation email sent to ${to}`);
         } catch (error) {
@@ -38,15 +41,18 @@ class MailService {
         try {
             const resetLink = `${process.env.CLIENT_URL}/reset-password?token=${token}`;
             await this.transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"PrintCalc" <${process.env.SMTP_USER}>`,
                 to,
                 subject: 'Сброс пароля PrintCalc',
-                html: `
-                    <h2>Сброс пароля PrintCalc</h2>
-                    <p>Для сброса пароля перейдите по ссылке ниже. Ссылка действительна 1 час.</p>
-                    <p><a href="${resetLink}">Сбросить пароль</a></p>
-                    <p>Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
-                `,
+                text: `Сброс пароля PrintCalc\n\nДля сброса пароля перейдите по ссылке (действительна 1 час):\n${resetLink}\n\nЕсли вы не запрашивали сброс пароля, проигнорируйте это письмо.`,
+                html: `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                    <h2 style="color:#111">Сброс пароля PrintCalc</h2>
+                    <p>Для сброса пароля перейдите по ссылке ниже. Ссылка действительна <strong>1 час</strong>.</p>
+                    <p><a href="${resetLink}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Сбросить пароль</a></p>
+                    <p style="color:#666;font-size:13px">Если кнопка не работает, скопируйте эту ссылку в браузер:<br><a href="${resetLink}">${resetLink}</a></p>
+                    <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+                    <p style="color:#999;font-size:12px">Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
+                </body></html>`,
             });
             console.log(`📧 Password reset email sent to ${to}`);
         } catch (error) {
@@ -59,15 +65,17 @@ class MailService {
         try {
             const activationUrl = `${process.env.API_URL}/api/auth/activate/${activationLink}`;
             await this.transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"PrintCalc" <${process.env.SMTP_USER}>`,
                 to,
                 subject: 'Аккаунт PrintCalc будет удалён завтра',
-                html: `
-                    <h2>Аккаунт PrintCalc будет удалён завтра</h2>
-                    <p>Здравствуйте, ${username}! Ваш аккаунт не был активирован и будет удалён завтра.
+                text: `Здравствуйте, ${username}!\n\nВаш аккаунт PrintCalc не был активирован и будет удалён завтра.\nЧтобы сохранить его, перейдите по ссылке:\n${activationUrl}`,
+                html: `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                    <h2 style="color:#dc2626">Аккаунт PrintCalc будет удалён завтра</h2>
+                    <p>Здравствуйте, <strong>${username}</strong>! Ваш аккаунт не был активирован и будет удалён завтра.
                     Чтобы сохранить его, перейдите по ссылке ниже.</p>
-                    <p><a href="${activationUrl}">Активировать аккаунт</a></p>
-                `,
+                    <p><a href="${activationUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Активировать аккаунт</a></p>
+                    <p style="color:#666;font-size:13px">Если кнопка не работает, скопируйте эту ссылку в браузер:<br><a href="${activationUrl}">${activationUrl}</a></p>
+                </body></html>`,
             });
             console.log(`📧 Deletion warning email sent to ${to}`);
         } catch (error) {
@@ -78,15 +86,16 @@ class MailService {
     async sendWelcomeMail(to, username) {
         try {
             await this.transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"PrintCalc" <${process.env.SMTP_USER}>`,
                 to,
                 subject: 'Добро пожаловать в PrintCalc',
-                html: `
-                    <h2>Добро пожаловать в PrintCalc!</h2>
-                    <p>Здравствуйте, ${username}! Ваш аккаунт успешно активирован.
+                text: `Добро пожаловать в PrintCalc!\n\nЗдравствуйте, ${username}! Ваш аккаунт успешно активирован. Теперь вам доступны все функции сервиса.\n${process.env.CLIENT_URL}`,
+                html: `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                    <h2 style="color:#16a34a">Добро пожаловать в PrintCalc!</h2>
+                    <p>Здравствуйте, <strong>${username}</strong>! Ваш аккаунт успешно активирован.
                     Теперь вам доступны все функции сервиса.</p>
-                    <p><a href="${process.env.CLIENT_URL}">Перейти в PrintCalc</a></p>
-                `,
+                    <p><a href="${process.env.CLIENT_URL}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Перейти в PrintCalc</a></p>
+                </body></html>`,
             });
             console.log(`📧 Welcome email sent to ${to}`);
         } catch (error) {

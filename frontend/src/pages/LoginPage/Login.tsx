@@ -146,9 +146,12 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
             const { confirmPassword, ...registerData } = formData;
             const response = (await authAPI.register(registerData)).data;
             if (response.user) setUser(response.user);
-            setSuccessMessage('Регистрация успешна!');
             setFormData({ name: '', email: '', password: '', confirmPassword: '' });
-            setTimeout(() => navigate('/profile'), 1000);
+            toast.success('Письмо с активацией отправлено!', {
+                description: `Проверьте почту ${registerData.email}. Если письмо не пришло — загляните в папку «Спам».`,
+                duration: 7000,
+            });
+            setTimeout(() => navigate('/profile'), 1500);
         } catch (error: any) {
             console.error('Ошибка регистрации:', error);
             if (error.response) {

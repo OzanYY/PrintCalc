@@ -280,10 +280,15 @@ export default function UserPage() {
 
             {/* Баннер: аккаунт не активирован */}
             {!user?.is_activated && (
-                <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/30">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        Аккаунт не активирован. Проверьте почту или запросите новое письмо.
-                    </p>
+                <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/30">
+                    <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                            Аккаунт не активирован
+                        </p>
+                        <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                            Проверьте почту. Если письма нет — загляните в папку <span className="font-semibold">«Спам»</span>, оно могло попасть туда.
+                        </p>
+                    </div>
                     <Button
                         size="sm"
                         variant="outline"
