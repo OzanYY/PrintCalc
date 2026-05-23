@@ -64,10 +64,28 @@ class PrinterModel {
         return result.rows[0];
     }
 
-    // ─── Список принтеров пользователя ───────────────────────────────────────
+    // ─── Список принтеров пользователя и участников его команд ─────────────
     static async findByUser(userId) {
         const result = await pool.query(
-            'SELECT * FROM printers WHERE user_id = $1 ORDER BY is_default DESC, created_at DESC',
+            `SELECT p.*,
+                    u.username AS owner_username,
+                    CASE WHEN p.user_id != $1 THEN (
+                        SELECT t.name FROM teams t
+                        JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
+                        JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = p.user_id
+                        LIMIT 1
+                    ) ELSE NULL END AS team_name
+             FROM printers p
+             JOIN users u ON u.id = p.user_id
+             WHERE p.user_id = $1
+                OR p.user_id IN (
+                    SELECT DISTINCT tm_other.user_id
+                    FROM team_members tm_self
+                    JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
+                    WHERE tm_self.user_id = $1
+                      AND tm_other.user_id != $1
+                )
+             ORDER BY p.is_default DESC, p.created_at DESC`,
             [userId]
         );
         return result.rows;

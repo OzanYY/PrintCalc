@@ -100,6 +100,8 @@ export interface Material {
     settings: Record<string, string>
     created_at: string
     updated_at: string
+    owner_username?: string
+    team_name?: string | null
 }
 
 export interface CreateMaterialData {

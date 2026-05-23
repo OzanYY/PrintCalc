@@ -13,6 +13,8 @@ export interface PresetOption {
     sublabel?: string      // доп. инфо (бренд, тип)
     color?: string         // цвет материала (hex)
     isDefault?: boolean
+    ownerName?: string     // имя владельца (только для командных ресурсов)
+    teamName?: string | null // название команды
 }
 
 interface PresetSmartInputProps
@@ -175,7 +177,7 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                     <div
                         className={cn(
                             'file:text-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs',
-                            'md:text-sm flex items-center overflow-hidden',
+                            'md:text-sm flex items-center gap-1.5 overflow-hidden',
                             paddingRight,
                             className
                         )}
@@ -183,9 +185,14 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                         <span className="text-sm font-medium text-foreground truncate leading-none">
                             {activePreset!.label}
                         </span>
-                        <span className="ml-1.5 text-sm text-muted-foreground shrink-0 leading-none">
+                        <span className="text-sm text-muted-foreground shrink-0 leading-none">
                             {formatDisplayValue(activePreset!.value)}{unit ? ` ${unit}` : ''}
                         </span>
+                        {activePreset!.teamName && (
+                            <span className="shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium leading-none bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                {activePreset!.teamName}
+                            </span>
+                        )}
                     </div>
                 ) : (
                     <input
@@ -313,11 +320,21 @@ export const PresetSmartInput = React.forwardRef<HTMLInputElement, PresetSmartIn
                                         )}
 
                                         <span className="flex-1 min-w-0">
-                                            <span className="flex items-center gap-1.5 truncate font-medium leading-tight">
+                                            <span className="flex items-center gap-1 flex-wrap font-medium leading-tight">
                                                 <span className="truncate">{preset.label}</span>
                                                 {preset.isDefault && (
                                                     <span className="shrink-0 inline-flex items-center rounded px-1 py-0 text-[10px] font-medium leading-4 bg-secondary text-secondary-foreground border border-border">
                                                         основной
+                                                    </span>
+                                                )}
+                                                {preset.ownerName && (
+                                                    <span className="shrink-0 inline-flex items-center rounded px-1 py-0 text-[10px] font-medium leading-4 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                                        {preset.ownerName}
+                                                    </span>
+                                                )}
+                                                {preset.teamName && (
+                                                    <span className="shrink-0 inline-flex items-center rounded px-1 py-0 text-[10px] font-medium leading-4 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                        {preset.teamName}
                                                     </span>
                                                 )}
                                             </span>

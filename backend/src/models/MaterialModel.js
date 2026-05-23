@@ -145,18 +145,37 @@ class MaterialModel {
         return result.rows[0];
     }
 
-    // Получение всех материалов пользователя
+    // Получение всех материалов пользователя и участников его команд
     static async findByUser(userId, category = null) {
-        let query = 'SELECT * FROM materials WHERE user_id = $1';
+        const teamSubquery = `
+            SELECT DISTINCT tm_other.user_id
+            FROM team_members tm_self
+            JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
+            WHERE tm_self.user_id = $1
+              AND tm_other.user_id != $1
+        `;
+
+        let query = `
+            SELECT m.*,
+                   u.username AS owner_username,
+                   CASE WHEN m.user_id != $1 THEN (
+                       SELECT t.name FROM teams t
+                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
+                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       LIMIT 1
+                   ) ELSE NULL END AS team_name
+            FROM materials m
+            JOIN users u ON u.id = m.user_id
+            WHERE (m.user_id = $1 OR m.user_id IN (${teamSubquery}))`;
         const params = [userId];
-        
+
         if (category) {
-            query += ' AND category = $2';
+            query += ' AND m.category = $2';
             params.push(category);
         }
-        
-        query += ' ORDER BY is_default DESC, created_at DESC';
-        
+
+        query += ' ORDER BY m.is_default DESC, m.created_at DESC';
+
         const result = await pool.query(query, params);
         return result.rows;
     }
@@ -184,9 +203,29 @@ class MaterialModel {
         return result.rows[0] || null;
     }
 
-    // Получение материалов по категории
+    // Получение материалов по категории (включая командные)
     static async findByCategory(userId, category) {
-        const query = 'SELECT * FROM materials WHERE user_id = $1 AND category = $2 ORDER BY type, name';
+        const query = `
+            SELECT m.*,
+                   u.username AS owner_username,
+                   CASE WHEN m.user_id != $1 THEN (
+                       SELECT t.name FROM teams t
+                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
+                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       LIMIT 1
+                   ) ELSE NULL END AS team_name
+            FROM materials m
+            JOIN users u ON u.id = m.user_id
+            WHERE (m.user_id = $1
+               OR m.user_id IN (
+                   SELECT DISTINCT tm_other.user_id
+                   FROM team_members tm_self
+                   JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
+                   WHERE tm_self.user_id = $1 AND tm_other.user_id != $1
+               ))
+              AND m.category = $2
+            ORDER BY m.type, m.name
+        `;
         const result = await pool.query(query, [userId, category]);
         return result.rows;
     }
@@ -329,13 +368,28 @@ class MaterialModel {
         return types[category] || [];
     }
 
-    // Поиск материалов по названию или бренду
+    // Поиск материалов по названию или бренду (включая командные)
     static async search(userId, searchTerm) {
         const query = `
-            SELECT * FROM materials 
-            WHERE user_id = $1 
-            AND (name ILIKE $2 OR brand ILIKE $2 OR type ILIKE $2)
-            ORDER BY is_default DESC, created_at DESC
+            SELECT m.*,
+                   u.username AS owner_username,
+                   CASE WHEN m.user_id != $1 THEN (
+                       SELECT t.name FROM teams t
+                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
+                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       LIMIT 1
+                   ) ELSE NULL END AS team_name
+            FROM materials m
+            JOIN users u ON u.id = m.user_id
+            WHERE (m.user_id = $1
+               OR m.user_id IN (
+                   SELECT DISTINCT tm_other.user_id
+                   FROM team_members tm_self
+                   JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
+                   WHERE tm_self.user_id = $1 AND tm_other.user_id != $1
+               ))
+              AND (m.name ILIKE $2 OR m.brand ILIKE $2 OR m.type ILIKE $2)
+            ORDER BY m.is_default DESC, m.created_at DESC
         `;
         const result = await pool.query(query, [userId, `%${searchTerm}%`]);
         return result.rows;

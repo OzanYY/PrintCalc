@@ -306,6 +306,8 @@ export default function Calc() {
                     value: Number(p.power_consumption),
                     sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
+                    ownerName: p.team_name ? p.owner_username : undefined,
+                    teamName: p.team_name ?? undefined,
                 })),
                 cost: printers.map(p => ({
                     id: p.id,
@@ -313,6 +315,8 @@ export default function Calc() {
                     value: Number(p.purchase_price),
                     sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
+                    ownerName: p.team_name ? p.owner_username : undefined,
+                    teamName: p.team_name ?? undefined,
                 })),
                 hours: printers.map(p => ({
                     id: p.id,
@@ -320,6 +324,8 @@ export default function Calc() {
                     value: Number(p.print_lifetime_hours),
                     sublabel: p.model ?? p.type,
                     isDefault: p.is_default,
+                    ownerName: p.team_name ? p.owner_username : undefined,
+                    teamName: p.team_name ?? undefined,
                 })),
             })
 
@@ -332,6 +338,8 @@ export default function Calc() {
                 sublabel: [m.brand, m.type.toUpperCase()].filter(Boolean).join(' · '),
                 color: m.color ?? '',
                 isDefault: m.is_default,
+                ownerName: m.team_name ? m.owner_username : undefined,
+                teamName: m.team_name ?? undefined,
             })))
 
             // ── Автоприменение дефолтных пресетов при первом входе ────────────
