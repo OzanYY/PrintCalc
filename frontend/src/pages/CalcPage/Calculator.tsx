@@ -446,8 +446,9 @@ export default function Calc() {
     const [applyModelWeight, setApplyModelWeight] = useState(true)
     const [applySupportWeight, setApplySupportWeight] = useState(true)
     const [applyPrintTime, setApplyPrintTime] = useState(true)
-    // Редактируемый вес модели для режима "нет поддержек в файле"
     const [import3mfModelWEdit, setImport3mfModelWEdit] = useState(0)
+    const [isDragging, setIsDragging] = useState(false)
+    const dragCounterRef = useRef(0)
 
     // При монтировании восстанавливаем результаты из localStorage
     useEffect(() => {
@@ -775,10 +776,11 @@ export default function Calc() {
     // ─── Импорт .3mf ─────────────────────────────────────────────────────────
     const handleImport3mfClick = () => fileInputRef.current?.click()
 
-    const handleImport3mfFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-        e.target.value = ''
+    const processImport3mf = async (file: File) => {
+        if (!file.name.toLowerCase().endsWith('.3mf')) {
+            toast.error('Поддерживаются только файлы .3mf')
+            return
+        }
         setImport3mfLoading(true)
         try {
             const parsed = await parse3mf(file)
@@ -806,6 +808,48 @@ export default function Calc() {
             setImport3mfLoading(false)
         }
     }
+
+    const handleImport3mfFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        e.target.value = ''
+        processImport3mf(file)
+    }
+
+    // Храним актуальную ссылку на processImport3mf, чтобы useEffect не устарел
+    const processImport3mfRef = useRef(processImport3mf)
+    useEffect(() => { processImport3mfRef.current = processImport3mf })
+
+    useEffect(() => {
+        const onDragEnter = (e: DragEvent) => {
+            e.preventDefault()
+            dragCounterRef.current++
+            if (e.dataTransfer?.types.includes('Files')) setIsDragging(true)
+        }
+        const onDragLeave = (e: DragEvent) => {
+            e.preventDefault()
+            dragCounterRef.current--
+            if (dragCounterRef.current === 0) setIsDragging(false)
+        }
+        const onDragOver = (e: DragEvent) => { e.preventDefault() }
+        const onDrop = (e: DragEvent) => {
+            e.preventDefault()
+            dragCounterRef.current = 0
+            setIsDragging(false)
+            const file = e.dataTransfer?.files[0]
+            if (file) processImport3mfRef.current(file)
+        }
+        document.addEventListener('dragenter', onDragEnter)
+        document.addEventListener('dragleave', onDragLeave)
+        document.addEventListener('dragover', onDragOver)
+        document.addEventListener('drop', onDrop)
+        return () => {
+            document.removeEventListener('dragenter', onDragEnter)
+            document.removeEventListener('dragleave', onDragLeave)
+            document.removeEventListener('dragover', onDragOver)
+            document.removeEventListener('drop', onDrop)
+        }
+    }, [])
 
     const confirmImport3mf = () => {
         if (!import3mfResult) return
@@ -964,6 +1008,15 @@ export default function Calc() {
 
     return (
         <div className="max-w-7xl mx-auto pt-4 md:pt-8">
+            {/* ─── Полноэкранный overlay drag & drop ────────────────────────────── */}
+            {isDragging && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/80 backdrop-blur-sm pointer-events-none">
+                    <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-primary bg-primary/5 px-16 py-12">
+                        <FileUp className="h-14 w-14 text-primary" />
+                        <p className="text-lg font-semibold text-primary">Отпустите для импорта .3mf</p>
+                    </div>
+                </div>
+            )}
             {/* ─── Режим сравнения ────────────────────────────────────────────────── */}
         {compareActive && (
             <div className="space-y-4">

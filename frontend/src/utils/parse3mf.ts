@@ -1,9 +1,9 @@
 import JSZip from 'jszip'
 
 export interface Parse3mfResult {
-  modelWeight?: number     // г (если support_weight известен → total - support, иначе total)
-  supportWeight?: number   // г (если найдено отдельно)
-  totalWeight?: number     // г (всегда total из слайсера)
+  modelWeight?: number     // г — только модель (без поддержек)
+  supportWeight?: number   // г — только поддержки
+  totalWeight?: number     // г — model + support
   printTime?: number       // мин
   slicer?: string
   /** true — файл опознан как проект OrcaSlicer/BambuStudio без данных нарезки */
@@ -64,11 +64,11 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
       // Старый формат BambuStudio: JSON
       try {
         const json = JSON.parse(rawText)
-        // plate может быть массивом или объектом в разных версиях
         const plate = Array.isArray(json.plate) ? json.plate[0] : (json.plate ?? undefined)
         if (plate) {
-          const w = parseFloat(plate.weight)
-          if (!isNaN(w) && w > 0) result.totalWeight = w
+          // weight = model filament (вес только модели, без поддержек)
+          const mw = parseFloat(plate.weight)
+          if (!isNaN(mw) && mw > 0) result.modelWeight = mw
 
           const sw = parseFloat(plate.support_weight)
           if (!isNaN(sw) && sw >= 0) result.supportWeight = sw
@@ -76,12 +76,13 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
           const pred = parseFloat(plate.prediction)
           if (!isNaN(pred) && pred > 0) result.printTime = Math.round(pred / 60)
 
-          if (result.totalWeight === undefined && Array.isArray(plate.filament)) {
-            const total = (plate.filament as any[]).reduce((sum, f) => {
+          // Фоллбэк: суммируем из filament[], если plate.weight отсутствует
+          if (result.modelWeight === undefined && Array.isArray(plate.filament)) {
+            const total = (plate.filament as any[]).reduce((sum: number, f: any) => {
               const g = parseFloat(f.used_g)
               return sum + (isNaN(g) ? 0 : g)
             }, 0)
-            if (total > 0) result.totalWeight = parseFloat(total.toFixed(2))
+            if (total > 0) result.modelWeight = parseFloat(total.toFixed(2))
           }
 
           result.slicer = 'Bambu Studio / OrcaSlicer'
@@ -96,8 +97,9 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
 
         let foundData = false
         doc.querySelectorAll('plate').forEach(plate => {
-          const w = parseFloat(getMeta(plate, 'weight') ?? '')
-          if (!isNaN(w) && w > 0) { result.totalWeight = w; foundData = true }
+          // weight = model filament (вес только модели, без поддержек)
+          const mw = parseFloat(getMeta(plate, 'weight') ?? '')
+          if (!isNaN(mw) && mw > 0) { result.modelWeight = mw; foundData = true }
 
           const sw = parseFloat(getMeta(plate, 'support_weight') ?? '')
           if (!isNaN(sw) && sw >= 0) { result.supportWeight = sw; foundData = true }
@@ -105,14 +107,14 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
           const pred = parseFloat(getMeta(plate, 'prediction') ?? '')
           if (!isNaN(pred) && pred > 0) { result.printTime = Math.round(pred / 60); foundData = true }
 
+          // Фоллбэк: суммируем из <filament used_g="...">
           if (!foundData) {
-            // Суммируем из filament элементов
             let total = 0
             plate.querySelectorAll('filament').forEach(f => {
               const g = parseFloat(f.getAttribute('used_g') ?? '')
               if (!isNaN(g)) total += g
             })
-            if (total > 0) { result.totalWeight = parseFloat(total.toFixed(2)); foundData = true }
+            if (total > 0) { result.modelWeight = parseFloat(total.toFixed(2)); foundData = true }
           }
         })
 
@@ -120,7 +122,7 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
       } catch { /* ignore */ }
 
       // Если XML есть, но данных нарезки нет — это проект без нарезки
-      if (result.totalWeight === undefined && result.printTime === undefined) {
+      if (result.modelWeight === undefined && result.printTime === undefined) {
         const hasProjectConfig = !!zip.file('Metadata/project_settings.config')
         const hasGcode = Object.keys(zip.files).some(n => /\.gcode$/i.test(n))
         if (hasProjectConfig && !hasGcode) {
@@ -132,13 +134,12 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
   }
 
   // ── GCode комментарии (PrusaSlicer, SuperSlicer, Cura) ────────────────────
-  if (!result.totalWeight || !result.printTime) {
+  if (!result.modelWeight || !result.printTime) {
     const gcodeNames = Object.keys(zip.files).filter(n => /\.gcode$/i.test(n))
     for (const name of gcodeNames.slice(0, 2)) {
       try {
         const buf = await zip.file(name)!.async('uint8array')
         const dec = new TextDecoder('utf-8', { fatal: false })
-        // Начало файла (PrusaSlicer, SuperSlicer, Cura)
         const head = dec.decode(buf.slice(0, 65536))
         const g = parseGcode(head)
         // Конец файла (OrcaSlicer, BambuStudio размещают метаданные в хвосте)
@@ -149,21 +150,26 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
           if (!g.supportWeight && gt.supportWeight) g.supportWeight = gt.supportWeight
           if (!g.printTime && gt.printTime) g.printTime = gt.printTime
         }
-        if (!result.totalWeight && g.totalWeight) result.totalWeight = g.totalWeight
-        if (!result.supportWeight && g.supportWeight) result.supportWeight = g.supportWeight
+        // В gcode total = model + support; раскладываем по полям
+        if (!result.modelWeight && g.totalWeight) {
+          if (g.supportWeight) {
+            result.modelWeight = Math.max(0, parseFloat((g.totalWeight - g.supportWeight).toFixed(2)))
+            result.supportWeight = g.supportWeight
+          } else {
+            result.modelWeight = g.totalWeight
+          }
+        }
         if (!result.printTime && g.printTime) result.printTime = g.printTime
         if (!result.slicer) result.slicer = 'GCode'
       } catch { /* ignore */ }
     }
   }
 
-  // ── Вывести modelWeight ────────────────────────────────────────────────────
-  if (result.totalWeight !== undefined) {
-    if (result.supportWeight !== undefined) {
-      result.modelWeight = Math.max(0, parseFloat((result.totalWeight - result.supportWeight).toFixed(2)))
-    } else {
-      result.modelWeight = result.totalWeight
-    }
+  // ── totalWeight = model + support ─────────────────────────────────────────
+  if (result.modelWeight !== undefined) {
+    result.totalWeight = parseFloat(
+      (result.modelWeight + (result.supportWeight ?? 0)).toFixed(2)
+    )
   }
 
   return result
