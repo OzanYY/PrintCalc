@@ -1,10 +1,31 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 
 const AuthController = require('../controllers/AuthController');
 const authMiddleware = require('../middleware/auth-middleware');
 const TokenService = require('../services/TokenService');
-const UserService    = require('../services/UserService');
+const UserService = require('../services/UserService');
+const UserModel = require('../models/UserModel');
+
+const avatarDir = path.join(__dirname, '../../uploads/avatars');
+if (!fs.existsSync(avatarDir)) fs.mkdirSync(avatarDir, { recursive: true });
+
+const avatarUpload = multer({
+    storage: multer.diskStorage({
+        destination: avatarDir,
+        filename: (req, file, cb) => {
+            const ext = path.extname(file.originalname).toLowerCase();
+            cb(null, `avatar_${req.user.id}_${Date.now()}${ext}`);
+        },
+    }),
+    limits: { fileSize: 3 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype));
+    },
+});
 
 // Публичные маршруты
 router.use(authMiddleware.authMiddleware);
@@ -39,6 +60,28 @@ router.put('/me', async (req, res) => {
         res.status(400).json({ error: error.message });
     }
 });
- 
+
+router.post('/avatar', avatarUpload.single('avatar'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded or invalid file type' });
+    }
+    try {
+        const current = await UserModel.findById(req.user.id);
+        if (current?.avatar) {
+            try {
+                const oldFile = path.join(avatarDir, path.basename(current.avatar));
+                if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+            } catch { /* ignore */ }
+        }
+
+        const baseUrl = process.env.API_URL || 'http://localhost:5000';
+        const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
+        const updated = await UserModel.updateAvatar(req.user.id, avatarUrl);
+        res.json({ user: updated });
+    } catch (error) {
+        console.error('Upload avatar error:', error);
+        res.status(500).json({ error: 'Failed to upload avatar' });
+    }
+});
 
 module.exports = router;

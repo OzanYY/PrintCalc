@@ -30,6 +30,8 @@ frontend/dist
 frontend/dist-ssr
 frontend/*.local
 
+backend/uploads/avatars/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

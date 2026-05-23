@@ -105,7 +105,7 @@ export default function Header() {
                                     {getInitials(displayName)}
                                 </AvatarFallback>
                             </Avatar>
-                            <div className="grid flex-1 text-left text-sm leading-tight">
+                            <div className="grid text-left text-sm leading-tight max-w-[140px]">
                                 <span className="truncate font-medium">{displayName}</span>
                                 <span className="truncate text-xs text-muted-foreground">
                                     {displayEmail}

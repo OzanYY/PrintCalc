@@ -1,6 +1,8 @@
 //require - функция для импорта модулей .config() загружает переменные в в process.env
 require('dotenv').config(); // загружаем переменные окружения из файла .env
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const cors = require('cors');
@@ -54,6 +56,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
+
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 app.use(helmet({ contentSecurityPolicy: false })); // Security headers
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);

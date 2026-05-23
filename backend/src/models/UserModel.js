@@ -41,6 +41,16 @@ class UserModel {
                     ALTER TABLE users ADD COLUMN deletion_warning_sent BOOLEAN NOT NULL DEFAULT FALSE;
                 END IF;
             END $$;
+
+            -- Migration: add avatar column if not exists
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'avatar'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN avatar TEXT;
+                END IF;
+            END $$;
         `;
         await pool.query(query);
     }
@@ -74,8 +84,8 @@ class UserModel {
 
     static async findById(id) {
         const query = `
-            SELECT id, username, email, is_activated, role, created_at
-            FROM users 
+            SELECT id, username, email, is_activated, role, created_at, avatar
+            FROM users
             WHERE id = $1
         `;
         const result = await pool.query(query, [id]);
@@ -114,14 +124,24 @@ class UserModel {
         return result.rows[0];
     }
 
+    static async updateAvatar(id, avatarUrl) {
+        const query = `
+            UPDATE users SET avatar = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING id, username, email, is_activated, role, created_at, avatar
+        `;
+        const result = await pool.query(query, [avatarUrl, id]);
+        return result.rows[0];
+    }
+
     static async update(id, { username, email }) {
         const query = `
-            UPDATE users 
+            UPDATE users
             SET username = COALESCE($1, username),
                 email = COALESCE($2, email),
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $3 
-            RETURNING id, username, email, is_activated, role, created_at
+            WHERE id = $3
+            RETURNING id, username, email, is_activated, role, created_at, avatar
         `;
         const values = [username, email, id];
         const result = await pool.query(query, values);

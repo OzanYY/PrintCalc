@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -85,6 +85,26 @@ export default function UserPage() {
     const passwordValid  = passwordForm.next.length >= 6;
     const canSubmitPassword = !!passwordForm.current && passwordValid && passwordsMatch && !isSavingPassword;
     const resetPasswordForm = () => setPasswordForm({ current: '', next: '', confirm: '' });
+
+    // ── Аватар ────────────────────────────────────────────────────────────────
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsUploadingAvatar(true);
+        try {
+            const res = await authAPI.uploadAvatar(file);
+            setUser(res.data.user);
+            toast.success('Аватар обновлён');
+        } catch {
+            toast.error('Не удалось загрузить аватар');
+        } finally {
+            setIsUploadingAvatar(false);
+            e.target.value = '';
+        }
+    };
 
     // ── Повторная отправка активации ─────────────────────────────────────────
     const [resendLoading, setResendLoading] = useState(false);
@@ -249,6 +269,13 @@ export default function UserPage() {
 
     return (
         <div className="container mx-auto p-6 max-w-7xl">
+            <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleAvatarUpload}
+            />
             {/* Шапка */}
             <div className="flex justify-between items-center mb-8">
                 <div>
@@ -317,9 +344,13 @@ export default function UserPage() {
                                 <Button
                                     size="icon" variant="secondary"
                                     className="absolute bottom-0 right-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => toast.info('Загрузка аватара — скоро')}
+                                    disabled={isUploadingAvatar}
+                                    onClick={() => avatarInputRef.current?.click()}
                                 >
-                                    <Camera className="h-4 w-4" />
+                                    {isUploadingAvatar
+                                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                                        : <Camera className="h-4 w-4" />
+                                    }
                                 </Button>
                             </div>
                             <CardTitle className="text-2xl">{displayName}</CardTitle>
@@ -481,8 +512,13 @@ export default function UserPage() {
                                     <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
                                 </Avatar>
                                 <Button variant="outline" size="sm"
-                                    onClick={() => toast.info('Загрузка аватара — скоро')}>
-                                    <Camera className="mr-2 h-4 w-4" />Загрузить новый
+                                    disabled={isUploadingAvatar}
+                                    onClick={() => avatarInputRef.current?.click()}>
+                                    {isUploadingAvatar
+                                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        : <Camera className="mr-2 h-4 w-4" />
+                                    }
+                                    {isUploadingAvatar ? 'Загрузка...' : 'Загрузить новый'}
                                 </Button>
                             </div>
                         </div>

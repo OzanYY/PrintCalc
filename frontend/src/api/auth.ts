@@ -54,4 +54,12 @@ export const authAPI = {
     // POST /auth/resend-activation — повторно отправить письмо активации
     resendActivation: () =>
         api.post<{ message: string }>("/auth/resend-activation"),
+
+    uploadAvatar: (file: File) => {
+        const form = new FormData();
+        form.append('avatar', file);
+        return api.post<{ user: any }>('/auth/avatar', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
 };
