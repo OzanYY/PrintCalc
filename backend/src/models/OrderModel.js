@@ -135,11 +135,13 @@ class OrderModel {
             -- Колонки командных заказов (из миграции 002)
             -- FK на teams добавляется в TeamModel.createTable() после создания таблицы teams
             ALTER TABLE orders
-                ADD COLUMN IF NOT EXISTS order_mode          VARCHAR(20) DEFAULT 'personal',
-                ADD COLUMN IF NOT EXISTS team_id             BIGINT,
-                ADD COLUMN IF NOT EXISTS assigned_to_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+                ADD COLUMN IF NOT EXISTS order_mode            VARCHAR(20) DEFAULT 'personal',
+                ADD COLUMN IF NOT EXISTS team_id               BIGINT,
+                ADD COLUMN IF NOT EXISTS assigned_to_user_id   BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS completed_by_user_id  BIGINT REFERENCES users(id) ON DELETE SET NULL;
 
-            CREATE INDEX IF NOT EXISTS idx_orders_team_id ON orders(team_id) WHERE team_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_orders_team_id          ON orders(team_id) WHERE team_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_orders_completed_by_uid ON orders(completed_by_user_id) WHERE completed_by_user_id IS NOT NULL;
 
             -- Триггер: автоматически выставляет is_urgent (дедлайн ≤ 2 дней)
             CREATE OR REPLACE FUNCTION orders_sync_urgent()
@@ -532,9 +534,10 @@ class OrderModel {
 
         const query = `
             UPDATE orders
-            SET status       = $1::VARCHAR,
-                completed_at = CASE WHEN $1::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
-                updated_at   = CURRENT_TIMESTAMP
+            SET status                = $1::VARCHAR,
+                completed_at          = CASE WHEN $1::VARCHAR = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                completed_by_user_id  = CASE WHEN $1::VARCHAR = 'completed' THEN $3 ELSE NULL END,
+                updated_at            = CURRENT_TIMESTAMP
             WHERE id = $2 AND (
                 user_id = $3
                 OR (order_mode = 'team' AND EXISTS (
