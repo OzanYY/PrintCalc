@@ -1,6 +1,7 @@
 // middleware/authMiddleware.js
 const TokenService = require('../services/TokenService');
 const TokenModel = require('../models/TokenModel');
+const UserModel = require('../models/UserModel');
 
 async function authMiddleware(req, res, next) {
     const token = req.cookies.accessToken;
@@ -49,4 +50,21 @@ async function requireAuth(req, res, next) {
     next();
 }
 
-module.exports = { authMiddleware, requireAuth }
+async function requireActivated(req, res, next) {
+    try {
+        const user = await UserModel.findById(req.user.id);
+        if (!user || !user.is_activated) {
+            return res.status(403).json({
+                error: 'Account not activated',
+                message: 'Пожалуйста, активируйте аккаунт по ссылке из письма. Неактивированные аккаунты автоматически удаляются через 2 недели после регистрации.',
+                code: 'ACCOUNT_NOT_ACTIVATED',
+            });
+        }
+        next();
+    } catch (error) {
+        console.error('requireActivated error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+module.exports = { authMiddleware, requireAuth, requireActivated }

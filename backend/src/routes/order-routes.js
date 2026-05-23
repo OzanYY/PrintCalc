@@ -4,10 +4,12 @@ const router  = express.Router();
 const OrderController = require('../controllers/orderController');
 const TagController         = require('../controllers/TagController');
 const OrderCommentController = require('../controllers/OrderCommentController');
-const { authMiddleware, requireAuth } = require('../middleware/auth-middleware');
+const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
 
-// Все маршруты требуют авторизации
+// Все маршруты требуют авторизации и активации
 router.use(authMiddleware);
+router.use(requireAuth);
+router.use(requireActivated);
 
 // ─── Коллекция ────────────────────────────────────────────────────────────────
 // GET    /orders            — список заказов с пагинацией и фильтром по статусу

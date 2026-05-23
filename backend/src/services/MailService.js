@@ -46,6 +46,12 @@ class MailService {
                             <p style="font-size: 12px; color: #999; word-break: break-all;">${link}</p>
                         </div>
                         
+                        <div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 6px; margin: 10px 0;">
+                            <p style="font-size: 13px; color: #856404; margin: 0;">
+                                ⚠️ <strong>Важно:</strong> если вы не активируете аккаунт в течение <strong>14 дней</strong>, он будет автоматически удалён.
+                            </p>
+                        </div>
+
                         <p style="font-size: 12px; color: #999; text-align: center;">
                             Если вы не регистрировались на PrintCalc, просто проигнорируйте это письмо.
                         </p>
@@ -107,6 +113,51 @@ class MailService {
         } catch (error) {
             console.error('❌ Failed to send password reset email:', error);
             throw error;
+        }
+    }
+
+    // Предупреждение об удалении аккаунта через 1 день
+    async sendDeletionWarningMail(to, username, activationLink) {
+        try {
+            const mailOptions = {
+                from: process.env.SMTP_USER,
+                to,
+                subject: 'Ваш аккаунт PrintCalc будет удалён завтра',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h1 style="color: #c0392b; text-align: center;">Аккаунт будет удалён завтра ⚠️</h1>
+
+                        <div style="background-color: #fdf3f2; border: 1px solid #e74c3c; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                            <p style="font-size: 16px; color: #555;">Здравствуйте, ${username}!</p>
+                            <p style="font-size: 16px; color: #555;">
+                                Ваш аккаунт на <strong>PrintCalc</strong> был зарегистрирован, но так и не активирован.
+                                Завтра он будет автоматически удалён.
+                            </p>
+
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="${process.env.API_URL}/api/auth/activate/${activationLink}"
+                                   style="background-color: #e74c3c;
+                                          color: white;
+                                          padding: 12px 30px;
+                                          text-decoration: none;
+                                          border-radius: 5px;
+                                          font-weight: bold;
+                                          display: inline-block;">
+                                    Активировать аккаунт сейчас
+                                </a>
+                            </div>
+
+                            <p style="font-size: 14px; color: #777;">
+                                Если вы не хотите сохранять аккаунт — просто проигнорируйте это письмо.
+                            </p>
+                        </div>
+                    </div>
+                `,
+            };
+            await this.transporter.sendMail(mailOptions);
+            console.log(`📧 Deletion warning email sent to ${to}`);
+        } catch (error) {
+            console.error('❌ Failed to send deletion warning email:', error);
         }
     }
 

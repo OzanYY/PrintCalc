@@ -2,9 +2,11 @@
 const express          = require('express');
 const router           = express.Router();
 const ClientController = require('../controllers/ClientController');
-const { authMiddleware } = require('../middleware/auth-middleware');
+const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
 
 router.use(authMiddleware);
+router.use(requireAuth);
+router.use(requireActivated);
 
 router.get   ('/',        ClientController.list);
 router.get   ('/search',  ClientController.search);

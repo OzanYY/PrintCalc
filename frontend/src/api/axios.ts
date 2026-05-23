@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from "axios";
+import { toast } from "sonner";
 import { authRefreshBridge } from "@/utils/authRefreshBridge";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
@@ -59,6 +60,18 @@ api.interceptors.response.use(
             originalRequest.url?.includes("/auth/register") ||
             originalRequest.url?.includes("/auth/refresh")
         ) {
+            return Promise.reject(error);
+        }
+
+        if (error.response?.status === 403) {
+            const data = error.response.data as { code?: string; message?: string };
+            if (data?.code === 'ACCOUNT_NOT_ACTIVATED') {
+                toast.error('Аккаунт не активирован', {
+                    id: 'account-not-activated',
+                    description: data.message ?? 'Активируйте аккаунт по ссылке из письма.',
+                    duration: 8000,
+                });
+            }
             return Promise.reject(error);
         }
 

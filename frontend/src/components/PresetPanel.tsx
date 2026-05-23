@@ -47,7 +47,7 @@ export function PresetPanel({ onApplyPrinter, onApplyMaterial }: PresetPanelProp
             const def = list.find(p => p.is_default)
             if (def) setSelectedPrinterId(String(def.id))
         } catch {
-            toast.error('Не удалось загрузить принтеры', { position: 'top-center' })
+            toast.error('Не удалось загрузить принтеры')
         } finally {
             setLoadingPrinters(false)
         }
@@ -63,7 +63,7 @@ export function PresetPanel({ onApplyPrinter, onApplyMaterial }: PresetPanelProp
             const def = list.find(m => m.is_default)
             if (def) setSelectedMaterialId(String(def.id))
         } catch {
-            toast.error('Не удалось загрузить материалы', { position: 'top-center' })
+            toast.error('Не удалось загрузить материалы')
         } finally {
             setLoadingMaterials(false)
         }
@@ -82,7 +82,7 @@ export function PresetPanel({ onApplyPrinter, onApplyMaterial }: PresetPanelProp
         setApplied(prev => ({ ...prev, printerId: printer.id }))
         toast.success(
             `Параметры принтера «${printer.name}» применены`,
-            { position: 'top-center', duration: 2500 }
+            { duration: 2500 }
         )
     }
 
@@ -94,7 +94,7 @@ export function PresetPanel({ onApplyPrinter, onApplyMaterial }: PresetPanelProp
         setApplied(prev => ({ ...prev, materialId: material.id }))
         toast.success(
             `Параметры материала «${material.name}» применены`,
-            { position: 'top-center', duration: 2500 }
+            { duration: 2500 }
         )
     }
 

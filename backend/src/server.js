@@ -12,6 +12,8 @@ const calculationRoutes = require('./routes/calculation-routes');
 const orderRoutes = require('./routes/order-routes')
 const UserModel = require('./models/UserModel');
 const TokenModel = require('./models/TokenModel');
+const TokenService = require('./services/TokenService');
+const MailService = require('./services/MailService');
 const { PrinterModel } = require('./models/PrinterModel');
 const MaterialModel = require('./models/MaterialModel');
 const OrderModel = require('./models/OrderModel');
@@ -109,10 +111,39 @@ const start = async () => {
         await OrderCommentModel.createTable();
         console.log('✅ Order comments table ready');
 
-        app.listen(PORT, () => console.log(`Server started on port - ${PORT}`))
+        app.listen(PORT, () => console.log(`Server started on port - ${PORT}`));
+
+        // Запускаем первую очистку сразу при старте, затем каждые 24 часа
+        runDailyCleanup();
+        setInterval(runDailyCleanup, 24 * 60 * 60 * 1000);
     }
     catch (e) {
         console.log(e);
+    }
+}
+
+async function runDailyCleanup() {
+    try {
+        // 1. Отправляем предупреждение за 1 день до удаления
+        const expiringSoon = await UserModel.findUnactivatedExpiringSoon();
+        for (const user of expiringSoon) {
+            await MailService.sendDeletionWarningMail(user.email, user.username, user.activation_link);
+            await UserModel.markDeletionWarningSent(user.id);
+        }
+        if (expiringSoon.length > 0) {
+            console.log(`📧 Sent deletion warning to ${expiringSoon.length} account(s)`);
+        }
+
+        // 2. Удаляем неактивированные аккаунты старше 14 дней
+        const deleted = await UserModel.deleteUnactivatedExpired();
+        if (deleted.length > 0) {
+            console.log(`🗑️  Deleted ${deleted.length} expired unactivated account(s):`, deleted.map(u => u.email).join(', '));
+        }
+
+        // 3. Чистим просроченные токены
+        await TokenService.cleanupExpiredTokens();
+    } catch (error) {
+        console.error('Daily cleanup error:', error);
     }
 }
 

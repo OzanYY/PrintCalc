@@ -180,7 +180,7 @@ export default function UserPage() {
 
     const handleSaveProfile = async () => {
         if (!editForm.username.trim()) {
-            toast.error('Введите имя пользователя', { position: 'top-center', duration: 3000 });
+            toast.error('Введите имя пользователя', { duration: 3000 });
             return;
         }
         setIsSavingProfile(true);
@@ -189,10 +189,10 @@ export default function UserPage() {
                 username: editForm.username.trim(),
             });
             setUser(res.data.user ?? { ...user!, ...editForm });
-            toast.success('Профиль обновлён', { position: 'top-center', duration: 3000 });
+            toast.success('Профиль обновлён', { duration: 3000 });
             setIsEditOpen(false);
         } catch (err: any) {
-            toast.error(err?.response?.data?.error ?? 'Ошибка сохранения профиля', { position: 'top-center', duration: 5000 });
+            toast.error(err?.response?.data?.error ?? 'Ошибка сохранения профиля', { duration: 5000 });
         } finally {
             setIsSavingProfile(false);
         }
@@ -203,11 +203,11 @@ export default function UserPage() {
         setIsSavingPassword(true);
         try {
             await authAPI.changePassword({ oldPassword: passwordForm.current, newPassword: passwordForm.next });
-            toast.success('Пароль успешно изменён', { position: 'top-center', duration: 3000 });
+            toast.success('Пароль успешно изменён', { duration: 3000 });
             resetPasswordForm();
             setIsPasswordOpen(false);
         } catch (err: any) {
-            toast.error(err?.response?.data?.error ?? 'Ошибка смены пароля', { position: 'top-center', duration: 5000 });
+            toast.error(err?.response?.data?.error ?? 'Ошибка смены пароля', { duration: 5000 });
         } finally {
             setIsSavingPassword(false);
         }
@@ -272,7 +272,7 @@ export default function UserPage() {
                                 <Button
                                     size="icon" variant="secondary"
                                     className="absolute bottom-0 right-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => toast.info('Загрузка аватара — скоро', { position: 'top-center' })}
+                                    onClick={() => toast.info('Загрузка аватара — скоро')}
                                 >
                                     <Camera className="h-4 w-4" />
                                 </Button>
@@ -436,7 +436,7 @@ export default function UserPage() {
                                     <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
                                 </Avatar>
                                 <Button variant="outline" size="sm"
-                                    onClick={() => toast.info('Загрузка аватара — скоро', { position: 'top-center' })}>
+                                    onClick={() => toast.info('Загрузка аватара — скоро')}>
                                     <Camera className="mr-2 h-4 w-4" />Загрузить новый
                                 </Button>
                             </div>

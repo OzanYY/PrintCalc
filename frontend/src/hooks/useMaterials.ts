@@ -25,7 +25,7 @@ export function useMaterials(initialCategory?: MaterialCategory) {
             const msg = err.response?.data?.message ?? 'Ошибка загрузки материалов'
             console.log(err.response?.data?.message);
             setError(msg)
-            toast.error(msg, { position: 'top-center' })
+            toast.error(msg)
         } finally {
             setIsLoading(false)
         }
@@ -43,10 +43,10 @@ export function useMaterials(initialCategory?: MaterialCategory) {
                     : [...prev]
                 return [...updated, res.data.data]
             })
-            toast.success('Материал успешно добавлен', { position: 'top-center' })
+            toast.success('Материал успешно добавлен')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при создании материала', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при создании материала')
             return false
         }
     }, [])
@@ -62,10 +62,10 @@ export function useMaterials(initialCategory?: MaterialCategory) {
                 }
                 return updated
             })
-            toast.success('Материал успешно обновлён', { position: 'top-center' })
+            toast.success('Материал успешно обновлён')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при обновлении материала', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при обновлении материала')
             return false
         }
     }, [])
@@ -75,10 +75,10 @@ export function useMaterials(initialCategory?: MaterialCategory) {
         try {
             await materialsAPI.delete(id)
             setMaterials(prev => prev.filter(m => m.id !== id))
-            toast.success('Материал удалён', { position: 'top-center' })
+            toast.success('Материал удалён')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при удалении материала', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при удалении материала')
             return false
         }
     }, [])
@@ -88,10 +88,10 @@ export function useMaterials(initialCategory?: MaterialCategory) {
         try {
             await materialsAPI.setDefault(id)
             setMaterials(prev => prev.map(m => ({ ...m, is_default: m.id === id })))
-            toast.success('Основной материал установлен', { position: 'top-center' })
+            toast.success('Основной материал установлен')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при установке материала', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при установке материала')
             return false
         }
     }, [])
@@ -101,10 +101,10 @@ export function useMaterials(initialCategory?: MaterialCategory) {
         try {
             const res = await materialsAPI.duplicate(material.id, `${material.name} (копия)`)
             setMaterials(prev => [...prev, res.data.data])
-            toast.success('Материал скопирован', { position: 'top-center' })
+            toast.success('Материал скопирован')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при копировании материала', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при копировании материала')
             return false
         }
     }, [])

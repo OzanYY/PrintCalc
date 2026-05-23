@@ -2,10 +2,11 @@
 const express = require('express');
 const router  = express.Router();
 const MaterialController = require('../controllers/MaterialController');
-const { authMiddleware, requireAuth } = require('../middleware/auth-middleware');
+const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
 
 router.use(authMiddleware);
 router.use(requireAuth);
+router.use(requireActivated);
 
 // ─── Служебные маршруты (до /:id) ────────────────────────────────────────────
 // GET  /materials/stats                — статистика

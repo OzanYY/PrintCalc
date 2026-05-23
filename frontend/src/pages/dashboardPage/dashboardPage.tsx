@@ -940,7 +940,7 @@ export default function StatisticsPage() {
       if (printersRes.status === "fulfilled") setPrinters((printersRes.value.data as any).data ?? [])
       if (materialsRes.status === "fulfilled") setMaterials((materialsRes.value.data as any).data ?? [])
     } catch {
-      toast.error("Ошибка загрузки данных", { position: "top-center" })
+      toast.error("Ошибка загрузки данных")
     } finally {
       setIsLoading(false)
     }

@@ -2,10 +2,11 @@
 const express = require('express');
 const router  = express.Router();
 const InventoryController = require('../controllers/InventoryController');
-const { authMiddleware, requireAuth } = require('../middleware/auth-middleware');
+const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
 
 router.use(authMiddleware);
 router.use(requireAuth);
+router.use(requireActivated);
 
 // Все транзакции пользователя
 router.get('/transactions', InventoryController.getAllTransactions);

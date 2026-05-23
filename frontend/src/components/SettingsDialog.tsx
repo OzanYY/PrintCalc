@@ -122,7 +122,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             const res = await authAPI.getSessions();
             setSessions(res.data.sessions ?? []);
         } catch {
-            toast.error('Не удалось загрузить сессии', { position: 'top-center' });
+            toast.error('Не удалось загрузить сессии');
         } finally {
             setSessionsLoading(false);
         }
@@ -138,11 +138,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         try {
             await authAPI.terminateSession(sessionId);
             setSessions(prev => prev.filter(s => s.id !== sessionId));
-            toast.success('Сессия завершена', { position: 'top-center' });
+            toast.success('Сессия завершена');
         } catch (err: any) {
-            toast.error(err?.response?.data?.error ?? 'Не удалось завершить сессию', {
-                position: 'top-center',
-            });
+            toast.error(err?.response?.data?.error ?? 'Не удалось завершить сессию', );
         } finally {
             setTerminatingId(null);
         }
@@ -156,10 +154,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             // поэтому бэкенд должен сам определить «текущую» по куке.
             // Предполагаем что эндпойнт принимает пустое тело и использует куку.
             await authAPI.terminateOtherSessions();
-            toast.success('Все остальные сессии завершены', { position: 'top-center' });
+            toast.success('Все остальные сессии завершены');
             await loadSessions();
         } catch {
-            toast.error('Не удалось завершить сессии', { position: 'top-center' });
+            toast.error('Не удалось завершить сессии');
         } finally {
             setTerminatingOthers(false);
         }
@@ -171,10 +169,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         try {
             await authAPI.logoutAll();
             setUser(null);
-            toast.success('Выход выполнен на всех устройствах', { position: 'top-center' });
+            toast.success('Выход выполнен на всех устройствах');
             onOpenChange(false);
         } catch {
-            toast.error('Не удалось завершить все сессии', { position: 'top-center' });
+            toast.error('Не удалось завершить все сессии');
         } finally {
             setTerminatingAll(false);
             setLogoutAllDialogOpen(false);
@@ -188,13 +186,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         try {
             await authAPI.deleteAccount(deletePassword);
             setUser(null);
-            toast.success('Аккаунт удалён', { position: 'top-center' });
+            toast.success('Аккаунт удалён');
             onOpenChange(false);
         } catch (err: any) {
-            toast.error(err?.response?.data?.error ?? 'Ошибка удаления аккаунта', {
-                position: 'top-center',
-                duration: 5000,
-            });
+            toast.error(err?.response?.data?.error ?? 'Ошибка удаления аккаунта', { duration: 5000 });
         } finally {
             setIsDeleting(false);
             setDeletePassword('');

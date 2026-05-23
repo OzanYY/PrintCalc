@@ -31,6 +31,16 @@ class UserModel {
                         CHECK (role IN ('user', 'admin'));
                 END IF;
             END $$;
+
+            -- Migration: add deletion_warning_sent column if not exists
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'deletion_warning_sent'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN deletion_warning_sent BOOLEAN NOT NULL DEFAULT FALSE;
+                END IF;
+            END $$;
         `;
         await pool.query(query);
     }
@@ -153,6 +163,38 @@ class UserModel {
             WHERE id = $1
         `;
         await pool.query(query, [userId]);
+    }
+
+    // ─── Cleanup: unactivated accounts ───────────────────────────────────────
+    static async deleteUnactivatedExpired() {
+        const query = `
+            DELETE FROM users
+            WHERE is_activated = FALSE
+              AND created_at < NOW() - INTERVAL '14 days'
+            RETURNING id, email, username
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    }
+
+    static async findUnactivatedExpiringSoon() {
+        const query = `
+            SELECT id, email, username, activation_link
+            FROM users
+            WHERE is_activated = FALSE
+              AND deletion_warning_sent = FALSE
+              AND created_at < NOW() - INTERVAL '13 days'
+              AND created_at >= NOW() - INTERVAL '14 days'
+        `;
+        const result = await pool.query(query);
+        return result.rows;
+    }
+
+    static async markDeletionWarningSent(id) {
+        await pool.query(
+            'UPDATE users SET deletion_warning_sent = TRUE WHERE id = $1',
+            [id]
+        );
     }
 
     // ─── Admin methods ────────────────────────────────────────────────────────

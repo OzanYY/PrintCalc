@@ -54,11 +54,11 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
     const [successMessage, setSuccessMessage] = useState('');
 
     useEffect(() => {
-        if (serverError) toast.error(serverError, { position: "top-center" });
+        if (serverError) toast.error(serverError);
     }, [serverError]);
 
     useEffect(() => {
-        if (successMessage) toast.success(successMessage, { position: "top-center" });
+        if (successMessage) toast.success(successMessage);
     }, [successMessage]);
 
     const validateName = (name: string) => {
@@ -247,11 +247,11 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     const [successMessage, setSuccessMessage] = useState('');
 
     useEffect(() => {
-        if (serverError) toast.error(serverError, { position: "top-center" });
+        if (serverError) toast.error(serverError);
     }, [serverError]);
 
     useEffect(() => {
-        if (successMessage) toast.success(successMessage, { position: "top-center" });
+        if (successMessage) toast.success(successMessage);
     }, [successMessage]);
 
     const validateEmail = (email: string) => {

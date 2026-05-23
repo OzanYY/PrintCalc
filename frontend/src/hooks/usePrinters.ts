@@ -17,7 +17,7 @@ export function usePrinters() {
         } catch (err: any) {
             const msg = err.response?.data?.message ?? 'Ошибка загрузки принтеров'
             setError(msg)
-            toast.error(msg, { position: 'top-center' })
+            toast.error(msg)
         } finally {
             setIsLoading(false)
         }
@@ -36,10 +36,10 @@ export function usePrinters() {
                     : [...prev]
                 return [...updated, res.data.data]
             })
-            toast.success('Принтер успешно добавлен', { position: 'top-center' })
+            toast.success('Принтер успешно добавлен')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при создании принтера', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при создании принтера')
             return false
         }
     }, [])
@@ -55,10 +55,10 @@ export function usePrinters() {
                 }
                 return updated
             })
-            toast.success('Принтер успешно обновлён', { position: 'top-center' })
+            toast.success('Принтер успешно обновлён')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при обновлении принтера', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при обновлении принтера')
             return false
         }
     }, [])
@@ -68,10 +68,10 @@ export function usePrinters() {
         try {
             await printersAPI.delete(id)
             setPrinters(prev => prev.filter(p => p.id !== id))
-            toast.success('Принтер удалён', { position: 'top-center' })
+            toast.success('Принтер удалён')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при удалении принтера', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при удалении принтера')
             return false
         }
     }, [])
@@ -81,10 +81,10 @@ export function usePrinters() {
         try {
             await printersAPI.setDefault(id)
             setPrinters(prev => prev.map(p => ({ ...p, is_default: p.id === id })))
-            toast.success('Основной принтер установлен', { position: 'top-center' })
+            toast.success('Основной принтер установлен')
             return true
         } catch (err: any) {
-            toast.error(err.response?.data?.message ?? 'Ошибка при установке принтера', { position: 'top-center' })
+            toast.error(err.response?.data?.message ?? 'Ошибка при установке принтера')
             return false
         }
     }, [])

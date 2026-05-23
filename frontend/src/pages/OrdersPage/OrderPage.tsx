@@ -68,7 +68,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOrders } from '@/hooks/useOrders';
 import { useContext } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -707,9 +706,10 @@ export default function OrdersPage() {
   // Показываем ошибки через toast
   useEffect(() => {
     if (error) {
-      toast.error(error, { position: 'top-center', duration: 5000 });
+      toast.error(error, { duration: 5000 });
+      clearError();
     }
-  }, [error]);
+  }, [error, clearError]);
 
   // Локальные фильтры (поиск — только клиентский)
   const [searchQuery, setSearchQuery] = useState('');
@@ -904,16 +904,6 @@ export default function OrdersPage() {
           </Button>
         </div>
       </div>
-
-      {/* Ошибка */}
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertDescription className="flex justify-between items-center">
-            {error}
-            <Button variant="ghost" size="sm" onClick={clearError}>✕</Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Статистика */}
       <div className="grid gap-4 md:grid-cols-5 mb-6">

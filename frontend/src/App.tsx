@@ -37,7 +37,7 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
 
           </Routes>
-          <Toaster />
+          <Toaster position="bottom-right" />
         </main>
         <Footer />
       </div>

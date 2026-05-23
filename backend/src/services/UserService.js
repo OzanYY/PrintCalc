@@ -29,8 +29,12 @@ class UserService {
         try {
             const newUser = await UserModel.create({ username, email, password_hash, activation_link });
 
-            // const activationUrl = `${process.env.API_URL}/api/activate/${activation_link}`;
-            // await MailService.sendActivationMail(email, activationUrl);
+            const activationUrl = `${process.env.API_URL}/api/auth/activate/${activation_link}`;
+            try {
+                await MailService.sendActivationMail(email, activationUrl);
+            } catch (mailError) {
+                console.error('Failed to send activation email:', mailError);
+            }
 
             return { user: newUser, activation_link };
         } catch (error) {

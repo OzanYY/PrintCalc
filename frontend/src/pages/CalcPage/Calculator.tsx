@@ -466,19 +466,19 @@ export default function Calc() {
 
     useEffect(() => {
         if (serverError) {
-            toast.error(serverError, { position: "top-center", duration: 5000 })
+            toast.error(serverError, { duration: 5000 })
         }
     }, [serverError])
 
     useEffect(() => {
         if (successMessage) {
-            toast.success(successMessage, { position: "top-center", duration: 3000 })
+            toast.success(successMessage, { duration: 3000 })
         }
     }, [successMessage])
 
     useEffect(() => {
         if (isLoading) {
-            toast.loading("Выполняется расчет...", { position: "top-center", id: "calculation-loading" })
+            toast.loading("Выполняется расчет...", { id: "calculation-loading" })
         } else {
             toast.dismiss("calculation-loading")
         }
@@ -680,10 +680,10 @@ export default function Calc() {
             }
 
             setSaveDialogOpen(false)
-            toast.success('Заказ успешно сохранён', { position: "top-center", duration: 3000 })
+            toast.success('Заказ успешно сохранён', { duration: 3000 })
         } catch (err: any) {
             const errorMessage = err.response?.data?.message || err.message || 'Ошибка при сохранении заказа'
-            toast.error(errorMessage, { position: "top-center", duration: 5000 })
+            toast.error(errorMessage, { duration: 5000 })
             console.error('Save order error:', err)
         } finally {
             setIsSaving(false)
@@ -731,7 +731,7 @@ export default function Calc() {
                 setCompareResults(resB.value.data.data)
             }
             if (resA.status === 'rejected' || resB.status === 'rejected') {
-                toast.error('Ошибка при расчёте', { position: 'top-center' })
+                toast.error('Ошибка при расчёте')
             }
         } finally {
             setIsLoading(false)
@@ -765,12 +765,12 @@ export default function Calc() {
         setServerError('')
         setSuccessMessage('')
         localStorage.removeItem('calculator_results')
-        toast.info("Значения сброшены к стандартным", { position: "top-center", duration: 2000 })
+        toast.info("Значения сброшены к стандартным", { duration: 2000 })
     }
 
     const resetFormOnly = () => {
         resetToDefaults()
-        toast.info("Параметры сброшены, результаты сохранены", { position: "top-center", duration: 2000 })
+        toast.info("Параметры сброшены, результаты сохранены", { duration: 2000 })
     }
 
     // ─── Импорт .3mf ─────────────────────────────────────────────────────────
