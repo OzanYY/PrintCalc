@@ -27,6 +27,14 @@ const tagRoutes = require('./routes/tag-routes');
 const ClientModel = require('./models/ClientModel');
 const TagModel = require('./models/TagModel');
 const OrderCommentModel = require('./models/OrderCommentModel');
+const TeamModel           = require('./models/TeamModel');
+const TeamMemberModel     = require('./models/TeamMemberModel');
+const TeamInvitationModel = require('./models/TeamInvitationModel');
+const TeamResourceModel   = require('./models/TeamResourceModel');
+const NotificationModel   = require('./models/NotificationModel');
+const teamRoutes          = require('./routes/team-routes');
+const notificationRoutes  = require('./routes/notification-routes');
+const invitationRoutes    = require('./routes/invitation-routes');
 
 // Объявляем порт, на котором будет развернут сервек
 const PORT = process.env.PORT || 5000;
@@ -70,8 +78,11 @@ app.use('/api', calculationRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/clients', clientRoutes);
-app.use('/api/tags',    tagRoutes);
+app.use('/api/clients',        clientRoutes);
+app.use('/api/tags',           tagRoutes);
+app.use('/api/teams',          teamRoutes);
+app.use('/api/notifications',  notificationRoutes);
+app.use('/api/invitations',    invitationRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -116,6 +127,21 @@ const start = async () => {
 
         await OrderCommentModel.createTable();
         console.log('✅ Order comments table ready');
+
+        await TeamModel.createTable();
+        console.log('✅ Teams table ready');
+
+        await TeamMemberModel.createTable();
+        console.log('✅ Team members table ready');
+
+        await TeamInvitationModel.createTable();
+        console.log('✅ Team invitations table ready');
+
+        await TeamResourceModel.createTable();
+        console.log('✅ Team resources table ready');
+
+        await NotificationModel.createTable();
+        console.log('✅ Notifications table ready');
 
         app.listen(PORT, () => console.log(`Server started on port - ${PORT}`));
 

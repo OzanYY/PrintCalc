@@ -132,6 +132,15 @@ class OrderModel {
             CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
             CREATE INDEX IF NOT EXISTS idx_orders_deadline  ON orders(deadline) WHERE deadline IS NOT NULL;
 
+            -- Колонки командных заказов (из миграции 002)
+            -- FK на teams добавляется в TeamModel.createTable() после создания таблицы teams
+            ALTER TABLE orders
+                ADD COLUMN IF NOT EXISTS order_mode          VARCHAR(20) DEFAULT 'personal',
+                ADD COLUMN IF NOT EXISTS team_id             BIGINT,
+                ADD COLUMN IF NOT EXISTS assigned_to_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_orders_team_id ON orders(team_id) WHERE team_id IS NOT NULL;
+
             -- Триггер: автоматически выставляет is_urgent (дедлайн ≤ 2 дней)
             CREATE OR REPLACE FUNCTION orders_sync_urgent()
             RETURNS TRIGGER AS $$

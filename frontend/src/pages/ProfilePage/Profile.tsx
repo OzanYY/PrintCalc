@@ -21,8 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import {
     Printer, Package, CheckCircle, DollarSign, Users, Settings,
     Mail, Calendar, Edit, Camera, MoreVertical, UserPlus, LogOut,
-    Lock, Sparkles, Crown, Shield, Cpu, Zap, Loader2, ShieldCheck,
-    ArrowRight,
+    Lock, Loader2, ShieldCheck, ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { authAPI } from '@/api/auth';
@@ -30,6 +29,7 @@ import { useAuth } from '@/context/AuthContext';
 import { printersAPI } from '@/api/printers';
 import { materialsAPI } from '@/api/materials';
 import { ordersAPI } from '@/api/orders';
+import { teamsAPI, type Team } from '@/api/teams';
 
 // ─── Утилиты ──────────────────────────────────────────────────────────────────
 
@@ -41,21 +41,12 @@ const formatDate = (dateString: string) =>
         day: 'numeric', month: 'long', year: 'numeric',
     });
 
-// ─── Заглушка команды ─────────────────────────────────────────────────────────
-
-const TEAM_PLACEHOLDER = [
-    { name: 'Анна Смирнова',   role: 'Администратор', color: 'from-violet-500 to-purple-600', Icon: Crown    },
-    { name: 'Пётр Иванов',     role: 'Оператор',      color: 'from-blue-500 to-cyan-500',     Icon: Cpu      },
-    { name: 'Елена Петрова',   role: 'Дизайнер',      color: 'from-pink-500 to-rose-500',     Icon: Sparkles },
-    { name: 'Михаил Сидоров',  role: 'Техник',        color: 'from-orange-500 to-amber-500',  Icon: Zap      },
-    { name: 'Ольга Николаева', role: 'Менеджер',      color: 'from-emerald-500 to-teal-500',  Icon: Shield   },
-];
+// ─── Бейдж роли ──────────────────────────────────────────────────────────────
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-    'Администратор': {
-        label: 'Владелец',
-        cls: 'border-violet-300 text-violet-600 bg-violet-50 dark:bg-violet-950/30',
-    },
+    owner: { label: 'Владелец',       cls: 'border-violet-300 text-violet-600 bg-violet-50 dark:bg-violet-950/30' },
+    admin: { label: 'Администратор',  cls: 'border-blue-300 text-blue-600 bg-blue-50 dark:bg-blue-950/30' },
+    member: { label: 'Участник',      cls: 'border-muted text-muted-foreground' },
 };
 const getRoleBadge = (role: string) =>
     ROLE_BADGE[role] ?? { label: 'Участник', cls: 'border-muted text-muted-foreground' };
@@ -173,6 +164,14 @@ export default function UserPage() {
             setResendLoading(false);
         }
     };
+
+    // ── Команды ───────────────────────────────────────────────────────────────
+    const [teams, setTeams] = useState<Team[]>([]);
+
+    useEffect(() => {
+        if (!user?.is_activated) return;
+        teamsAPI.getMyTeams().then(res => setTeams(res.data.data)).catch(() => {});
+    }, [user?.is_activated]);
 
     // ── Статистика ────────────────────────────────────────────────────────────
     const [stats, setStats] = useState({
@@ -507,54 +506,61 @@ export default function UserPage() {
                         ))}
                     </div>
 
-                    <Card className="overflow-hidden">
+                    <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle className="text-xl">Команда</CardTitle>
-                                <CardDescription>Функция находится в разработке</CardDescription>
+                                <CardTitle className="text-xl">Команды</CardTitle>
+                                <CardDescription>
+                                    {teams.length === 0 ? 'Вы не состоите ни в одной команде' : `Вы в ${teams.length} ${teams.length === 1 ? 'команде' : 'командах'}`}
+                                </CardDescription>
                             </div>
-                            <Button size="sm" disabled>
-                                <UserPlus className="mr-2 h-4 w-4" />Пригласить
+                            <Button size="sm" onClick={() => navigate('/teams')}>
+                                <UserPlus className="mr-2 h-4 w-4" />Управление
                             </Button>
                         </CardHeader>
-                        <CardContent className="relative">
-                            <div className="space-y-3 select-none pointer-events-none" aria-hidden>
-                                {TEAM_PLACEHOLDER.map((member, i) => {
-                                    const badge = getRoleBadge(member.role);
-                                    return (
-                                        <div
-                                            key={i}
-                                            className="flex items-center justify-between p-3 rounded-xl border bg-muted/30"
-                                            style={{ opacity: 1 - i * 0.15 }}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full bg-linear-to-br ${member.color} flex items-center justify-center shrink-0`}>
-                                                    <member.Icon className="h-5 w-5 text-white" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-sm">{member.name}</p>
-                                                    <p className="text-xs text-muted-foreground">{member.role}</p>
-                                                </div>
-                                            </div>
-                                            <Badge variant="outline" className={badge.cls}>{badge.label}</Badge>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] rounded-b-xl">
-                                <div className="text-center px-6 py-6 rounded-2xl border bg-card shadow-lg max-w-xs mx-auto">
-                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                        <CardContent>
+                            {teams.length === 0 ? (
+                                <div className="flex flex-col items-center py-6 gap-3 text-center">
+                                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                                         <Users className="h-6 w-6 text-primary" />
                                     </div>
-                                    <h3 className="font-semibold text-base mb-1">Командная работа</h3>
-                                    <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                                        Приглашайте коллег, распределяйте роли и управляйте производством вместе. Скоро в этом обновлении.
+                                    <p className="text-sm text-muted-foreground">
+                                        Создайте команду и пригласите коллег
                                     </p>
-                                    <Badge variant="secondary" className="gap-1">
-                                        <Sparkles className="h-3 w-3" />Скоро
-                                    </Badge>
+                                    <Button size="sm" variant="outline" onClick={() => navigate('/teams')}>
+                                        <ArrowRight className="mr-2 h-4 w-4" />Перейти к командам
+                                    </Button>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {teams.slice(0, 3).map(team => {
+                                        const badge = getRoleBadge(team.role ?? 'member');
+                                        return (
+                                            <div
+                                                key={team.id}
+                                                onClick={() => navigate(`/teams/${team.id}`)}
+                                                className="flex items-center justify-between p-3 rounded-xl border bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-semibold text-primary text-sm">
+                                                        {getInitials(team.name)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-sm">{team.name}</p>
+                                                        <p className="text-xs text-muted-foreground">{team.member_count} участников</p>
+                                                    </div>
+                                                </div>
+                                                <Badge variant="outline" className={badge.cls}>{badge.label}</Badge>
+                                            </div>
+                                        );
+                                    })}
+                                    {teams.length > 3 && (
+                                        <Button variant="ghost" size="sm" className="w-full" onClick={() => navigate('/teams')}>
+                                            Показать все ({teams.length})
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

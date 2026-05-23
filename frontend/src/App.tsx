@@ -12,6 +12,8 @@ import StatisticsPage from './pages/dashboardPage/dashboardPage'
 import { ProtectedRoute, GuestRoute } from './components/ProtectedRoute';
 import AdminPage from './pages/AdminPage/AdminPage';
 import ActivationPage from './pages/ActivationPage/ActivationPage';
+import TeamsPage from './pages/TeamsPage/TeamsPage';
+import TeamPage from './pages/TeamPage/TeamPage';
 
 function App() {
   return (
@@ -31,6 +33,10 @@ function App() {
             <Route path="/materials" element={<ProtectedRoute> <MaterialsPage /> </ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute> <OrdersPage /> </ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute> <StatisticsPage /> </ProtectedRoute>} />
+
+            {/* Команды */}
+            <Route path="/teams"    element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />
+            <Route path="/teams/:id" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
 
             {/* Админ */}
             <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />

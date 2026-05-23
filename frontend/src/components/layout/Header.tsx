@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/avatar"
 import { useAuth } from "@/context/AuthContext"
 import { useTheme } from "@/context/ThemeContext"
+import { NotificationBell } from "@/components/NotificationBell"
 
 const getInitials = (name: string) =>
     name.split(/[\s_]/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -57,6 +58,12 @@ export default function Header() {
                         >
                             Статистика
                         </Button>
+                        <Button
+                            className="hover:bg-accent bg-transparent text-foreground"
+                            onClick={() => navigate('/teams')}
+                        >
+                            Команды
+                        </Button>
                     </div>
                 </div>
                 :
@@ -87,6 +94,7 @@ export default function Header() {
                 </div>
                 :
                 <div className="flex items-center">
+                    <NotificationBell />
                     <Button
                         className="hover:bg-accent bg-transparent text-foreground"
                         size="icon"
