@@ -5,6 +5,11 @@ const { Pool, types } = require('pg');
 // Принудительно возвращаем DATE как строку YYYY-MM-DD.
 types.setTypeParser(1082, (val) => val); // val уже строка 'YYYY-MM-DD' из pg wire
 
+// OID 20 = INT8/BIGINT. По умолчанию pg возвращает BIGINT как строку,
+// что ломает строгое сравнение === с числами на фронтенде (user_id, id и т.д.)
+// Для нашего диапазона значений (ID пользователей) переполнения Number не будет.
+types.setTypeParser(20, (val) => parseInt(val, 10)); // BIGINT -> Number
+
 // Настраиваем параметры бд
 const pool = new Pool({
   user: process.env.DB_USER,

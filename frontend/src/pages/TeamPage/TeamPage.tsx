@@ -232,11 +232,16 @@ function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMembe
 // ─── Вкладка Ресурсы ─────────────────────────────────────────────────────────
 
 function ResourcesTab({ teamId }: { teamId: number }) {
-    const [printers, setPrinters]   = useState<any[]>([]);
-    const [materials, setMaterials] = useState<any[]>([]);
-    const [shared, setShared]       = useState<Set<string>>(new Set());
-    const [loading, setLoading]     = useState(true);
-    const [toggling, setToggling]   = useState<Set<string>>(new Set());
+    const { user } = useAuth();
+    const currentUserId = user ? Number(user.id) : null;
+
+    const [printers, setPrinters]         = useState<any[]>([]);
+    const [materials, setMaterials]       = useState<any[]>([]);
+    const [teamPrinters, setTeamPrinters] = useState<any[]>([]);
+    const [teamMaterials, setTeamMaterials] = useState<any[]>([]);
+    const [shared, setShared]             = useState<Set<string>>(new Set());
+    const [loading, setLoading]           = useState(true);
+    const [toggling, setToggling]         = useState<Set<string>>(new Set());
 
     const sharedKey = (type: 'printer' | 'material', id: number) => `${type}:${id}`;
 
@@ -244,13 +249,19 @@ function ResourcesTab({ teamId }: { teamId: number }) {
         const load = async () => {
             setLoading(true);
             try {
-                const [p, m, s] = await Promise.all([
+                const [p, m, s, tp, tm] = await Promise.all([
                     printersAPI.getAll(),
                     materialsAPI.getAll(),
                     teamsAPI.getMyShared(teamId),
+                    teamsAPI.getTeamPrinters(teamId),
+                    teamsAPI.getTeamMaterials(teamId),
                 ]);
-                setPrinters(p.data.data);
-                setMaterials(m.data.data);
+                // Собственные ресурсы — для управления шарингом
+                setPrinters(p.data.data.filter((r: any) => Number(r.user_id) === currentUserId));
+                setMaterials(m.data.data.filter((r: any) => Number(r.user_id) === currentUserId));
+                // Чужие расшаренные — только просмотр
+                setTeamPrinters(tp.data.data.filter((r: any) => Number(r.shared_by_user_id) !== currentUserId));
+                setTeamMaterials(tm.data.data.filter((r: any) => Number(r.shared_by_user_id) !== currentUserId));
                 const sharedSet = new Set<string>(
                     s.data.data.map((r: TeamResource) => sharedKey(r.resource_type, r.resource_id))
                 );
@@ -317,41 +328,111 @@ function ResourcesTab({ teamId }: { teamId: number }) {
     };
 
     return (
-        <div className="space-y-6">
-            <p className="text-sm text-muted-foreground">
-                Включите тумблер, чтобы сделать ресурс доступным для всех участников команды.
-            </p>
-
-            {printers.length > 0 && (
+        <div className="space-y-8">
+            {/* ── Мои ресурсы ── */}
+            <div className="space-y-4">
                 <div>
-                    <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-                        <Printer className="h-4 w-4" />Принтеры
-                    </h3>
-                    <div className="space-y-2">
-                        {printers.map(p => (
-                            <ResourceRow key={p.id} type="printer" item={p} label={`${p.type} · ${p.model ?? '—'}`} />
-                        ))}
-                    </div>
+                    <h2 className="font-semibold text-sm">Мои ресурсы</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        Включите тумблер, чтобы сделать ресурс доступным всем участникам команды.
+                    </p>
                 </div>
-            )}
 
-            {materials.length > 0 && (
-                <div>
-                    <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
-                        <Package className="h-4 w-4" />Материалы
-                    </h3>
-                    <div className="space-y-2">
-                        {materials.map(m => (
-                            <ResourceRow key={m.id} type="material" item={m} label={`${m.type ?? m.category ?? '—'} · ${m.price_per_kg ?? '—'} ₽/кг`} />
-                        ))}
+                {printers.length > 0 && (
+                    <div>
+                        <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                            <Printer className="h-4 w-4" />Принтеры
+                        </h3>
+                        <div className="space-y-2">
+                            {printers.map(p => (
+                                <ResourceRow key={p.id} type="printer" item={p} label={`${p.type} · ${p.model ?? '—'}`} />
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {printers.length === 0 && materials.length === 0 && (
-                <div className="text-center py-10 text-muted-foreground">
-                    <Share2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">У вас пока нет принтеров или материалов для шаринга</p>
+                {materials.length > 0 && (
+                    <div>
+                        <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                            <Package className="h-4 w-4" />Материалы
+                        </h3>
+                        <div className="space-y-2">
+                            {materials.map(m => (
+                                <ResourceRow key={m.id} type="material" item={m} label={`${m.type ?? m.category ?? '—'} · ${m.price_per_kg ?? '—'} ₽/кг`} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {printers.length === 0 && materials.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground border border-dashed rounded-xl">
+                        <Share2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">У вас пока нет принтеров или материалов для шаринга</p>
+                    </div>
+                )}
+            </div>
+
+            {/* ── Ресурсы участников ── */}
+            {(teamPrinters.length > 0 || teamMaterials.length > 0) && (
+                <div className="space-y-4">
+                    <div>
+                        <h2 className="font-semibold text-sm">Ресурсы участников</h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Расшаренные ресурсы других участников команды. Только просмотр.
+                        </p>
+                    </div>
+
+                    {teamPrinters.length > 0 && (
+                        <div>
+                            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                                <Printer className="h-4 w-4" />Принтеры
+                            </h3>
+                            <div className="space-y-2">
+                                {teamPrinters.map((p: any) => (
+                                    <div key={p.id} className="flex items-center justify-between p-3 rounded-xl border bg-muted/10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                                <Printer className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium">{p.name}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {p.type} · {p.model ?? '—'} · {p.shared_by_username}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Badge variant="outline" className="text-xs shrink-0">Чужой</Badge>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {teamMaterials.length > 0 && (
+                        <div>
+                            <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
+                                <Package className="h-4 w-4" />Материалы
+                            </h3>
+                            <div className="space-y-2">
+                                {teamMaterials.map((m: any) => (
+                                    <div key={m.id} className="flex items-center justify-between p-3 rounded-xl border bg-muted/10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                                <Package className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium">{m.name}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {m.type ?? m.category ?? '—'} · {m.price_per_kg ?? '—'} ₽/кг · {m.shared_by_username}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Badge variant="outline" className="text-xs shrink-0">Чужой</Badge>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

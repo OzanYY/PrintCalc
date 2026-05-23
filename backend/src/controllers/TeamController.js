@@ -323,8 +323,14 @@ class TeamController {
     static async unshareResource(req, res) {
         try {
             const { id: teamId, type, resourceId } = req.params;
-            const removed = await TeamResourceModel.unshare(teamId, type, resourceId);
-            if (!removed) return res.status(404).json({ error: 'Ресурс не найден в команде' });
+
+            const existing = await TeamResourceModel.getSharedResource(teamId, type, resourceId);
+            if (!existing) return res.status(404).json({ error: 'Ресурс не найден в команде' });
+            if (String(existing.user_id) !== String(req.user.id)) {
+                return res.status(403).json({ error: 'Только владелец ресурса может убрать его из шаринга' });
+            }
+
+            await TeamResourceModel.unshare(teamId, type, resourceId);
             res.json({ message: 'Ресурс убран из команды' });
         } catch (err) {
             console.error('unshareResource error:', err);

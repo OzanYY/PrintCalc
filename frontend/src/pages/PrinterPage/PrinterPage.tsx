@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
     Plus, Printer, Edit, Trash2, MoreVertical,
     Clock, Zap, DollarSign, Copy, Star, Loader2, RefreshCw,
-    X, PlusCircle, Settings2,
+    X, PlusCircle, Settings2, Users, User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PRINTER_TYPES, type Printer as PrinterType_, type CreatePrinterData } from '@/api/printers'
 import { usePrinters } from '@/hooks/usePrinters'
+import { useAuth } from '@/context/AuthContext'
 
 type PrinterTech = typeof PRINTER_TYPES[number]
 
@@ -156,15 +157,26 @@ export default function PrintersPage() {
         setDefaultPrinter, duplicatePrinter,
     } = usePrinters()
 
+    const authCtx = useAuth()
+    const currentUserId = authCtx?.user ? Number(authCtx.user.id) : null
+
     const [activeTab, setActiveTab]             = useState('all')
+    const [ownerFilter, setOwnerFilter]         = useState<'all' | 'mine' | 'team'>('all')
     const [formData, setFormData]               = useState<PrinterFormData>(EMPTY_FORM)
     const [settingEntries, setSettingEntries]   = useState<SettingEntry[]>([])
     const [isAddOpen, setIsAddOpen]             = useState(false)
     const [isEditOpen, setIsEditOpen]           = useState(false)
     const [isDeleteOpen, setIsDeleteOpen]       = useState(false)
+    const [isViewOpen, setIsViewOpen]           = useState(false)
+    const [viewPrinter, setViewPrinter]         = useState<PrinterType_ | null>(null)
     const [selectedPrinter, setSelectedPrinter] = useState<PrinterType_ | null>(null)
     const [isSaving, setIsSaving]               = useState(false)
     const [isDeleting, setIsDeleting]           = useState(false)
+
+    const openViewDialog = (printer: PrinterType_) => {
+        setViewPrinter(printer)
+        setIsViewOpen(true)
+    }
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target
@@ -252,10 +264,19 @@ export default function PrintersPage() {
         if (ok) { setIsDeleteOpen(false); setSelectedPrinter(null) }
     }
 
-    const filteredPrinters  = activeTab === 'all' ? printers : printers.filter(p => p.type === activeTab)
-    const totalLifetimeHours = printers.reduce((s, p) => s + Number(p.print_lifetime_hours), 0)
-    const totalInvestment    = printers.reduce((s, p) => s + Number(p.purchase_price), 0)
-    const defaultPrinter     = printers.find(p => p.is_default)
+    const isOwnPrinter = (p: PrinterType_) => currentUserId !== null && Number(p.user_id) === currentUserId
+    const hasTeamPrinters = printers.some(p => !isOwnPrinter(p))
+
+    const filteredPrinters = printers.filter(p => {
+        if (activeTab !== 'all' && p.type !== activeTab) return false
+        if (ownerFilter === 'mine')  return isOwnPrinter(p)
+        if (ownerFilter === 'team')  return !isOwnPrinter(p)
+        return true
+    })
+    const ownPrinters        = printers.filter(isOwnPrinter)
+    const totalLifetimeHours = ownPrinters.reduce((s, p) => s + Number(p.print_lifetime_hours), 0)
+    const totalInvestment    = ownPrinters.reduce((s, p) => s + Number(p.purchase_price), 0)
+    const defaultPrinter     = ownPrinters.find(p => p.is_default)
 
     if (isLoading) {
         return (
@@ -316,7 +337,7 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{totalLifetimeHours} ч</div>
                         <p className="text-xs text-muted-foreground">
-                            Среднее: {printers.length ? Math.round(totalLifetimeHours / printers.length) : 0} ч/принтер
+                            Среднее: {ownPrinters.length ? Math.round(totalLifetimeHours / ownPrinters.length) : 0} ч/принтер
                         </p>
                     </CardContent>
                 </Card>
@@ -328,7 +349,7 @@ export default function PrintersPage() {
                     <CardContent>
                         <div className="text-2xl font-bold">{totalInvestment.toLocaleString()} ₽</div>
                         <p className="text-xs text-muted-foreground">
-                            Средняя: {printers.length ? Math.round(totalInvestment / printers.length).toLocaleString() : 0} ₽
+                            Средняя: {ownPrinters.length ? Math.round(totalInvestment / ownPrinters.length).toLocaleString() : 0} ₽
                         </p>
                     </CardContent>
                 </Card>
@@ -344,12 +365,26 @@ export default function PrintersPage() {
                 </Card>
             </div>
 
-            <Tabs defaultValue="all" className="mb-6" onValueChange={setActiveTab}>
-                <TabsList>
-                    <TabsTrigger value="all">Все</TabsTrigger>
-                    {PRINTER_TYPES.map(type => <TabsTrigger key={type} value={type}>{type}</TabsTrigger>)}
-                </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+                <Tabs defaultValue="all" onValueChange={setActiveTab}>
+                    <TabsList>
+                        <TabsTrigger value="all">Все</TabsTrigger>
+                        {PRINTER_TYPES.map(type => <TabsTrigger key={type} value={type}>{type}</TabsTrigger>)}
+                    </TabsList>
+                </Tabs>
+
+                {hasTeamPrinters && (
+                    <div className="flex gap-1 border rounded-lg p-1">
+                        <Button variant={ownerFilter === 'all'  ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('all')}>Все</Button>
+                        <Button variant={ownerFilter === 'mine' ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('mine')}>
+                            <User className="h-3.5 w-3.5 mr-1" />Мои
+                        </Button>
+                        <Button variant={ownerFilter === 'team' ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('team')}>
+                            <Users className="h-3.5 w-3.5 mr-1" />Команды
+                        </Button>
+                    </div>
+                )}
+            </div>
 
             {filteredPrinters.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -371,6 +406,8 @@ export default function PrintersPage() {
                     <PrinterCard
                         key={printer.id}
                         printer={printer}
+                        isOwn={isOwnPrinter(printer)}
+                        onView={() => openViewDialog(printer)}
                         onEdit={() => openEditDialog(printer)}
                         onDelete={() => openDeleteDialog(printer)}
                         onSetDefault={() => setDefaultPrinter(printer.id)}
@@ -378,6 +415,95 @@ export default function PrintersPage() {
                     />
                 ))}
             </div>
+
+            {/* Диалог просмотра */}
+            <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                    {viewPrinter && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 flex-wrap pr-6">
+                                    {viewPrinter.name}
+                                    {viewPrinter.is_default && (
+                                        <Badge variant="default">
+                                            <Star className="h-3 w-3 mr-1 fill-current" />Основной
+                                        </Badge>
+                                    )}
+                                </DialogTitle>
+                                <DialogDescription>{viewPrinter.model ?? '—'}</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className={getTypeColor(viewPrinter.type)}>{viewPrinter.type}</Badge>
+                                    {!isOwnPrinter(viewPrinter) && viewPrinter.owner_username && (
+                                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                                            <Users className="h-3 w-3" />{viewPrinter.owner_username}
+                                            {viewPrinter.team_name && <span className="text-violet-500"> · {viewPrinter.team_name}</span>}
+                                        </span>
+                                    )}
+                                </div>
+                                <Separator />
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-muted-foreground">Ресурс:</span>
+                                        <span className="font-medium">{Number(viewPrinter.print_lifetime_hours)} ч</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Zap className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-muted-foreground">Мощность:</span>
+                                        <span className="font-medium">{Number(viewPrinter.power_consumption)} Вт</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-muted-foreground">Стоимость:</span>
+                                        <span className="font-medium">{Number(viewPrinter.purchase_price).toLocaleString()} ₽</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Printer className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-muted-foreground">ID:</span>
+                                        <span className="font-medium">{viewPrinter.id}</span>
+                                    </div>
+                                </div>
+                                {Object.keys(viewPrinter.settings).length > 0 && (
+                                    <>
+                                        <Separator />
+                                        <div>
+                                            <div className="flex items-center gap-1 mb-2 text-sm font-medium">
+                                                <Settings2 className="h-4 w-4 text-muted-foreground" />
+                                                Параметры
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {Object.entries(viewPrinter.settings).map(([key, value]) => (
+                                                    <div
+                                                        key={key}
+                                                        className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
+                                                    >
+                                                        <span className="text-muted-foreground">{getParamLabel(key)}:</span>
+                                                        <span className="font-medium">{value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                <Separator />
+                                <p className="text-xs text-muted-foreground">
+                                    Добавлен: {new Date(viewPrinter.created_at).toLocaleDateString('ru-RU')}
+                                </p>
+                            </div>
+                            <DialogFooter>
+                                {isOwnPrinter(viewPrinter) && (
+                                    <Button variant="outline" onClick={() => { setIsViewOpen(false); openEditDialog(viewPrinter) }}>
+                                        <Edit className="mr-2 h-4 w-4" />Редактировать
+                                    </Button>
+                                )}
+                                <Button variant="outline" onClick={() => setIsViewOpen(false)}>Закрыть</Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             {/* Диалог добавления */}
             <Dialog open={isAddOpen} onOpenChange={open => { setIsAddOpen(open); if (!open) resetForm() }}>
@@ -458,19 +584,21 @@ export default function PrintersPage() {
 
 interface PrinterCardProps {
     printer: PrinterType_
+    isOwn: boolean
+    onView: () => void
     onEdit: () => void
     onDelete: () => void
     onSetDefault: () => void
     onDuplicate: () => void
 }
 
-function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: PrinterCardProps) {
+function PrinterCard({ printer, isOwn, onView, onEdit, onDelete, onSetDefault, onDuplicate }: PrinterCardProps) {
     const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(printer.settings)
     const hasSettings = settingsEntries.length > 0
 
     return (
-        <Card className={printer.is_default ? 'border-primary' : ''} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
+        <Card className={`${printer.is_default ? 'border-primary' : ''} cursor-pointer hover:shadow-lg transition-shadow`} onClick={onView} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
             <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 min-w-0 pr-2">
@@ -485,6 +613,7 @@ function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: P
                         </CardTitle>
                         <CardDescription>{printer.model ?? '—'}</CardDescription>
                     </div>
+                    <div onClick={e => e.stopPropagation()}>
                     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="shrink-0">
@@ -493,10 +622,12 @@ function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: P
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={onEdit}>
-                                <Edit className="mr-2 h-4 w-4" />Редактировать
-                            </DropdownMenuItem>
-                            {!printer.is_default && (
+                            {isOwn && (
+                                <DropdownMenuItem onClick={onEdit}>
+                                    <Edit className="mr-2 h-4 w-4" />Редактировать
+                                </DropdownMenuItem>
+                            )}
+                            {isOwn && !printer.is_default && (
                                 <DropdownMenuItem onClick={onSetDefault}>
                                     <Star className="mr-2 h-4 w-4" />Сделать основным
                                 </DropdownMenuItem>
@@ -504,18 +635,29 @@ function PrinterCard({ printer, onEdit, onDelete, onSetDefault, onDuplicate }: P
                             <DropdownMenuItem onClick={onDuplicate}>
                                 <Copy className="mr-2 h-4 w-4" />Дублировать
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                                <Trash2 className="mr-2 h-4 w-4" />Удалить
-                            </DropdownMenuItem>
+                            {isOwn && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                                        <Trash2 className="mr-2 h-4 w-4" />Удалить
+                                    </DropdownMenuItem>
+                                </>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                 </div>
             </CardHeader>
 
             <CardContent className="pb-3">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <Badge className={getTypeColor(printer.type)}>{printer.type}</Badge>
+                    {!isOwn && printer.owner_username && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                            <Users className="h-3 w-3" />{printer.owner_username}
+                            {printer.team_name && <span className="text-violet-500"> · {printer.team_name}</span>}
+                        </span>
+                    )}
                 </div>
 
                 <div className="space-y-2 text-sm">

@@ -26,6 +26,15 @@ class TeamResourceModel {
         return result.rows[0] ?? null;
     }
 
+    static async getSharedResource(teamId, resourceType, resourceId) {
+        const result = await pool.query(
+            `SELECT * FROM team_resources
+             WHERE team_id = $1 AND resource_type = $2 AND resource_id = $3`,
+            [teamId, resourceType, resourceId]
+        );
+        return result.rows[0] ?? null;
+    }
+
     static async unshare(teamId, resourceType, resourceId) {
         const result = await pool.query(
             `DELETE FROM team_resources

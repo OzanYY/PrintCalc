@@ -4,6 +4,7 @@ import {
     Copy, Droplet, Ruler, Weight, CircleDot,
     Beaker, Loader2, RefreshCw, X, PlusCircle, Settings2,
     Layers, Minus, History, AlertTriangle, TrendingDown, TrendingUp,
+    Users, User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,6 +33,7 @@ import {
 } from '@/api/materials'
 import { inventoryAPI, TX_LABELS, TX_COLORS, TX_SIGN, type MaterialTransaction } from '@/api/inventory'
 import { useMaterials } from '@/hooks/useMaterials'
+import { useAuth } from '@/context/AuthContext'
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -196,16 +198,27 @@ export default function MaterialsPage() {
         setDefaultMaterial, duplicateMaterial,
     } = useMaterials()
 
+    const authCtx = useAuth()
+    const currentUserId = authCtx?.user ? Number(authCtx.user.id) : null
+
     const [activeTab, setActiveTab]               = useState<MaterialCategory | 'all'>('all')
+    const [ownerFilter, setOwnerFilter]           = useState<'all' | 'mine' | 'team'>('all')
     const [formData, setFormData]                 = useState<MaterialFormData>(EMPTY_FORM)
     const [settingEntries, setSettingEntries]     = useState<SettingEntry[]>([])
     const [isAddOpen, setIsAddOpen]               = useState(false)
     const [isEditOpen, setIsEditOpen]             = useState(false)
     const [isDeleteOpen, setIsDeleteOpen]         = useState(false)
+    const [isViewOpen, setIsViewOpen]             = useState(false)
+    const [viewMaterial, setViewMaterial]         = useState<Material | null>(null)
     const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
     const [isSaving, setIsSaving]                 = useState(false)
     const [isDeleting, setIsDeleting]             = useState(false)
     const [isUpdatingQty, setIsUpdatingQty]       = useState<number | null>(null)
+
+    const openViewDialog = (material: Material) => {
+        setViewMaterial(material)
+        setIsViewOpen(true)
+    }
 
     // ─── Инвентарь ────────────────────────────────────────────────────────────
     const [isHistoryOpen, setIsHistoryOpen]       = useState(false)
@@ -378,7 +391,15 @@ export default function MaterialsPage() {
     }
 
     // ─── Производные данные ───────────────────────────────────────────────────
-    const filtered   = activeTab === 'all' ? materials : materials.filter(m => m.category === activeTab)
+    const isOwnMaterial = (m: Material) => currentUserId !== null && Number(m.user_id) === currentUserId
+    const hasTeamMaterials = materials.some(m => !isOwnMaterial(m))
+
+    const filtered = materials.filter(m => {
+        if (activeTab !== 'all' && m.category !== activeTab) return false
+        if (ownerFilter === 'mine') return isOwnMaterial(m)
+        if (ownerFilter === 'team') return !isOwnMaterial(m)
+        return true
+    })
     const prices     = materials.map(m => Number(m.price_per_kg))
     const totalPrice = prices.reduce((s, p) => s + p, 0)
     const avgPrice   = materials.length ? Math.round(totalPrice / materials.length) : 0
@@ -491,14 +512,28 @@ export default function MaterialsPage() {
             </div>
 
             {/* Фильтр */}
-            <Tabs defaultValue="all" className="mb-6" onValueChange={v => setActiveTab(v as MaterialCategory | 'all')}>
-                <TabsList>
-                    <TabsTrigger value="all">Все</TabsTrigger>
-                    {MATERIAL_CATEGORIES.map(cat => (
-                        <TabsTrigger key={cat} value={cat}>{CATEGORY_LABELS[cat]}</TabsTrigger>
-                    ))}
-                </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+                <Tabs defaultValue="all" onValueChange={v => setActiveTab(v as MaterialCategory | 'all')}>
+                    <TabsList>
+                        <TabsTrigger value="all">Все</TabsTrigger>
+                        {MATERIAL_CATEGORIES.map(cat => (
+                            <TabsTrigger key={cat} value={cat}>{CATEGORY_LABELS[cat]}</TabsTrigger>
+                        ))}
+                    </TabsList>
+                </Tabs>
+
+                {hasTeamMaterials && (
+                    <div className="flex gap-1 border rounded-lg p-1">
+                        <Button variant={ownerFilter === 'all'  ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('all')}>Все</Button>
+                        <Button variant={ownerFilter === 'mine' ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('mine')}>
+                            <User className="h-3.5 w-3.5 mr-1" />Мои
+                        </Button>
+                        <Button variant={ownerFilter === 'team' ? 'default' : 'ghost'} size="sm" onClick={() => setOwnerFilter('team')}>
+                            <Users className="h-3.5 w-3.5 mr-1" />Команды
+                        </Button>
+                    </div>
+                )}
+            </div>
 
             {/* Пустое состояние */}
             {filtered.length === 0 && (
@@ -525,7 +560,9 @@ export default function MaterialsPage() {
                     <MaterialCard
                         key={material.id}
                         material={material}
+                        isOwn={isOwnMaterial(material)}
                         isUpdatingQty={isUpdatingQty === material.id}
+                        onView={() => openViewDialog(material)}
                         onEdit={() => openEditDialog(material)}
                         onDelete={() => { setSelectedMaterial(material); setIsDeleteOpen(true) }}
                         onSetDefault={() => setDefaultMaterial(material.id)}
@@ -538,6 +575,141 @@ export default function MaterialsPage() {
                     />
                 ))}
             </div>
+
+            {/* Диалог просмотра */}
+            <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                    {viewMaterial && (() => {
+                        const stockGrams = Number(viewMaterial.stock_grams) || 0
+                        const spoolWeight = Number(viewMaterial.weight_per_spool_grams) || 1000
+                        const reservedGrams = Number(viewMaterial.reserved_grams) || 0
+                        const availableGrams = Math.max(0, stockGrams - reservedGrams)
+                        const isLowStock = availableGrams < spoolWeight * 0.2
+                        const settingsEntries = Object.entries(viewMaterial.settings ?? {})
+                        return (
+                            <>
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center gap-2 flex-wrap pr-6">
+                                        {viewMaterial.color && (
+                                            <div
+                                                className="w-4 h-4 rounded-full shrink-0 border border-border"
+                                                style={{ backgroundColor: viewMaterial.color }}
+                                            />
+                                        )}
+                                        {viewMaterial.name}
+                                        {viewMaterial.is_default && (
+                                            <Badge variant="default">
+                                                <Star className="h-3 w-3 mr-1 fill-current" />Основной
+                                            </Badge>
+                                        )}
+                                        {isLowStock && (
+                                            <Badge variant="outline" className="text-orange-500 border-orange-400">
+                                                <AlertTriangle className="h-3 w-3 mr-1" />Мало
+                                            </Badge>
+                                        )}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        {[viewMaterial.brand, viewMaterial.type.toUpperCase()].filter(Boolean).join(' · ')}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <Badge className={getCategoryColor(viewMaterial.category)}>
+                                            {getCategoryIcon(viewMaterial.category)}
+                                            <span className="ml-1">{CATEGORY_LABELS[viewMaterial.category]}</span>
+                                        </Badge>
+                                        {!isOwnMaterial(viewMaterial) && viewMaterial.owner_username && (
+                                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                                                <Users className="h-3 w-3" />{viewMaterial.owner_username}
+                                                {viewMaterial.team_name && <span className="text-violet-500"> · {viewMaterial.team_name}</span>}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Separator />
+                                    {/* Инвентарь */}
+                                    <div className="rounded-md border bg-muted/30 p-3 space-y-1.5 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Остаток</span>
+                                            <span className={`font-semibold ${isLowStock ? 'text-orange-500' : ''}`}>
+                                                {formatAvailable(stockGrams, viewMaterial.category)}
+                                            </span>
+                                        </div>
+                                        {reservedGrams > 0 && (
+                                            <div className="flex justify-between">
+                                                <span className="text-muted-foreground">🔒 Забронировано</span>
+                                                <span className="text-yellow-600 dark:text-yellow-400">
+                                                    {formatAvailable(reservedGrams, viewMaterial.category)}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between">
+                                            <span className="text-muted-foreground">Доступно</span>
+                                            <span className="font-semibold">{formatAvailable(availableGrams, viewMaterial.category)}</span>
+                                        </div>
+                                    </div>
+                                    {/* Основные характеристики */}
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <Weight className="h-4 w-4 text-muted-foreground shrink-0" />
+                                            <span className="text-muted-foreground">Цена:</span>
+                                            <span className="font-medium">{Number(viewMaterial.price_per_kg).toLocaleString()} ₽/кг</span>
+                                        </div>
+                                        {viewMaterial.density && (
+                                            <div className="flex items-center gap-2">
+                                                <Ruler className="h-4 w-4 text-muted-foreground shrink-0" />
+                                                <span className="text-muted-foreground">Плотность:</span>
+                                                <span className="font-medium">{viewMaterial.density} г/см³</span>
+                                            </div>
+                                        )}
+                                        {viewMaterial.diameter && (
+                                            <div className="flex items-center gap-2">
+                                                <CircleDot className="h-4 w-4 text-muted-foreground shrink-0" />
+                                                <span className="text-muted-foreground">Диаметр:</span>
+                                                <span className="font-medium">{viewMaterial.diameter} мм</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Технические характеристики */}
+                                    {settingsEntries.length > 0 && (
+                                        <>
+                                            <Separator />
+                                            <div>
+                                                <div className="flex items-center gap-1 mb-2 text-sm font-medium">
+                                                    <Settings2 className="h-4 w-4 text-muted-foreground" />
+                                                    Характеристики
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {settingsEntries.map(([key, value]) => (
+                                                        <div
+                                                            key={key}
+                                                            className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
+                                                        >
+                                                            <span className="text-muted-foreground">{getParamLabel(key)}:</span>
+                                                            <span className="font-medium">{value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                    <Separator />
+                                    <p className="text-xs text-muted-foreground">
+                                        Добавлен: {new Date(viewMaterial.created_at).toLocaleDateString('ru-RU')} · ID: {viewMaterial.id}
+                                    </p>
+                                </div>
+                                <DialogFooter>
+                                    {isOwnMaterial(viewMaterial) && (
+                                        <Button variant="outline" onClick={() => { setIsViewOpen(false); openEditDialog(viewMaterial) }}>
+                                            <Edit className="mr-2 h-4 w-4" />Редактировать
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" onClick={() => setIsViewOpen(false)}>Закрыть</Button>
+                                </DialogFooter>
+                            </>
+                        )
+                    })()}
+                </DialogContent>
+            </Dialog>
 
             {/* Диалог добавления */}
             <Dialog open={isAddOpen} onOpenChange={open => { setIsAddOpen(open); if (!open) resetForm() }}>
@@ -729,7 +901,9 @@ export default function MaterialsPage() {
 
 interface MaterialCardProps {
     material: Material
+    isOwn: boolean
     isUpdatingQty: boolean
+    onView: () => void
     onEdit: () => void
     onDelete: () => void
     onSetDefault: () => void
@@ -762,7 +936,7 @@ function formatAvailable(grams: number, category: MaterialCategory): string {
     return `${(grams / 1000).toFixed(3)} кг`
 }
 
-function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
+function MaterialCard({ material, isOwn, isUpdatingQty, onView, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
     const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
@@ -774,7 +948,7 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
     const isLowStock = availableGrams < spoolWeight * 0.2
 
     return (
-        <Card className={`${material.is_default ? 'border-primary' : ''} ${isLowStock ? 'border-orange-400' : ''}`} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
+        <Card className={`${material.is_default ? 'border-primary' : ''} ${isLowStock ? 'border-orange-400' : ''} cursor-pointer hover:shadow-lg transition-shadow`} onClick={onView} onContextMenu={e => { e.preventDefault(); setMenuOpen(true) }}>
             <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                     <div className="space-y-1 min-w-0 pr-2">
@@ -803,6 +977,7 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             {[material.brand, material.type.toUpperCase()].filter(Boolean).join(' · ')}
                         </CardDescription>
                     </div>
+                    <div onClick={e => e.stopPropagation()}>
                     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="shrink-0">
@@ -811,24 +986,30 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Действия</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={onEdit}>
-                                <Edit className="mr-2 h-4 w-4" />Редактировать
-                            </DropdownMenuItem>
+                            {isOwn && (
+                                <DropdownMenuItem onClick={onEdit}>
+                                    <Edit className="mr-2 h-4 w-4" />Редактировать
+                                </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={onHistory}>
                                 <History className="mr-2 h-4 w-4" />История списаний
                             </DropdownMenuItem>
+                            {isOwn && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-0">
+                                        Остаток: {formatAvailable(availableGrams, material.category)} доступно
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuItem onClick={onAdjustAdd}>
+                                        <TrendingUp className="mr-2 h-4 w-4 text-green-500" />Пополнить склад
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={onAdjustSub}>
+                                        <TrendingDown className="mr-2 h-4 w-4 text-red-500" />Уменьшить остаток
+                                    </DropdownMenuItem>
+                                </>
+                            )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-0">
-                                Остаток: {formatAvailable(availableGrams, material.category)} доступно
-                            </DropdownMenuLabel>
-                            <DropdownMenuItem onClick={onAdjustAdd}>
-                                <TrendingUp className="mr-2 h-4 w-4 text-green-500" />Пополнить склад
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={onAdjustSub}>
-                                <TrendingDown className="mr-2 h-4 w-4 text-red-500" />Уменьшить остаток
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {!material.is_default && (
+                            {isOwn && !material.is_default && (
                                 <DropdownMenuItem onClick={onSetDefault}>
                                     <Star className="mr-2 h-4 w-4" />Сделать основным
                                 </DropdownMenuItem>
@@ -836,12 +1017,17 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                             <DropdownMenuItem onClick={onDuplicate}>
                                 <Copy className="mr-2 h-4 w-4" />Дублировать
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                                <Trash2 className="mr-2 h-4 w-4" />Удалить
-                            </DropdownMenuItem>
+                            {isOwn && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                                        <Trash2 className="mr-2 h-4 w-4" />Удалить
+                                    </DropdownMenuItem>
+                                </>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                 </div>
             </CardHeader>
 
@@ -861,6 +1047,12 @@ function MaterialCard({ material, isUpdatingQty, onEdit, onDelete, onSetDefault,
                         }
                         {qty} {CATEGORY_UNIT_CONFIG[material.category].unitName}
                     </Badge>
+                    {!isOwn && material.owner_username && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                            <Users className="h-3 w-3" />{material.owner_username}
+                            {material.team_name && <span className="text-violet-500"> · {material.team_name}</span>}
+                        </span>
+                    )}
                 </div>
 
                 {/* Блок инвентаря */}

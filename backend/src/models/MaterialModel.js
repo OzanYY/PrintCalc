@@ -145,28 +145,30 @@ class MaterialModel {
         return result.rows[0];
     }
 
-    // Получение всех материалов пользователя и участников его команд
+    // Получение всех материалов пользователя и расшаренных в его командах
     static async findByUser(userId, category = null) {
-        const teamSubquery = `
-            SELECT DISTINCT tm_other.user_id
-            FROM team_members tm_self
-            JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
-            WHERE tm_self.user_id = $1
-              AND tm_other.user_id != $1
-        `;
-
         let query = `
             SELECT m.*,
+                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
                    u.username AS owner_username,
                    CASE WHEN m.user_id != $1 THEN (
                        SELECT t.name FROM teams t
-                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
-                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       JOIN team_resources tr2 ON tr2.team_id = t.id
+                           AND tr2.resource_id = m.id
+                           AND tr2.resource_type = 'material'
+                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
                        LIMIT 1
                    ) ELSE NULL END AS team_name
             FROM materials m
             JOIN users u ON u.id = m.user_id
-            WHERE (m.user_id = $1 OR m.user_id IN (${teamSubquery}))`;
+            WHERE (m.user_id = $1
+               OR m.id IN (
+                   SELECT tr.resource_id
+                   FROM team_resources tr
+                   JOIN team_members tm ON tm.team_id = tr.team_id
+                   WHERE tr.resource_type = 'material'
+                     AND tm.user_id = $1
+               ))`;
         const params = [userId];
 
         if (category) {
@@ -174,7 +176,7 @@ class MaterialModel {
             params.push(category);
         }
 
-        query += ' ORDER BY m.is_default DESC, m.created_at DESC';
+        query += ' ORDER BY (m.user_id = $1 AND m.is_default) DESC, m.created_at DESC';
 
         const result = await pool.query(query, params);
         return result.rows;
@@ -203,25 +205,29 @@ class MaterialModel {
         return result.rows[0] || null;
     }
 
-    // Получение материалов по категории (включая командные)
+    // Получение материалов по категории (только свои + расшаренные в командах)
     static async findByCategory(userId, category) {
         const query = `
             SELECT m.*,
+                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
                    u.username AS owner_username,
                    CASE WHEN m.user_id != $1 THEN (
                        SELECT t.name FROM teams t
-                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
-                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       JOIN team_resources tr2 ON tr2.team_id = t.id
+                           AND tr2.resource_id = m.id
+                           AND tr2.resource_type = 'material'
+                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
                        LIMIT 1
                    ) ELSE NULL END AS team_name
             FROM materials m
             JOIN users u ON u.id = m.user_id
             WHERE (m.user_id = $1
-               OR m.user_id IN (
-                   SELECT DISTINCT tm_other.user_id
-                   FROM team_members tm_self
-                   JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
-                   WHERE tm_self.user_id = $1 AND tm_other.user_id != $1
+               OR m.id IN (
+                   SELECT tr.resource_id
+                   FROM team_resources tr
+                   JOIN team_members tm ON tm.team_id = tr.team_id
+                   WHERE tr.resource_type = 'material'
+                     AND tm.user_id = $1
                ))
               AND m.category = $2
             ORDER BY m.type, m.name
@@ -368,28 +374,32 @@ class MaterialModel {
         return types[category] || [];
     }
 
-    // Поиск материалов по названию или бренду (включая командные)
+    // Поиск материалов по названию или бренду (только свои + расшаренные в командах)
     static async search(userId, searchTerm) {
         const query = `
             SELECT m.*,
+                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
                    u.username AS owner_username,
                    CASE WHEN m.user_id != $1 THEN (
                        SELECT t.name FROM teams t
-                       JOIN team_members tm1 ON tm1.team_id = t.id AND tm1.user_id = $1
-                       JOIN team_members tm2 ON tm2.team_id = t.id AND tm2.user_id = m.user_id
+                       JOIN team_resources tr2 ON tr2.team_id = t.id
+                           AND tr2.resource_id = m.id
+                           AND tr2.resource_type = 'material'
+                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
                        LIMIT 1
                    ) ELSE NULL END AS team_name
             FROM materials m
             JOIN users u ON u.id = m.user_id
             WHERE (m.user_id = $1
-               OR m.user_id IN (
-                   SELECT DISTINCT tm_other.user_id
-                   FROM team_members tm_self
-                   JOIN team_members tm_other ON tm_other.team_id = tm_self.team_id
-                   WHERE tm_self.user_id = $1 AND tm_other.user_id != $1
+               OR m.id IN (
+                   SELECT tr.resource_id
+                   FROM team_resources tr
+                   JOIN team_members tm ON tm.team_id = tr.team_id
+                   WHERE tr.resource_type = 'material'
+                     AND tm.user_id = $1
                ))
               AND (m.name ILIKE $2 OR m.brand ILIKE $2 OR m.type ILIKE $2)
-            ORDER BY m.is_default DESC, m.created_at DESC
+            ORDER BY (m.user_id = $1 AND m.is_default) DESC, m.created_at DESC
         `;
         const result = await pool.query(query, [userId, `%${searchTerm}%`]);
         return result.rows;
