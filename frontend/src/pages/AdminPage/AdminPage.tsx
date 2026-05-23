@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import {
     Table,
@@ -190,10 +191,18 @@ function UsersSection() {
                             <TableRow key={u.id} className={u.id === currentUser?.id ? 'bg-muted/30' : ''}>
                                 <TableCell className="font-mono text-xs text-muted-foreground">{u.id}</TableCell>
                                 <TableCell className="font-medium">
-                                    {u.username}
-                                    {u.id === currentUser?.id && (
-                                        <span className="ml-2 text-xs text-muted-foreground">(вы)</span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        <Avatar className="w-7 h-7 shrink-0">
+                                            <AvatarImage src={u.avatar} alt={u.username} />
+                                            <AvatarFallback className="text-xs">
+                                                {u.username.slice(0, 2).toUpperCase()}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        {u.username}
+                                        {u.id === currentUser?.id && (
+                                            <span className="text-xs text-muted-foreground">(вы)</span>
+                                        )}
+                                    </div>
                                 </TableCell>
                                 <TableCell>{u.email}</TableCell>
                                 <TableCell>

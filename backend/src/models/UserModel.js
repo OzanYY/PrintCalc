@@ -229,7 +229,7 @@ class UserModel {
     // ─── Admin methods ────────────────────────────────────────────────────────
     static async findAll() {
         const query = `
-            SELECT id, username, email, is_activated, role, created_at, updated_at
+            SELECT id, username, email, avatar, is_activated, role, created_at, updated_at
             FROM users
             ORDER BY created_at DESC
         `;

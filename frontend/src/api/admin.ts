@@ -5,6 +5,7 @@ export interface AdminUser {
     id: string;
     username: string;
     email: string;
+    avatar?: string;
     is_activated: boolean;
     role: string;
     created_at: string;
