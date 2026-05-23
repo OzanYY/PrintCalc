@@ -12,6 +12,7 @@ export default function ActivationPage() {
     const [countdown, setCountdown] = useState(REDIRECT_DELAY);
 
     const error = searchParams.get('error');
+    const type = searchParams.get('type');
     const isSuccess = !error;
 
     useEffect(() => {
@@ -36,10 +37,21 @@ export default function ActivationPage() {
                         <>
                             <CheckCircle2 className="w-16 h-16 text-green-500" />
                             <div>
-                                <h1 className="text-2xl font-semibold mb-2">Аккаунт активирован!</h1>
-                                <p className="text-muted-foreground">
-                                    Ваш аккаунт успешно активирован. Теперь вам доступны все функции сервиса.
-                                </p>
+                                {type === 'email_changed' ? (
+                                    <>
+                                        <h1 className="text-2xl font-semibold mb-2">Email подтверждён!</h1>
+                                        <p className="text-muted-foreground">
+                                            Ваш email успешно изменён. Аккаунт активирован с новым адресом.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h1 className="text-2xl font-semibold mb-2">Аккаунт активирован!</h1>
+                                        <p className="text-muted-foreground">
+                                            Ваш аккаунт успешно активирован. Теперь вам доступны все функции сервиса.
+                                        </p>
+                                    </>
+                                )}
                             </div>
                         </>
                     ) : (

@@ -181,6 +181,45 @@ class UserService {
         return user;
     }
 
+    // ─── Запрос на смену email ────────────────────────────────────────────────
+    static async requestEmailChange(userId, newEmail, password) {
+        const user = await UserModel.findByIdWithHash(userId);
+        if (!user) throw new Error('User not found');
+
+        const isValid = await bcrypt.compare(password, user.password_hash);
+        if (!isValid) throw new Error('Неверный пароль');
+
+        if (newEmail.toLowerCase() === user.email.toLowerCase()) {
+            throw new Error('Новый email совпадает с текущим');
+        }
+
+        const existing = await UserModel.findByEmail(newEmail);
+        if (existing) throw new Error('Email уже используется');
+
+        const token = crypto.randomBytes(32).toString('hex');
+        await UserModel.setPendingEmail(userId, newEmail, token);
+
+        const confirmUrl = `${process.env.API_URL}/api/auth/confirm-email-change/${token}`;
+        await MailService.sendEmailChangeMail(newEmail, confirmUrl, user.username);
+
+        return { message: 'Письмо с подтверждением отправлено на новый email' };
+    }
+
+    // ─── Подтверждение смены email ────────────────────────────────────────────
+    static async confirmEmailChange(token) {
+        const user = await UserModel.findByEmailChangeToken(token);
+        if (!user) throw new Error('Недействительная или устаревшая ссылка подтверждения');
+
+        const updated = await UserModel.confirmEmailChange(user.id);
+        return updated;
+    }
+
+    // ─── Отмена смены email ───────────────────────────────────────────────────
+    static async cancelEmailChange(userId) {
+        await UserModel.cancelEmailChange(userId);
+        return { message: 'Смена email отменена' };
+    }
+
     // ─── Удаление аккаунта ────────────────────────────────────────────────────
     static async deleteAccount(userId, password) {
         const user     = await UserModel.findById(userId);

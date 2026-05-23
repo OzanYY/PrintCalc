@@ -51,6 +51,17 @@ class UserModel {
                     ALTER TABLE users ADD COLUMN avatar TEXT;
                 END IF;
             END $$;
+
+            -- Migration: add pending_email and email_change_token columns
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'pending_email'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN pending_email VARCHAR(255);
+                    ALTER TABLE users ADD COLUMN email_change_token VARCHAR(255);
+                END IF;
+            END $$;
         `;
         await pool.query(query);
     }
@@ -84,7 +95,7 @@ class UserModel {
 
     static async findById(id) {
         const query = `
-            SELECT id, username, email, is_activated, role, created_at, avatar
+            SELECT id, username, email, is_activated, role, created_at, avatar, pending_email
             FROM users
             WHERE id = $1
         `;
@@ -128,7 +139,7 @@ class UserModel {
         const query = `
             UPDATE users SET avatar = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-            RETURNING id, username, email, is_activated, role, created_at, avatar
+            RETURNING id, username, email, is_activated, role, created_at, avatar, pending_email
         `;
         const result = await pool.query(query, [avatarUrl, id]);
         return result.rows[0];
@@ -141,7 +152,7 @@ class UserModel {
                 email = COALESCE($2, email),
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $3
-            RETURNING id, username, email, is_activated, role, created_at, avatar
+            RETURNING id, username, email, is_activated, role, created_at, avatar, pending_email
         `;
         const values = [username, email, id];
         const result = await pool.query(query, values);
@@ -195,10 +206,51 @@ class UserModel {
     }
 
     // ─── Cleanup: unactivated accounts ───────────────────────────────────────
+    static async setPendingEmail(id, pendingEmail, token) {
+        const query = `
+            UPDATE users SET pending_email = $1, email_change_token = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3 RETURNING id
+        `;
+        const result = await pool.query(query, [pendingEmail, token, id]);
+        return result.rows[0];
+    }
+
+    static async findByEmailChangeToken(token) {
+        const query = 'SELECT * FROM users WHERE email_change_token = $1';
+        const result = await pool.query(query, [token]);
+        return result.rows[0];
+    }
+
+    static async confirmEmailChange(id) {
+        const query = `
+            UPDATE users
+            SET email = pending_email,
+                pending_email = NULL,
+                email_change_token = NULL,
+                is_activated = TRUE,
+                activation_link = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING id, username, email, is_activated, role, created_at, avatar
+        `;
+        const result = await pool.query(query, [id]);
+        return result.rows[0];
+    }
+
+    static async cancelEmailChange(id) {
+        const query = `
+            UPDATE users SET pending_email = NULL, email_change_token = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 RETURNING id
+        `;
+        const result = await pool.query(query, [id]);
+        return result.rows[0];
+    }
+
     static async deleteUnactivatedExpired() {
         const query = `
             DELETE FROM users
             WHERE is_activated = FALSE
+              AND pending_email IS NULL
               AND created_at < NOW() - INTERVAL '14 days'
             RETURNING id, email, username
         `;

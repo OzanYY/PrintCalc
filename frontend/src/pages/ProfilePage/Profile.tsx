@@ -116,6 +116,47 @@ export default function UserPage() {
         }
     };
 
+    // ── Смена email ───────────────────────────────────────────────────────────
+    const [isEmailChangeOpen, setIsEmailChangeOpen] = useState(false);
+    const [emailChangeForm, setEmailChangeForm] = useState({ newEmail: '', password: '' });
+    const [isSavingEmail, setIsSavingEmail] = useState(false);
+    const [isCancellingEmail, setIsCancellingEmail] = useState(false);
+    const resetEmailChangeForm = () => setEmailChangeForm({ newEmail: '', password: '' });
+
+    const handleRequestEmailChange = async () => {
+        if (!emailChangeForm.newEmail.trim() || !emailChangeForm.password) return;
+        setIsSavingEmail(true);
+        try {
+            await authAPI.requestEmailChange({
+                newEmail: emailChangeForm.newEmail.trim(),
+                password: emailChangeForm.password,
+            });
+            const refreshed = await authAPI.getCurrentUser();
+            setUser(refreshed.data.user);
+            toast.success('Письмо с подтверждением отправлено на новый email');
+            resetEmailChangeForm();
+            setIsEmailChangeOpen(false);
+        } catch (err: any) {
+            toast.error(err?.response?.data?.error ?? 'Ошибка при смене email', { duration: 5000 });
+        } finally {
+            setIsSavingEmail(false);
+        }
+    };
+
+    const handleCancelEmailChange = async () => {
+        setIsCancellingEmail(true);
+        try {
+            await authAPI.cancelEmailChange();
+            const refreshed = await authAPI.getCurrentUser();
+            setUser(refreshed.data.user);
+            toast.success('Смена email отменена');
+        } catch {
+            toast.error('Не удалось отменить смену email');
+        } finally {
+            setIsCancellingEmail(false);
+        }
+    };
+
     // ── Повторная отправка активации ─────────────────────────────────────────
     const [resendLoading, setResendLoading] = useState(false);
     const [resendSent, setResendSent] = useState(false);
@@ -306,6 +347,9 @@ export default function UserPage() {
                         <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
                             <Edit className="mr-2 h-4 w-4" />Редактировать профиль
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsEmailChangeOpen(true)}>
+                            <Mail className="mr-2 h-4 w-4" />Изменить email
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setIsPasswordOpen(true)}>
                             <Lock className="mr-2 h-4 w-4" />Сменить пароль
                         </DropdownMenuItem>
@@ -320,8 +364,34 @@ export default function UserPage() {
                 </DropdownMenu>
             </div>
 
+            {/* Баннер: ожидает подтверждения смены email */}
+            {(user as any)?.pending_email && (
+                <div className="mb-4 flex items-start justify-between gap-4 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 dark:border-blue-700 dark:bg-blue-950/30">
+                    <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                            Ожидает подтверждения смены email
+                        </p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                            Письмо отправлено на{' '}
+                            <span className="font-semibold">{(user as any).pending_email}</span>.
+                            {' '}Перейдите по ссылке в письме, чтобы завершить смену.
+                        </p>
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isCancellingEmail}
+                        onClick={handleCancelEmailChange}
+                        className="shrink-0"
+                    >
+                        {isCancellingEmail ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
+                        Отменить
+                    </Button>
+                </div>
+            )}
+
             {/* Баннер: аккаунт не активирован */}
-            {!user?.is_activated && (
+            {!user?.is_activated && !(user as any)?.pending_email && (
                 <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 dark:border-yellow-700 dark:bg-yellow-950/30">
                     <div className="space-y-0.5">
                         <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
@@ -508,16 +578,25 @@ export default function UserPage() {
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="edit-email">Email</Label>
-                            <Input
-                                id="edit-email"
-                                type="email"
-                                value={editForm.email}
-                                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                                placeholder="email@example.com"
-                                disabled
-                            />
-                            <p className="text-xs text-muted-foreground">Изменение email будет доступно в ближайшем обновлении</p>
+                            <Label>Email</Label>
+                            <div className="flex items-center gap-2">
+                                <Input value={editForm.email} disabled className="flex-1" />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!!(user as any)?.pending_email}
+                                    onClick={() => {
+                                        setIsEditOpen(false);
+                                        setTimeout(() => setIsEmailChangeOpen(true), 150);
+                                    }}
+                                >
+                                    Изменить
+                                </Button>
+                            </div>
+                            {(user as any)?.pending_email && (
+                                <p className="text-xs text-blue-600">Ожидает подтверждения: {(user as any).pending_email}</p>
+                            )}
                         </div>
                         <div className="grid gap-2">
                             <Label>Аватар</Label>
@@ -589,6 +668,54 @@ export default function UserPage() {
                 </DialogContent>
             </Dialog>
             
+            {/* Диалог: смена email */}
+            <Dialog open={isEmailChangeOpen} onOpenChange={open => { setIsEmailChangeOpen(open); if (!open) { resetEmailChangeForm(); setIsSavingEmail(false); } }}>
+                <DialogContent className="sm:max-w-106.25">
+                    <DialogHeader>
+                        <DialogTitle>Изменить email</DialogTitle>
+                        <DialogDescription>
+                            Введите новый email и текущий пароль. На новый адрес придёт письмо с подтверждением.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-current">Текущий email</Label>
+                            <Input id="email-current" value={displayEmail} disabled />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-new">Новый email</Label>
+                            <Input
+                                id="email-new"
+                                type="email"
+                                value={emailChangeForm.newEmail}
+                                onChange={e => setEmailChangeForm(f => ({ ...f, newEmail: e.target.value }))}
+                                placeholder="новый@email.com"
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-password">Текущий пароль</Label>
+                            <PasswordInput
+                                id="email-password"
+                                value={emailChangeForm.password}
+                                onChange={v => setEmailChangeForm(f => ({ ...f, password: v }))}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setIsEmailChangeOpen(false); resetEmailChangeForm(); }}>
+                            Отмена
+                        </Button>
+                        <Button
+                            onClick={handleRequestEmailChange}
+                            disabled={isSavingEmail || !emailChangeForm.newEmail.trim() || !emailChangeForm.password}
+                        >
+                            {isSavingEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Отправить подтверждение
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Диалог настройки  */}
             <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
         </div>

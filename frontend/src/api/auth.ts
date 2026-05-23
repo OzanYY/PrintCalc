@@ -55,6 +55,14 @@ export const authAPI = {
     resendActivation: () =>
         api.post<{ message: string }>("/auth/resend-activation"),
 
+    // POST /auth/request-email-change — запросить смену email
+    requestEmailChange: (data: { newEmail: string; password: string }) =>
+        api.post<{ message: string }>("/auth/request-email-change", data),
+
+    // DELETE /auth/request-email-change — отменить смену email
+    cancelEmailChange: () =>
+        api.delete<{ message: string }>("/auth/request-email-change"),
+
     uploadAvatar: (file: File) => {
         const form = new FormData();
         form.append('avatar', file);

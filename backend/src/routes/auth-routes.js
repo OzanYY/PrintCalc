@@ -33,6 +33,7 @@ router.post('/register', AuthController.register);
 router.post('/login', AuthController.login);
 router.post('/refresh', AuthController.refresh);
 router.get('/activate/:link', AuthController.activate);
+router.get('/confirm-email-change/:token', AuthController.confirmEmailChange);
 router.post('/password-reset-request', AuthController.requestPasswordReset);
 router.post('/reset-password', AuthController.resetPassword);
 router.get('/status', AuthController.status);
@@ -49,6 +50,8 @@ router.post('/terminate-other-sessions', AuthController.terminateOtherSessions);
 router.delete('/delete-account', AuthController.deleteAccount);
 router.get('/verify', AuthController.verifyToken);
 router.delete('/sessions/:id', AuthController.terminateSession);
+router.post('/request-email-change', AuthController.requestEmailChange);
+router.delete('/request-email-change', AuthController.cancelEmailChange);
 router.put('/me', async (req, res) => {
     try {
         const updated = await UserService.updateProfile(req.user.id, req.body);

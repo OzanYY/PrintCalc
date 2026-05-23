@@ -316,6 +316,50 @@ class AuthController {
         }
     }
 
+    // ==================== СМЕНА EMAIL ====================
+    static async requestEmailChange(req, res) {
+        try {
+            const { newEmail, password } = req.body;
+            if (!newEmail || !password) {
+                return res.status(400).json({ error: 'New email and password are required' });
+            }
+            const result = await UserService.requestEmailChange(req.user.id, newEmail, password);
+            res.json(result);
+        } catch (error) {
+            console.error('Request email change error:', error);
+            if (error.message.includes('Неверный пароль')) {
+                return res.status(400).json({ error: error.message });
+            }
+            if (error.message.includes('уже используется') || error.message.includes('совпадает')) {
+                return res.status(409).json({ error: error.message });
+            }
+            res.status(500).json({ error: 'Failed to request email change' });
+        }
+    }
+
+    static async confirmEmailChange(req, res) {
+        const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+        try {
+            const { token } = req.params;
+            if (!token) return res.redirect(`${clientUrl}/activation-success?error=invalid`);
+            await UserService.confirmEmailChange(token);
+            res.redirect(`${clientUrl}/activation-success?type=email_changed`);
+        } catch (error) {
+            console.error('Confirm email change error:', error);
+            res.redirect(`${clientUrl}/activation-success?error=invalid`);
+        }
+    }
+
+    static async cancelEmailChange(req, res) {
+        try {
+            const result = await UserService.cancelEmailChange(req.user.id);
+            res.json(result);
+        } catch (error) {
+            console.error('Cancel email change error:', error);
+            res.status(500).json({ error: 'Failed to cancel email change' });
+        }
+    }
+
     // ==================== ПРОВЕРКА ТОКЕНА ====================
     static async verifyToken(req, res) {
         res.json({ valid: true, user: req.user });

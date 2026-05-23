@@ -83,6 +83,30 @@ class MailService {
         }
     }
 
+    async sendEmailChangeMail(to, link, username) {
+        try {
+            await this.transporter.sendMail({
+                from: `"PrintCalc" <${process.env.SMTP_USER}>`,
+                to,
+                subject: 'Подтверждение смены email PrintCalc',
+                text: `Подтверждение смены email PrintCalc\n\nЗдравствуйте, ${username}!\n\nВы запросили смену email. Для подтверждения нового адреса перейдите по ссылке:\n${link}\n\nЕсли вы не запрашивали смену email, проигнорируйте это письмо — ваш текущий email останется без изменений.`,
+                html: `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                    <h2 style="color:#111">Подтверждение смены email</h2>
+                    <p>Здравствуйте, <strong>${username}</strong>!</p>
+                    <p>Вы запросили смену email в PrintCalc. Для подтверждения нового адреса перейдите по ссылке ниже.</p>
+                    <p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Подтвердить новый email</a></p>
+                    <p style="color:#666;font-size:13px">Если кнопка не работает, скопируйте эту ссылку в браузер:<br><a href="${link}">${link}</a></p>
+                    <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+                    <p style="color:#999;font-size:12px">Если вы не запрашивали смену email, проигнорируйте это письмо — ваш текущий email останется без изменений.</p>
+                </body></html>`,
+            });
+            console.log(`📧 Email change confirmation sent to ${to}`);
+        } catch (error) {
+            console.error('❌ Failed to send email change mail:', error);
+            throw new Error('Failed to send confirmation email');
+        }
+    }
+
     async sendWelcomeMail(to, username) {
         try {
             await this.transporter.sendMail({
