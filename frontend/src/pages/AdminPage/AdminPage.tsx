@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { adminAPI, type AdminUser, type TableInfo, type ColumnInfo } from '@/api/admin';
+import { adminAPI, type AdminUser, type AdminTeam, type AdminTeamMember, type TableInfo, type ColumnInfo } from '@/api/admin';
 import { ordersAPI, type OrderStatsResponse } from '@/api/orders';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -911,30 +911,33 @@ function TablesSection() {
 
 // ─── Компонент: управление командами ─────────────────────────────────────────
 function TeamsSection() {
-    const [teams, setTeams] = useState<Record<string, unknown>[]>([]);
-    const [usersMap, setUsersMap] = useState<Map<string, AdminUser>>(new Map());
+    const [teams, setTeams] = useState<AdminTeam[]>([]);
+    const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 });
+    const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
 
-    const [editTeam, setEditTeam] = useState<Record<string, unknown> | null>(null);
+    const [editTeam, setEditTeam] = useState<AdminTeam | null>(null);
     const [editForm, setEditForm] = useState({ name: '', description: '' });
     const [saving, setSaving] = useState(false);
 
-    const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string; name: string }>({
-        open: false, id: '', name: ''
-    });
+    const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; team: AdminTeam | null }>({ open: false, team: null });
 
-    const [membersPanel, setMembersPanel] = useState<{ id: string; name: string } | null>(null);
-    const [members, setMembers] = useState<Record<string, unknown>[]>([]);
+    const [membersTeam, setMembersTeam] = useState<AdminTeam | null>(null);
+    const [members, setMembers] = useState<AdminTeamMember[]>([]);
     const [membersLoading, setMembersLoading] = useState(false);
+    const [addUserId, setAddUserId] = useState('');
+    const [addRole, setAddRole] = useState<'admin' | 'member'>('member');
+    const [addingMember, setAddingMember] = useState(false);
+    const [removingId, setRemovingId] = useState<number | null>(null);
+    const [changingRoleId, setChangingRoleId] = useState<number | null>(null);
 
     const loadTeams = useCallback(async (page = 1, s = '') => {
         setLoading(true);
         try {
-            const res = await adminAPI.getTableRows('teams', { page, limit: 20, search: s, searchCol: 'name' });
-            setTeams(res.data.rows);
-            setPagination({ page: res.data.page, pages: res.data.pages, total: res.data.total, limit: res.data.limit });
+            const res = await adminAPI.getTeams({ page, limit: 20, search: s });
+            setTeams(res.data.teams);
+            setPagination({ page: res.data.page, pages: res.data.pages, total: res.data.total });
         } catch {
             toast.error('Не удалось загрузить команды');
         } finally {
@@ -943,23 +946,24 @@ function TeamsSection() {
     }, []);
 
     useEffect(() => {
-        Promise.all([
-            adminAPI.getTableRows('teams', { page: 1, limit: 20 }),
-            adminAPI.getUsers(),
-        ]).then(([teamsRes, usersRes]) => {
-            setTeams(teamsRes.data.rows);
-            setPagination({ page: teamsRes.data.page, pages: teamsRes.data.pages, total: teamsRes.data.total, limit: teamsRes.data.limit });
-            setUsersMap(new Map(usersRes.data.users.map(u => [String(u.id), u])));
-        }).catch(() => toast.error('Не удалось загрузить данные'))
-          .finally(() => setLoading(false));
+        Promise.all([adminAPI.getTeams({ page: 1, limit: 20 }), adminAPI.getUsers()])
+            .then(([teamsRes, usersRes]) => {
+                setTeams(teamsRes.data.teams);
+                setPagination({ page: teamsRes.data.page, pages: teamsRes.data.pages, total: teamsRes.data.total });
+                setAllUsers(usersRes.data.users);
+            })
+            .catch(() => toast.error('Не удалось загрузить данные'))
+            .finally(() => setLoading(false));
     }, []);
 
-    const loadMembers = async (teamId: string) => {
+    const openMembers = async (team: AdminTeam) => {
+        setMembersTeam(team);
+        setAddUserId('');
+        setAddRole('member');
         setMembersLoading(true);
         try {
-            const res = await adminAPI.getTableRows('team_members', { page: 1, limit: 100, search: teamId, searchCol: 'team_id' });
-            // Filter exact match — backend may use LIKE which could over-match
-            setMembers(res.data.rows.filter(r => String(r.team_id) === teamId));
+            const res = await adminAPI.getTeamMembers(team.id);
+            setMembers(res.data.members);
         } catch {
             toast.error('Не удалось загрузить участников');
         } finally {
@@ -967,28 +971,65 @@ function TeamsSection() {
         }
     };
 
-    const openMembers = (team: Record<string, unknown>) => {
-        const id = String(team.id);
-        setMembersPanel({ id, name: String(team.name) });
-        loadMembers(id);
+    const handleChangeRole = async (userId: number, role: string) => {
+        if (!membersTeam) return;
+        setChangingRoleId(userId);
+        try {
+            await adminAPI.updateTeamMember(membersTeam.id, userId, role);
+            setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role: role as AdminTeamMember['role'] } : m));
+            toast.success('Роль обновлена');
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Ошибка');
+        } finally {
+            setChangingRoleId(null);
+        }
     };
 
-    const openEdit = (team: Record<string, unknown>) => {
+    const handleRemoveMember = async (userId: number) => {
+        if (!membersTeam) return;
+        setRemovingId(userId);
+        try {
+            await adminAPI.removeTeamMember(membersTeam.id, userId);
+            setMembers(prev => prev.filter(m => m.user_id !== userId));
+            setTeams(prev => prev.map(t => t.id === membersTeam.id ? { ...t, member_count: Number(t.member_count) - 1 } : t));
+            toast.success('Участник удалён');
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Ошибка');
+        } finally {
+            setRemovingId(null);
+        }
+    };
+
+    const handleAddMember = async () => {
+        if (!membersTeam || !addUserId) return;
+        setAddingMember(true);
+        try {
+            await adminAPI.addTeamMember(membersTeam.id, { user_id: addUserId, role: addRole });
+            const res = await adminAPI.getTeamMembers(membersTeam.id);
+            setMembers(res.data.members);
+            setTeams(prev => prev.map(t => t.id === membersTeam.id ? { ...t, member_count: res.data.members.length } : t));
+            setAddUserId('');
+            toast.success('Участник добавлен');
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Ошибка добавления');
+        } finally {
+            setAddingMember(false);
+        }
+    };
+
+    const openEdit = (team: AdminTeam) => {
         setEditTeam(team);
-        setEditForm({
-            name: String(team.name ?? ''),
-            description: team.description ? String(team.description) : '',
-        });
+        setEditForm({ name: team.name, description: team.description ?? '' });
     };
 
     const saveEdit = async () => {
         if (!editTeam) return;
         setSaving(true);
         try {
-            await adminAPI.updateTableRow('teams', String(editTeam.id), {
-                name: editForm.name,
-                description: editForm.description || null,
-            });
+            await adminAPI.updateTeam(editTeam.id, { name: editForm.name, description: editForm.description || null });
             toast.success('Команда обновлена');
             setEditTeam(null);
             loadTeams(pagination.page, search);
@@ -1001,11 +1042,11 @@ function TeamsSection() {
     };
 
     const confirmDelete = async () => {
-        if (!deleteConfirm.id) return;
+        if (!deleteConfirm.team) return;
         try {
-            await adminAPI.deleteTableRow('teams', deleteConfirm.id);
+            await adminAPI.deleteTeam(deleteConfirm.team.id);
             toast.success('Команда удалена');
-            setDeleteConfirm({ open: false, id: '', name: '' });
+            setDeleteConfirm({ open: false, team: null });
             loadTeams(pagination.page, search);
         } catch (e: unknown) {
             const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
@@ -1013,9 +1054,13 @@ function TeamsSection() {
         }
     };
 
-    const ROLE_LABEL: Record<string, string> = {
-        owner: 'Владелец', admin: 'Администратор', member: 'Участник',
-    };
+    const availableUsers = useMemo(
+        () => { const ids = new Set(members.map(m => String(m.user_id))); return allUsers.filter(u => !ids.has(String(u.id))); },
+        [allUsers, members]
+    );
+
+    const ROLE_LABEL: Record<string, string> = { owner: 'Владелец', admin: 'Администратор', member: 'Участник' };
+    const err = (e: unknown) => (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
 
     if (loading && teams.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
 
@@ -1046,6 +1091,7 @@ function TeamsSection() {
                             <TableHead>Название</TableHead>
                             <TableHead>Описание</TableHead>
                             <TableHead>Владелец</TableHead>
+                            <TableHead className="text-center">Участников</TableHead>
                             <TableHead>Создана</TableHead>
                             <TableHead className="text-right">Действия</TableHead>
                         </TableRow>
@@ -1053,56 +1099,54 @@ function TeamsSection() {
                     <TableBody>
                         {teams.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                                     {search ? 'Ничего не найдено' : 'Команд нет'}
                                 </TableCell>
                             </TableRow>
-                        ) : teams.map(team => {
-                            const owner = usersMap.get(String(team.owner_id));
-                            return (
-                                <TableRow key={String(team.id)}>
-                                    <TableCell className="font-mono text-xs text-muted-foreground">{String(team.id)}</TableCell>
-                                    <TableCell className="font-medium">{String(team.name)}</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                                        {team.description ? String(team.description) : <span className="opacity-40">—</span>}
-                                    </TableCell>
-                                    <TableCell>
-                                        {owner ? (
-                                            <div className="flex items-center gap-1.5">
-                                                <Avatar className="w-5 h-5 shrink-0">
-                                                    <AvatarImage src={owner.avatar} />
-                                                    <AvatarFallback className="text-[10px]">{owner.username.slice(0, 2).toUpperCase()}</AvatarFallback>
-                                                </Avatar>
-                                                <span className="text-sm">{owner.username}</span>
-                                            </div>
-                                        ) : (
-                                            <span className="font-mono text-xs text-muted-foreground">#{String(team.owner_id)}</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">
-                                        {new Date(String(team.created_at)).toLocaleDateString('ru-RU')}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <Button variant="ghost" size="sm" onClick={() => openMembers(team)} title="Участники">
-                                                <IconUsers />
-                                            </Button>
-                                            <Button variant="ghost" size="sm" onClick={() => openEdit(team)} title="Редактировать">
-                                                <IconEdit />
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="sm"
-                                                className="text-destructive hover:text-destructive"
-                                                onClick={() => setDeleteConfirm({ open: true, id: String(team.id), name: String(team.name) })}
-                                                title="Удалить"
-                                            >
-                                                <IconTrash />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
+                        ) : teams.map(team => (
+                            <TableRow key={team.id}>
+                                <TableCell className="font-mono text-xs text-muted-foreground">{team.id}</TableCell>
+                                <TableCell className="font-medium">{team.name}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">
+                                    {team.description ?? <span className="opacity-40">—</span>}
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-1.5">
+                                        <Avatar className="w-5 h-5 shrink-0">
+                                            <AvatarImage src={team.owner_avatar ?? undefined} />
+                                            <AvatarFallback className="text-[10px]">
+                                                {(team.owner_name ?? '?').slice(0, 2).toUpperCase()}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <span className="text-sm">{team.owner_name ?? `#${team.owner_id}`}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    <Badge variant="secondary" className="text-xs">{Number(team.member_count)}</Badge>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                    {new Date(team.created_at).toLocaleDateString('ru-RU')}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                        <Button variant="ghost" size="sm" onClick={() => openMembers(team)} title="Участники">
+                                            <IconUsers />
+                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => openEdit(team)} title="Редактировать">
+                                            <IconEdit />
+                                        </Button>
+                                        <Button
+                                            variant="ghost" size="sm"
+                                            className="text-destructive hover:text-destructive"
+                                            onClick={() => setDeleteConfirm({ open: true, team })}
+                                            title="Удалить"
+                                        >
+                                            <IconTrash />
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
                     </TableBody>
                 </Table>
             </div>
@@ -1121,64 +1165,107 @@ function TeamsSection() {
                 </div>
             )}
 
-            {/* Панель участников */}
-            <Dialog open={!!membersPanel} onOpenChange={o => !o && setMembersPanel(null)}>
-                <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+            {/* ── Диалог участников ── */}
+            <Dialog open={!!membersTeam} onOpenChange={o => !o && setMembersTeam(null)}>
+                <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Участники — «{membersPanel?.name}»</DialogTitle>
+                        <DialogTitle>Участники — «{membersTeam?.name}»</DialogTitle>
                     </DialogHeader>
+
                     {membersLoading ? (
                         <div className="flex items-center justify-center py-8 text-muted-foreground">Загрузка...</div>
-                    ) : members.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">Нет участников</div>
                     ) : (
-                        <div className="space-y-2 py-2">
-                            {members.map((m, i) => {
-                                const u = usersMap.get(String(m.user_id));
-                                const roleStr = String(m.role ?? 'member');
-                                return (
-                                    <div key={i} className="flex items-center justify-between p-2.5 rounded-md border">
-                                        <div className="flex items-center gap-2.5">
-                                            <Avatar className="w-8 h-8 shrink-0">
-                                                <AvatarImage src={u?.avatar} />
-                                                <AvatarFallback className="text-xs">
-                                                    {u ? u.username.slice(0, 2).toUpperCase() : '?'}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div>
-                                                <p className="text-sm font-medium">{u?.username ?? `User #${m.user_id}`}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {u?.email ?? ''}{m.joined_at ? ` · ${new Date(String(m.joined_at)).toLocaleDateString('ru-RU')}` : ''}
-                                                </p>
-                                            </div>
+                        <div className="space-y-2 py-1">
+                            {members.length === 0 && (
+                                <p className="text-center text-muted-foreground text-sm py-4">Нет участников</p>
+                            )}
+                            {members.map(m => (
+                                <div key={m.user_id} className="flex items-center justify-between p-2.5 rounded-md border gap-2">
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        <Avatar className="w-8 h-8 shrink-0">
+                                            <AvatarImage src={m.avatar ?? undefined} />
+                                            <AvatarFallback className="text-xs">{m.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium truncate">{m.username}</p>
+                                            <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                                         </div>
-                                        <Badge variant={roleStr === 'owner' ? 'default' : 'outline'} className="text-xs shrink-0">
-                                            {ROLE_LABEL[roleStr] ?? roleStr}
-                                        </Badge>
                                     </div>
-                                );
-                            })}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {m.role === 'owner' ? (
+                                            <Badge className="text-xs">Владелец</Badge>
+                                        ) : (
+                                            <select
+                                                value={m.role}
+                                                disabled={changingRoleId === m.user_id}
+                                                onChange={e => handleChangeRole(m.user_id, e.target.value)}
+                                                className="text-xs border rounded px-1.5 py-1 bg-background"
+                                            >
+                                                <option value="admin">Администратор</option>
+                                                <option value="member">Участник</option>
+                                            </select>
+                                        )}
+                                        {m.role !== 'owner' && (
+                                            <Button
+                                                variant="ghost" size="sm"
+                                                className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                                disabled={removingId === m.user_id}
+                                                onClick={() => handleRemoveMember(m.user_id)}
+                                                title="Удалить из команды"
+                                            >
+                                                <IconTrash />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
+
+                    {/* Добавить участника */}
+                    <div className="border-t pt-3 space-y-2">
+                        <p className="text-sm font-medium">Добавить участника</p>
+                        <div className="flex gap-2">
+                            <select
+                                value={addUserId}
+                                onChange={e => setAddUserId(e.target.value)}
+                                className="flex-1 text-sm border rounded-md px-2 py-1.5 bg-background"
+                            >
+                                <option value="">Выберите пользователя...</option>
+                                {availableUsers.map(u => (
+                                    <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
+                                ))}
+                            </select>
+                            <select
+                                value={addRole}
+                                onChange={e => setAddRole(e.target.value as 'admin' | 'member')}
+                                className="text-sm border rounded-md px-2 py-1.5 bg-background"
+                            >
+                                <option value="member">Участник</option>
+                                <option value="admin">Администратор</option>
+                            </select>
+                            <Button size="sm" onClick={handleAddMember} disabled={!addUserId || addingMember} className="gap-1 shrink-0">
+                                <IconPlus />{addingMember ? '...' : 'Добавить'}
+                            </Button>
+                        </div>
+                    </div>
+
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setMembersPanel(null)}>Закрыть</Button>
+                        <Button variant="outline" onClick={() => setMembersTeam(null)}>Закрыть</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Диалог редактирования */}
+            {/* ── Диалог редактирования ── */}
             <Dialog open={!!editTeam} onOpenChange={o => !o && setEditTeam(null)}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Редактировать команду #{String(editTeam?.id)}</DialogTitle>
+                        <DialogTitle>Редактировать команду #{editTeam?.id}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
                         <div>
                             <label className="text-sm font-medium mb-1 block">Название</label>
-                            <Input
-                                value={editForm.name}
-                                onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                            />
+                            <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
                         </div>
                         <div>
                             <label className="text-sm font-medium mb-1 block">Описание</label>
@@ -1199,13 +1286,13 @@ function TeamsSection() {
                 </DialogContent>
             </Dialog>
 
-            {/* Подтверждение удаления */}
+            {/* ── Подтверждение удаления ── */}
             <AlertDialog open={deleteConfirm.open} onOpenChange={o => !o && setDeleteConfirm(p => ({ ...p, open: false }))}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Удалить команду «{deleteConfirm.name}»?</AlertDialogTitle>
+                        <AlertDialogTitle>Удалить команду «{deleteConfirm.team?.name}»?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Команда и все связанные данные будут удалены безвозвратно.
+                            Команда, все её участники и связанные данные будут удалены безвозвратно.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

@@ -267,6 +267,171 @@ class AdminController {
         }
     }
 
+    // ─── Команды (специализированные эндпоинты) ──────────────────────────────
+
+    static async getAdminTeams(req, res) {
+        try {
+            const page  = Math.max(1, parseInt(req.query.page)  || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+            const offset = (page - 1) * limit;
+            const search = req.query.search || '';
+
+            const params = [];
+            let where = '';
+            if (search) { params.push(`%${search}%`); where = 'WHERE t.name ILIKE $1'; }
+
+            const [teamsRes, countRes] = await Promise.all([
+                pool.query(`
+                    SELECT t.*,
+                           u.username  AS owner_name,
+                           u.avatar    AS owner_avatar,
+                           (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) AS member_count
+                    FROM teams t
+                    LEFT JOIN users u ON u.id = t.owner_id
+                    ${where}
+                    ORDER BY t.created_at DESC
+                    LIMIT ${limit} OFFSET ${offset}
+                `, params),
+                pool.query(`SELECT COUNT(*) FROM teams t ${where}`, params),
+            ]);
+
+            res.json({
+                teams: teamsRes.rows,
+                total: parseInt(countRes.rows[0].count),
+                page, limit,
+                pages: Math.ceil(parseInt(countRes.rows[0].count) / limit),
+            });
+        } catch (error) {
+            console.error('Admin getTeams error:', error);
+            res.status(500).json({ error: 'Failed to fetch teams' });
+        }
+    }
+
+    static async updateAdminTeam(req, res) {
+        try {
+            const { id } = req.params;
+            const { name, description } = req.body;
+            if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+            const result = await pool.query(
+                `UPDATE teams SET name = $1, description = $2, updated_at = NOW()
+                 WHERE id = $3 RETURNING *`,
+                [name.trim(), description?.trim() || null, id]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+            res.json({ team: result.rows[0] });
+        } catch (error) {
+            if (error.code === '23505') return res.status(409).json({ error: 'Team name already taken' });
+            console.error('Admin updateTeam error:', error);
+            res.status(500).json({ error: 'Failed to update team' });
+        }
+    }
+
+    static async deleteAdminTeam(req, res) {
+        try {
+            const { id } = req.params;
+            const result = await pool.query('DELETE FROM teams WHERE id = $1 RETURNING id', [id]);
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+            res.json({ message: 'Team deleted' });
+        } catch (error) {
+            console.error('Admin deleteTeam error:', error);
+            res.status(500).json({ error: 'Failed to delete team' });
+        }
+    }
+
+    static async getAdminTeamMembers(req, res) {
+        try {
+            const { id } = req.params;
+            const result = await pool.query(`
+                SELECT tm.*, u.username, u.email, u.avatar, u.is_activated
+                FROM team_members tm
+                JOIN users u ON u.id = tm.user_id
+                WHERE tm.team_id = $1
+                ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.username
+            `, [id]);
+            res.json({ members: result.rows });
+        } catch (error) {
+            console.error('Admin getTeamMembers error:', error);
+            res.status(500).json({ error: 'Failed to fetch members' });
+        }
+    }
+
+    static async addAdminTeamMember(req, res) {
+        try {
+            const { id } = req.params;
+            const { user_id, role = 'member' } = req.body;
+
+            if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+            if (!['admin', 'member'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+
+            const [teamCheck, userCheck] = await Promise.all([
+                pool.query('SELECT id FROM teams WHERE id = $1', [id]),
+                pool.query('SELECT id FROM users WHERE id = $1', [user_id]),
+            ]);
+            if (teamCheck.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+            if (userCheck.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+            await pool.query(
+                `INSERT INTO team_members (team_id, user_id, role)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+                [id, user_id, role]
+            );
+
+            const full = await pool.query(`
+                SELECT tm.*, u.username, u.email, u.avatar, u.is_activated
+                FROM team_members tm JOIN users u ON u.id = tm.user_id
+                WHERE tm.team_id = $1 AND tm.user_id = $2
+            `, [id, user_id]);
+
+            res.status(201).json({ member: full.rows[0] });
+        } catch (error) {
+            console.error('Admin addTeamMember error:', error);
+            res.status(500).json({ error: 'Failed to add member' });
+        }
+    }
+
+    static async updateAdminTeamMember(req, res) {
+        try {
+            const { id, userId } = req.params;
+            const { role } = req.body;
+
+            if (!['owner', 'admin', 'member'].includes(role)) {
+                return res.status(400).json({ error: 'Invalid role' });
+            }
+
+            const result = await pool.query(
+                `UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3 RETURNING *`,
+                [role, id, userId]
+            );
+            if (result.rows.length === 0) return res.status(404).json({ error: 'Member not found' });
+            res.json({ member: result.rows[0] });
+        } catch (error) {
+            console.error('Admin updateTeamMember error:', error);
+            res.status(500).json({ error: 'Failed to update member' });
+        }
+    }
+
+    static async removeAdminTeamMember(req, res) {
+        try {
+            const { id, userId } = req.params;
+
+            const check = await pool.query(
+                'SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2', [id, userId]
+            );
+            if (check.rows.length === 0) return res.status(404).json({ error: 'Member not found' });
+            if (check.rows[0].role === 'owner') {
+                return res.status(400).json({ error: 'Cannot remove team owner' });
+            }
+
+            await pool.query('DELETE FROM team_members WHERE team_id = $1 AND user_id = $2', [id, userId]);
+            res.json({ message: 'Member removed' });
+        } catch (error) {
+            console.error('Admin removeTeamMember error:', error);
+            res.status(500).json({ error: 'Failed to remove member' });
+        }
+    }
+
     static async createTableRow(req, res) {
         try {
             const { table } = req.params;

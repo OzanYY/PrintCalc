@@ -52,9 +52,17 @@ const authLimiter = rateLimit({
 });
 
 // ─── Настройки CORS ───────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+];
 const corsOptions = {
-    origin: 'http://localhost:5173', // адрес фронта
-    credentials: true,                // разрешаем куки
+    origin: (origin, callback) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
