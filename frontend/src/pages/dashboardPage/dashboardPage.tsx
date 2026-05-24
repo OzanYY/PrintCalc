@@ -1000,9 +1000,19 @@ export default function StatisticsPage() {
     return total / withDates.length
   }, [completedOrders])
 
+  // ─── Личные принтеры и материалы (без командных ресурсов) ────────────────
+  const personalPrinters = React.useMemo(
+    () => printers.filter(p => !p.team_name),
+    [printers]
+  )
+  const personalMaterials = React.useMemo(
+    () => materials.filter(m => !m.team_name),
+    [materials]
+  )
+
   // ─── Computed: printer analytics ─────────────────────────────────────────
   const printerStats: PrinterStat[] = React.useMemo(() => {
-    return printers.map(p => {
+    return personalPrinters.map(p => {
       const printerOrders = allOrders.filter(o => o.printer_id === p.id)
       const doneOrders = printerOrders.filter(o => o.status === "completed")
       const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
@@ -1020,13 +1030,13 @@ export default function StatisticsPage() {
         total_weight_grams: weight,
       }
     })
-  }, [printers, allOrders])
+  }, [personalPrinters, allOrders])
 
   const usedHours = React.useMemo(
     () => printerStats.reduce((s, p) => s + p.total_print_time_minutes / 60, 0),
     [printerStats]
   )
-  const totalLifetime = printers.reduce((s, p) => s + p.print_lifetime_hours, 0)
+  const totalLifetime = personalPrinters.reduce((s, p) => s + p.print_lifetime_hours, 0)
   const avgWearPct = totalLifetime > 0 ? (usedHours / totalLifetime) * 100 : 0
   const unusedPrinters = printerStats.filter(p => p.orders === 0)
   const busiestPrinter = [...printerStats].sort((a, b) => b.orders - a.orders)[0]
@@ -1040,7 +1050,7 @@ export default function StatisticsPage() {
 
   // ─── Computed: material analytics ────────────────────────────────────────
   const materialStats = React.useMemo(() => {
-    return materials.map(m => {
+    return personalMaterials.map(m => {
       const matOrders = allOrders.filter(o => o.material_id === m.id)
       const doneOrders = matOrders.filter(o => o.status === "completed")
       const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
@@ -1053,7 +1063,7 @@ export default function StatisticsPage() {
         weight_used_g: weightUsed, material_cost: cost,
       }
     })
-  }, [materials, allOrders])
+  }, [personalMaterials, allOrders])
 
   const monthlyFilamentAvg = React.useMemo(() => {
     if (!statsData?.monthly?.length) return 0
@@ -1064,14 +1074,13 @@ export default function StatisticsPage() {
 
   const materialRunout = React.useMemo(() => {
     if (!monthlyFilamentAvg) return null
-    // Используем stock_grams напрямую (новое поле инвентаря)
-    const totalFreeGrams = materials.reduce((s, m) => {
+    const totalFreeGrams = personalMaterials.reduce((s, m) => {
       const free = Math.max(0, toNum(m.stock_grams) - toNum(m.reserved_grams))
       return s + free
     }, 0)
     if (!totalFreeGrams) return null
     return totalFreeGrams / monthlyFilamentAvg
-  }, [materials, monthlyFilamentAvg])
+  }, [personalMaterials, monthlyFilamentAvg])
 
   // ─── Chart data ────────────────────────────────────────────────────────────
   const monthlyData = React.useMemo(() => {
@@ -1099,9 +1108,9 @@ export default function StatisticsPage() {
 
   const printerTypeData = React.useMemo(() => {
     const map: Record<string, number> = {}
-    printers.forEach(p => { map[p.type] = (map[p.type] ?? 0) + 1 })
+    personalPrinters.forEach(p => { map[p.type] = (map[p.type] ?? 0) + 1 })
     return Object.entries(map).map(([type, count]) => ({ type, count }))
-  }, [printers])
+  }, [personalPrinters])
 
   const periodLabel: Record<Period, string> = {
     all: "За всё время", week: "За неделю", month: "За месяц", year: "За год",
@@ -1148,7 +1157,7 @@ export default function StatisticsPage() {
           <TabsTrigger value="printers">Принтеры</TabsTrigger>
           <TabsTrigger value="materials" className="relative">
             Материалы
-            {(materials.filter(m => toNum(m.stock_grams) - toNum(m.reserved_grams) < toNum(m.weight_per_spool_grams) * 0.1).length > 0) && (
+            {(personalMaterials.filter(m => toNum(m.stock_grams) - toNum(m.reserved_grams) < toNum(m.weight_per_spool_grams) * 0.1).length > 0) && (
               <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
             )}
           </TabsTrigger>
@@ -1359,7 +1368,7 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ PRINTERS ══════════════════════════════ */}
         <TabsContent value="printers" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего принтеров" value={fmtNum(printers.length)} icon={Printer} loading={isLoading} tooltip="Количество принтеров в парке." />
+            <StatCard title="Всего принтеров" value={fmtNum(personalPrinters.length)} icon={Printer} loading={isLoading} tooltip="Количество принтеров в парке." />
             <StatCard title="Самый загруженный" value={busiestPrinter?.name ?? "—"} sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""} icon={Star} iconColor="text-yellow-500" loading={isLoading} tooltip="Принтер с наибольшим числом заказов." />
             <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading} tooltip="Принтеры без заказов за период." />
             <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} tooltip="Средний процент выработанного ресурса парка. Свыше 70% — планировать обслуживание." />
@@ -1448,7 +1457,7 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ MATERIALS ══════════════════════════════ */}
         <TabsContent value="materials" className="space-y-6">
           <MaterialsTab
-            materials={materials}
+            materials={personalMaterials}
             materialStats={materialStats}
             transactions={transactions}
             txLoading={txLoading}
@@ -1462,9 +1471,9 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ ROI ══════════════════════════════ */}
         <TabsContent value="roi" className="space-y-6">
           <RoiTab
-            printers={printers}
+            printers={personalPrinters}
             printerStats={printerStats}
-            materials={materials}
+            materials={personalMaterials}
             materialStats={materialStats}
             totalRevenue={totalRevenue}
             totalProfit={totalProfit}

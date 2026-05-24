@@ -33,24 +33,25 @@ function getInitials(name: string) {
 
 export default function TeamsPage() {
     const navigate = useNavigate();
-    const [teams, setTeams]               = useState<Team[]>([]);
-    const [isLoading, setIsLoading]       = useState(true);
+    const [teams, setTeams] = useState<Team[]>([]);
+    const [teamMembers, setTeamMembers] = useState<Record<number, { avatar: string | null; username: string }[]>>({});
+    const [isLoading, setIsLoading] = useState(true);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [form, setForm]                 = useState({ name: '', description: '' });
-    const [isCreating, setIsCreating]     = useState(false);
+    const [form, setForm] = useState({ name: '', description: '' });
+    const [isCreating, setIsCreating] = useState(false);
 
     // ── Входящие приглашения ──────────────────────────────────────────────────
-    const [invitations, setInvitations]         = useState<TeamInvitation[]>([]);
-    const [respondingId, setRespondingId]       = useState<number | null>(null);
+    const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
+    const [respondingId, setRespondingId] = useState<number | null>(null);
 
     // ── Диалог отправки приглашения ───────────────────────────────────────────
-    const [inviteTeam, setInviteTeam]                     = useState<Team | null>(null);
-    const [inviteSearchQuery, setInviteSearchQuery]       = useState('');
-    const [inviteSearchResults, setInviteSearchResults]   = useState<{ id: number; username: string; avatar: string | null }[]>([]);
-    const [inviteSearchLoading, setInviteSearchLoading]   = useState(false);
-    const [selectedInviteUser, setSelectedInviteUser]     = useState<{ id: number; username: string } | null>(null);
-    const [inviteMessage, setInviteMessage]               = useState('');
-    const [isInviting, setIsInviting]                     = useState(false);
+    const [inviteTeam, setInviteTeam] = useState<Team | null>(null);
+    const [inviteSearchQuery, setInviteSearchQuery] = useState('');
+    const [inviteSearchResults, setInviteSearchResults] = useState<{ id: number; username: string; avatar: string | null }[]>([]);
+    const [inviteSearchLoading, setInviteSearchLoading] = useState(false);
+    const [selectedInviteUser, setSelectedInviteUser] = useState<{ id: number; username: string } | null>(null);
+    const [inviteMessage, setInviteMessage] = useState('');
+    const [isInviting, setIsInviting] = useState(false);
     const inviteSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
@@ -62,7 +63,19 @@ export default function TeamsPage() {
         setIsLoading(true);
         try {
             const res = await teamsAPI.getMyTeams();
-            setTeams(res.data.data);
+            const data = res.data.data;
+            setTeams(data);
+            Promise.all(
+                data.map(t =>
+                    teamsAPI.getMembers(t.id)
+                        .then(r => ({ id: t.id, members: r.data.data.slice(0, 4).map(m => ({ avatar: m.avatar, username: m.username })) }))
+                        .catch(() => ({ id: t.id, members: [] }))
+                )
+            ).then(results => {
+                const map: Record<number, { avatar: string | null; username: string }[]> = {};
+                results.forEach(r => { map[r.id] = r.members; });
+                setTeamMembers(map);
+            });
         } catch {
             toast.error('Не удалось загрузить команды');
         } finally {
@@ -279,21 +292,7 @@ export default function TeamsPage() {
                                             </CardDescription>
                                         </div>
                                     </div>
-                                    <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-primary/60 transition-colors" />
-                                </div>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                        <Users className="h-3.5 w-3.5" />
-                                        <span>{team.member_count} {Number(team.member_count) === 1 ? 'участник' : 'участников'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {team.role && (
-                                            <Badge variant="outline" className={ROLE_COLOR[team.role]}>
-                                                {ROLE_LABEL[team.role]}
-                                            </Badge>
-                                        )}
+                                    <div className='flex items-center'>
                                         {(team.role === 'owner' || team.role === 'admin') && (
                                             <Button
                                                 variant="ghost"
@@ -304,6 +303,39 @@ export default function TeamsPage() {
                                                 <UserPlus className="h-3.5 w-3.5 mr-1" />
                                                 Пригласить
                                             </Button>
+                                        )}
+                                        <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-primary/60 transition-colors" />
+                                    </div>
+
+                                </div>
+                            </CardHeader>
+                            <CardContent className="pt-0">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        {(teamMembers[team.id] ?? []).length > 0 ? (
+                                            <div className="flex -space-x-1.5">
+                                                {(teamMembers[team.id] ?? []).map((m, i) => (
+                                                    <Avatar key={i} className="w-6 h-6 border border-background">
+                                                        <AvatarImage src={m.avatar ?? undefined} alt={m.username} />
+                                                        <AvatarFallback className="text-[9px]">{getInitials(m.username)}</AvatarFallback>
+                                                    </Avatar>
+                                                ))}
+                                                {team.member_count > 4 && (
+                                                    <div className="w-6 h-6 rounded-full border border-background bg-muted flex items-center justify-center text-[9px] text-muted-foreground font-medium">
+                                                        +{team.member_count - 4}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <Users className="h-3.5 w-3.5" />
+                                        )}
+                                        <span>{team.member_count} {Number(team.member_count) === 1 ? 'участник' : 'участников'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {team.role && (
+                                            <Badge variant="outline" className={ROLE_COLOR[team.role]}>
+                                                {ROLE_LABEL[team.role]}
+                                            </Badge>
                                         )}
                                     </div>
                                 </div>

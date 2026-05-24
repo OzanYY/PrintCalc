@@ -267,8 +267,14 @@ class OrderModel {
         } else if (order_mode === 'team') {
             where = `WHERE o.order_mode = 'team' AND ${inTeam}`;
         } else {
-            // личные + командные в которых состоит пользователь
-            where = `WHERE (o.user_id = $1 OR (o.order_mode = 'team' AND ${inTeam}))`;
+            // null — личные + командные с merge_stats_with_personal = TRUE
+            where = `WHERE (
+                (o.user_id = $1 AND o.order_mode = 'personal')
+                OR (o.order_mode = 'team' AND o.team_id IN (
+                    SELECT tm2.team_id FROM team_members tm2
+                    WHERE tm2.user_id = $1 AND tm2.merge_stats_with_personal = TRUE
+                ))
+            )`;
         }
 
         if (status) {
@@ -598,11 +604,12 @@ class OrderModel {
                 OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ${userId})
             )`;
         }
+        // null — личные + командные с merge_stats_with_personal = TRUE
         return `WHERE (
             (user_id = ${userId} AND order_mode = 'personal')
-            OR (order_mode = 'team' AND (
-                user_id = ${userId}
-                OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ${userId})
+            OR (order_mode = 'team' AND team_id IN (
+                SELECT team_id FROM team_members
+                WHERE user_id = ${userId} AND merge_stats_with_personal = TRUE
             ))
         )`;
     }
