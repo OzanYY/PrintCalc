@@ -10,7 +10,7 @@ import {
   Printer, Package, ShoppingCart, DollarSign, Clock, TrendingUp,
   Calendar, Download, RefreshCw, CheckCircle2,
   Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
-  ArrowUpRight, ArrowDownRight, Minus, Star,
+  ArrowUpRight, ArrowDownRight, Minus, Star, Users,
   Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
   ChevronDown, ChevronUp, History, Lock, Unlock, PackageMinus, PackagePlus,
 } from "lucide-react"
@@ -34,6 +34,8 @@ import { materialsAPI, CATEGORY_UNIT_CONFIG, CATEGORY_LABELS } from "@/api/mater
 import type { Material } from "@/api/materials"
 import { inventoryAPI, TX_LABELS, TX_COLORS, TX_SIGN } from "@/api/inventory"
 import type { MaterialTransaction } from "@/api/inventory"
+import { teamsAPI } from "@/api/teams"
+import type { Team } from "@/api/teams"
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -924,6 +926,15 @@ export default function StatisticsPage() {
   const [txLoading, setTxLoading] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(false)
 
+  // ─── Team mode state ───────────────────────────────────────────────────────
+  const [viewMode, setViewMode] = React.useState<"personal" | "team">("personal")
+  const [selectedTeamId, setSelectedTeamId] = React.useState<number | null>(null)
+  const [teams, setTeams] = React.useState<Team[]>([])
+  const [teamOrders, setTeamOrders] = React.useState<Order[]>([])
+  const [teamPrinters, setTeamPrinters] = React.useState<PrinterType[]>([])
+  const [teamMaterials, setTeamMaterials] = React.useState<Material[]>([])
+  const [teamLoading, setTeamLoading] = React.useState(false)
+
   // ─── Data loading ──────────────────────────────────────────────────────────
   const fetchAll = React.useCallback(async (p: Period) => {
     setIsLoading(true)
@@ -946,6 +957,31 @@ export default function StatisticsPage() {
     }
   }, [])
 
+  const fetchTeams = React.useCallback(async () => {
+    try {
+      const res = await teamsAPI.getMyTeams()
+      setTeams(res.data.data)
+    } catch {}
+  }, [])
+
+  const fetchTeamData = React.useCallback(async (teamId: number) => {
+    setTeamLoading(true)
+    try {
+      const [ordersRes, printersRes, materialsRes] = await Promise.allSettled([
+        teamsAPI.getTeamOrders(teamId, { limit: 2000 }),
+        teamsAPI.getTeamPrinters(teamId),
+        teamsAPI.getTeamMaterials(teamId),
+      ])
+      if (ordersRes.status === "fulfilled") setTeamOrders((ordersRes.value.data as any).data ?? [])
+      if (printersRes.status === "fulfilled") setTeamPrinters((printersRes.value.data as any).data ?? [])
+      if (materialsRes.status === "fulfilled") setTeamMaterials((materialsRes.value.data as any).data ?? [])
+    } catch {
+      toast.error("Ошибка загрузки данных команды")
+    } finally {
+      setTeamLoading(false)
+    }
+  }, [])
+
   // Транзакции грузим отдельно — они не зависят от периода
   const fetchTransactions = React.useCallback(async () => {
     setTxLoading(true)
@@ -961,9 +997,91 @@ export default function StatisticsPage() {
 
   React.useEffect(() => { fetchAll(period) }, [period, fetchAll])
   React.useEffect(() => { fetchTransactions() }, [fetchTransactions])
+  React.useEffect(() => { fetchTeams() }, [fetchTeams])
+  React.useEffect(() => {
+    if (viewMode === "team" && selectedTeamId) fetchTeamData(selectedTeamId)
+  }, [viewMode, selectedTeamId, fetchTeamData])
+
+  // ─── Team: фильтрация по периоду ──────────────────────────────────────────
+  const filteredTeamOrders = React.useMemo(() => {
+    if (viewMode !== "team") return []
+    if (period === "all") return teamOrders
+    const now = new Date()
+    let cutoff: Date
+    if (period === "week") {
+      const d = new Date(now); d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); cutoff = d
+    } else if (period === "month") {
+      cutoff = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else {
+      cutoff = new Date(now.getFullYear(), 0, 1)
+    }
+    return teamOrders.filter(o => new Date(o.created_at) >= cutoff)
+  }, [teamOrders, period, viewMode])
+
+  // ─── Team: синтез statsData из сырых заказов ──────────────────────────────
+  const teamStatsData = React.useMemo((): OrderStatsResponse | null => {
+    if (viewMode !== "team") return null
+    const orders = filteredTeamOrders
+    const completedOrd = orders.filter(o => o.status === "completed")
+    const inProgressOrd = orders.filter(o => o.status === "in_progress")
+    const cancelledOrd = orders.filter(o => o.status === "cancelled")
+    const totalRevenue = completedOrd.reduce((s, o) => s + toNum(o.final_price), 0)
+    const totalExpenses = completedOrd.reduce((s, o) => s + toNum(o.total_cost), 0)
+    const totalFilament = completedOrd.reduce((s, o) => s + toNum(o.total_weight_grams), 0)
+    const totalPrintTime = orders.reduce((s, o) => s + toNum(o.print_time_minutes), 0)
+    const totalProfit = totalRevenue - totalExpenses
+    const avgOV = completedOrd.length > 0 ? totalRevenue / completedOrd.length : 0
+    const maxOV = completedOrd.length > 0 ? Math.max(...completedOrd.map(o => toNum(o.final_price))) : 0
+    const minOV = completedOrd.length > 0 ? Math.min(...completedOrd.map(o => toNum(o.final_price))) : 0
+    const monthlyMap: Record<number, { count: number; completed: number; cancelled: number; revenue: number; filament: number }> = {}
+    orders.forEach(o => {
+      const month = new Date(o.created_at).getMonth() + 1
+      if (!monthlyMap[month]) monthlyMap[month] = { count: 0, completed: 0, cancelled: 0, revenue: 0, filament: 0 }
+      monthlyMap[month].count++
+      if (o.status === "completed") {
+        monthlyMap[month].completed++
+        monthlyMap[month].revenue += toNum(o.final_price)
+        monthlyMap[month].filament += toNum(o.total_weight_grams)
+      }
+      if (o.status === "cancelled") monthlyMap[month].cancelled++
+    })
+    const monthly = Object.entries(monthlyMap).sort((a, b) => Number(a[0]) - Number(b[0])).map(([month, d]) => ({
+      month: Number(month), orders_count: String(d.count),
+      completed_count: String(d.completed), cancelled_count: String(d.cancelled),
+      revenue: String(d.revenue), filament_used: String(d.filament),
+    }))
+    return {
+      summary: {
+        total_orders: String(orders.length), in_progress_orders: String(inProgressOrd.length),
+        completed_orders: String(completedOrd.length), cancelled_orders: String(cancelledOrd.length),
+        total_revenue: String(totalRevenue), total_profit: String(totalProfit),
+        total_expenses: String(totalExpenses), total_filament_used: String(totalFilament),
+        total_print_time: String(totalPrintTime), avg_order_value: String(avgOV),
+        max_order_value: String(maxOV), min_order_value: String(minOV),
+      },
+      by_status: [
+        completedOrd.length > 0 ? { status: "completed", count: String(completedOrd.length), total_value: String(totalRevenue), total_weight: String(totalFilament) } : null,
+        inProgressOrd.length > 0 ? { status: "in_progress", count: String(inProgressOrd.length), total_value: "0", total_weight: "0" } : null,
+        cancelledOrd.length > 0 ? { status: "cancelled", count: String(cancelledOrd.length), total_value: "0", total_weight: "0" } : null,
+      ].filter(Boolean) as OrderStatsResponse["by_status"],
+      monthly,
+      analytics: {
+        conversion_rate: orders.length > 0 ? String(((completedOrd.length / orders.length) * 100).toFixed(2)) : "0",
+        average_profit_margin: totalRevenue > 0 ? String(((totalProfit / totalRevenue) * 100).toFixed(2)) : "0",
+        average_cost_per_gram: totalFilament > 0 ? String((totalExpenses / totalFilament).toFixed(2)) : "0",
+      },
+    }
+  }, [filteredTeamOrders, viewMode])
+
+  // ─── Effective: переключение между личным и командным ─────────────────────
+  const effectiveStatsData = viewMode === "team" ? teamStatsData : statsData
+  const effectiveAllOrders = viewMode === "team" ? filteredTeamOrders : allOrders
+  const effectivePrinters  = viewMode === "team" ? teamPrinters : (printers.filter(p => !p.team_name))
+  const effectiveMaterials = viewMode === "team" ? teamMaterials : (materials.filter(m => !m.team_name))
+  const effectiveLoading   = viewMode === "team" ? teamLoading : isLoading
 
   // ─── Computed: summary ────────────────────────────────────────────────────
-  const s = statsData?.summary
+  const s = effectiveStatsData?.summary
   const totalOrders = toNum(s?.total_orders)
   const inProgress = toNum(s?.in_progress_orders)
   const completed = toNum(s?.completed_orders)
@@ -977,15 +1095,15 @@ export default function StatisticsPage() {
 
   const cancellationRate = totalOrders > 0 ? (cancelled / totalOrders) * 100 : 0
   const completionRate = totalOrders > 0 ? (completed / totalOrders) * 100 : 0
-  const conversionRate = toNum(statsData?.analytics?.conversion_rate)
-  const avgMargin = toNum(statsData?.analytics?.average_profit_margin)
-  const avgCostPerGram = toNum(statsData?.analytics?.average_cost_per_gram)
+  const conversionRate = toNum(effectiveStatsData?.analytics?.conversion_rate)
+  const avgMargin = toNum(effectiveStatsData?.analytics?.average_profit_margin)
+  const avgCostPerGram = toNum(effectiveStatsData?.analytics?.average_cost_per_gram)
   const grossMarginPct = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100) : 0
 
   // ─── Computed: orders analytics ───────────────────────────────────────────
   const completedOrders = React.useMemo(
-    () => allOrders.filter(o => o.status === "completed"),
-    [allOrders]
+    () => effectiveAllOrders.filter(o => o.status === "completed"),
+    [effectiveAllOrders]
   )
   const prices = completedOrders.map(o => toNum(o.final_price))
   const medianPrice = median(prices)
@@ -1000,20 +1118,10 @@ export default function StatisticsPage() {
     return total / withDates.length
   }, [completedOrders])
 
-  // ─── Личные принтеры и материалы (без командных ресурсов) ────────────────
-  const personalPrinters = React.useMemo(
-    () => printers.filter(p => !p.team_name),
-    [printers]
-  )
-  const personalMaterials = React.useMemo(
-    () => materials.filter(m => !m.team_name),
-    [materials]
-  )
-
   // ─── Computed: printer analytics ─────────────────────────────────────────
   const printerStats: PrinterStat[] = React.useMemo(() => {
-    return personalPrinters.map(p => {
-      const printerOrders = allOrders.filter(o => o.printer_id === p.id)
+    return effectivePrinters.map(p => {
+      const printerOrders = effectiveAllOrders.filter(o => o.printer_id === p.id)
       const doneOrders = printerOrders.filter(o => o.status === "completed")
       const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
       const cost = doneOrders.reduce((s, o) => s + toNum(o.total_cost), 0)
@@ -1030,28 +1138,28 @@ export default function StatisticsPage() {
         total_weight_grams: weight,
       }
     })
-  }, [personalPrinters, allOrders])
+  }, [effectivePrinters, effectiveAllOrders])
 
   const usedHours = React.useMemo(
     () => printerStats.reduce((s, p) => s + p.total_print_time_minutes / 60, 0),
     [printerStats]
   )
-  const totalLifetime = personalPrinters.reduce((s, p) => s + p.print_lifetime_hours, 0)
+  const totalLifetime = effectivePrinters.reduce((s, p) => s + p.print_lifetime_hours, 0)
   const avgWearPct = totalLifetime > 0 ? (usedHours / totalLifetime) * 100 : 0
   const unusedPrinters = printerStats.filter(p => p.orders === 0)
   const busiestPrinter = [...printerStats].sort((a, b) => b.orders - a.orders)[0]
 
   const totalElectricityCost = React.useMemo(() => {
-    return allOrders.reduce((sum, o) => {
+    return effectiveAllOrders.reduce((sum, o) => {
       const elec = (o.calc_result as any)?.electricity?.value ?? 0
       return sum + toNum(elec)
     }, 0)
-  }, [allOrders])
+  }, [effectiveAllOrders])
 
   // ─── Computed: material analytics ────────────────────────────────────────
   const materialStats = React.useMemo(() => {
-    return personalMaterials.map(m => {
-      const matOrders = allOrders.filter(o => o.material_id === m.id)
+    return effectiveMaterials.map(m => {
+      const matOrders = effectiveAllOrders.filter(o => o.material_id === m.id)
       const doneOrders = matOrders.filter(o => o.status === "completed")
       const revenue = doneOrders.reduce((s, o) => s + toNum(o.final_price), 0)
       const weightUsed = doneOrders.reduce((s, o) => s + toNum(o.total_weight_grams), 0)
@@ -1063,29 +1171,29 @@ export default function StatisticsPage() {
         weight_used_g: weightUsed, material_cost: cost,
       }
     })
-  }, [personalMaterials, allOrders])
+  }, [effectiveMaterials, effectiveAllOrders])
 
   const monthlyFilamentAvg = React.useMemo(() => {
-    if (!statsData?.monthly?.length) return 0
-    const months = statsData.monthly
+    if (!effectiveStatsData?.monthly?.length) return 0
+    const months = effectiveStatsData.monthly
     const total = months.reduce((s, m) => s + toNum(m.filament_used), 0)
     return total / months.length
-  }, [statsData])
+  }, [effectiveStatsData])
 
   const materialRunout = React.useMemo(() => {
     if (!monthlyFilamentAvg) return null
-    const totalFreeGrams = personalMaterials.reduce((s, m) => {
+    const totalFreeGrams = effectiveMaterials.reduce((s, m) => {
       const free = Math.max(0, toNum(m.stock_grams) - toNum(m.reserved_grams))
       return s + free
     }, 0)
     if (!totalFreeGrams) return null
     return totalFreeGrams / monthlyFilamentAvg
-  }, [personalMaterials, monthlyFilamentAvg])
+  }, [effectiveMaterials, monthlyFilamentAvg])
 
   // ─── Chart data ────────────────────────────────────────────────────────────
   const monthlyData = React.useMemo(() => {
-    if (!statsData?.monthly?.length) return []
-    return statsData.monthly.map(m => ({
+    if (!effectiveStatsData?.monthly?.length) return []
+    return effectiveStatsData.monthly.map(m => ({
       month: MONTH_NAMES[(toNum(m.month) - 1)] ?? `М${m.month}`,
       orders_count: toNum(m.orders_count),
       revenue: toNum(m.revenue),
@@ -1094,23 +1202,23 @@ export default function StatisticsPage() {
       completed: toNum(m.completed_count),
       cancelled: toNum(m.cancelled_count),
     }))
-  }, [statsData, avgMargin])
+  }, [effectiveStatsData, avgMargin])
 
   const pieData = React.useMemo(() => {
-    if (!statsData?.by_status?.length) return []
-    return statsData.by_status.map(s => ({
+    if (!effectiveStatsData?.by_status?.length) return []
+    return effectiveStatsData.by_status.map(s => ({
       name: STATUS_LABELS[s.status] ?? s.status,
       value: toNum(s.count),
       color: STATUS_COLORS[s.status] ?? "#94a3b8",
       status: s.status,
     }))
-  }, [statsData])
+  }, [effectiveStatsData])
 
   const printerTypeData = React.useMemo(() => {
     const map: Record<string, number> = {}
-    personalPrinters.forEach(p => { map[p.type] = (map[p.type] ?? 0) + 1 })
+    effectivePrinters.forEach(p => { map[p.type] = (map[p.type] ?? 0) + 1 })
     return Object.entries(map).map(([type, count]) => ({ type, count }))
-  }, [personalPrinters])
+  }, [effectivePrinters])
 
   const periodLabel: Record<Period, string> = {
     all: "За всё время", week: "За неделю", month: "За месяц", year: "За год",
@@ -1124,9 +1232,35 @@ export default function StatisticsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Аналитика производства</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Полная статистика по заказам, принтерам и материалам</p>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {viewMode === "team"
+              ? `Командная статистика · ${teams.find(t => t.id === selectedTeamId)?.name ?? ""}`
+              : "Личная статистика по заказам, принтерам и материалам"}
+          </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
+          {/* Выбор: личная / команда */}
+          <Select
+            value={viewMode === "personal" ? "personal" : String(selectedTeamId)}
+            onValueChange={v => {
+              if (v === "personal") {
+                setViewMode("personal"); setSelectedTeamId(null)
+              } else {
+                setViewMode("team"); setSelectedTeamId(Number(v))
+              }
+            }}
+          >
+            <SelectTrigger className="w-48">
+              <Users className="h-4 w-4 mr-2 shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="personal">Личная статистика</SelectItem>
+              {teams.map(t => (
+                <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={period} onValueChange={v => setPeriod(v as Period)}>
             <SelectTrigger className="w-40">
               <Calendar className="h-4 w-4 mr-2 shrink-0" />
@@ -1139,11 +1273,20 @@ export default function StatisticsPage() {
               <SelectItem value="all">За всё время</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => downloadOrdersCSV()}>
-            <Download className="h-4 w-4 mr-2" />Экспорт
-          </Button>
-          <Button variant="outline" size="icon" onClick={() => { fetchAll(period); fetchTransactions() }} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+          {viewMode === "personal" && (
+            <Button variant="outline" size="sm" onClick={() => downloadOrdersCSV()}>
+              <Download className="h-4 w-4 mr-2" />Экспорт
+            </Button>
+          )}
+          <Button
+            variant="outline" size="icon"
+            onClick={() => {
+              if (viewMode === "personal") { fetchAll(period); fetchTransactions() }
+              else if (selectedTeamId) fetchTeamData(selectedTeamId)
+            }}
+            disabled={effectiveLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${effectiveLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
@@ -1157,7 +1300,7 @@ export default function StatisticsPage() {
           <TabsTrigger value="printers">Принтеры</TabsTrigger>
           <TabsTrigger value="materials" className="relative">
             Материалы
-            {(personalMaterials.filter(m => toNum(m.stock_grams) - toNum(m.reserved_grams) < toNum(m.weight_per_spool_grams) * 0.1).length > 0) && (
+            {(effectiveMaterials.filter(m => toNum(m.stock_grams) - toNum(m.reserved_grams) < toNum(m.weight_per_spool_grams) * 0.1).length > 0) && (
               <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
             )}
           </TabsTrigger>
@@ -1167,10 +1310,10 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ OVERVIEW ══════════════════════════════ */}
         <TabsContent value="overview" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} sub={`${inProgress} в работе`} icon={ShoppingCart} loading={isLoading} accent="border-blue-400" tooltip="Общее число заказов за выбранный период." />
-            <StatCard title="Выручка" value={fmt(totalRevenue)} sub={`Ср. чек ${fmt(avgOrderValue)}`} icon={DollarSign} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" tooltip="Сумма всех завершённых заказов за период." />
-            <StatCard title="Прибыль" value={fmt(totalProfit)} sub={`Маржа ${grossMarginPct.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" delta={{ value: grossMarginPct - 30, suffix: "% vs 30%" }} tooltip="Выручка минус себестоимость." />
-            <StatCard title="Себестоимость" value={fmt(totalExpenses)} sub={`${avgCostPerGram} ₽/г`} icon={Package} loading={isLoading} tooltip="Материалы + электроэнергия + амортизация." />
+            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} sub={`${inProgress} в работе`} icon={ShoppingCart} loading={effectiveLoading} accent="border-blue-400" tooltip="Общее число заказов за выбранный период." />
+            <StatCard title="Выручка" value={fmt(totalRevenue)} sub={`Ср. чек ${fmt(avgOrderValue)}`} icon={DollarSign} iconColor="text-emerald-600" loading={effectiveLoading} accent="border-emerald-400" tooltip="Сумма всех завершённых заказов за период." />
+            <StatCard title="Прибыль" value={fmt(totalProfit)} sub={`Маржа ${grossMarginPct.toFixed(1)}%`} icon={TrendingUp} iconColor="text-emerald-600" loading={effectiveLoading} accent="border-emerald-400" delta={{ value: grossMarginPct - 30, suffix: "% vs 30%" }} tooltip="Выручка минус себестоимость." />
+            <StatCard title="Себестоимость" value={fmt(totalExpenses)} sub={`${avgCostPerGram} ₽/г`} icon={Package} loading={effectiveLoading} tooltip="Материалы + электроэнергия + амортизация." />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -1180,7 +1323,7 @@ export default function StatisticsPage() {
                 <CardDescription>{periodLabel[period]}</CardDescription>
               </CardHeader>
               <CardContent>
-                {isLoading ? <div className="h-52 flex items-center justify-center"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div> :
+                {effectiveLoading ? <div className="h-52 flex items-center justify-center"><Loader2 className="animate-spin h-6 w-6 text-muted-foreground" /></div> :
                   pieData.length === 0 ? <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">Нет данных</div> : (
                     <ChartContainer config={{}} className="h-52 w-full">
                       <PieChart>
@@ -1209,7 +1352,7 @@ export default function StatisticsPage() {
                 <CardDescription>{periodLabel[period]}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isLoading ? <div className="space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div> : (
+                {effectiveLoading ? <div className="space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div> : (
                   <>
                     {[
                       { label: "Выручка", value: totalRevenue, pct: 100, color: "bg-blue-500" },
@@ -1266,10 +1409,10 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ FINANCE ══════════════════════════════ */}
         <TabsContent value="finance" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={isLoading} tooltip="Средний процент прибыли в цене заказа." />
-            <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={isLoading} tooltip="Среднее значение суммы завершённого заказа." />
-            <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={isLoading} tooltip="Медиана не искажается единичными крупными заказами." />
-            <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={isLoading} tooltip="Суммарные расходы на электроэнергию по всем заказам." />
+            <StatCard title="Средняя маржинальность" value={`${avgMargin}%`} icon={Percent} iconColor="text-blue-600" loading={effectiveLoading} tooltip="Средний процент прибыли в цене заказа." />
+            <StatCard title="Средняя стоимость заказа" value={fmt(avgOrderValue)} icon={BarChart2} loading={effectiveLoading} tooltip="Среднее значение суммы завершённого заказа." />
+            <StatCard title="Медианная стоимость" value={fmt(medianPrice)} sub="50-й перцентиль" icon={Minus} loading={effectiveLoading} tooltip="Медиана не искажается единичными крупными заказами." />
+            <StatCard title="Затраты на электроэнергию" value={fmt(totalElectricityCost)} icon={Zap} iconColor="text-yellow-500" loading={effectiveLoading} tooltip="Суммарные расходы на электроэнергию по всем заказам." />
           </div>
           {monthlyData.length > 0 && (
             <Card>
@@ -1332,10 +1475,10 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ ORDERS ══════════════════════════════ */}
         <TabsContent value="orders" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} icon={ShoppingCart} loading={isLoading} tooltip="Все заказы за период всех статусов." />
-            <StatCard title="В работе" value={fmtNum(inProgress)} icon={Activity} iconColor="text-blue-600" loading={isLoading} accent="border-blue-400" tooltip="Заказы в процессе выполнения." />
-            <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={isLoading} accent="border-emerald-400" tooltip="Успешно выполненные заказы." />
-            <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={isLoading} accent="border-red-400" tooltip="Отменённые заказы. Не включаются в выручку." />
+            <StatCard title="Всего заказов" value={fmtNum(totalOrders)} icon={ShoppingCart} loading={effectiveLoading} tooltip="Все заказы за период всех статусов." />
+            <StatCard title="В работе" value={fmtNum(inProgress)} icon={Activity} iconColor="text-blue-600" loading={effectiveLoading} accent="border-blue-400" tooltip="Заказы в процессе выполнения." />
+            <StatCard title="Завершённые" value={fmtNum(completed)} icon={CheckCircle2} iconColor="text-emerald-600" loading={effectiveLoading} accent="border-emerald-400" tooltip="Успешно выполненные заказы." />
+            <StatCard title="Отменённые" value={fmtNum(cancelled)} icon={AlertTriangle} iconColor="text-red-500" loading={effectiveLoading} accent="border-red-400" tooltip="Отменённые заказы. Не включаются в выручку." />
           </div>
           <Card>
             <CardHeader><CardTitle className="text-base">Распределение заказов</CardTitle></CardHeader>
@@ -1368,10 +1511,10 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ PRINTERS ══════════════════════════════ */}
         <TabsContent value="printers" className="space-y-6">
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <StatCard title="Всего принтеров" value={fmtNum(personalPrinters.length)} icon={Printer} loading={isLoading} tooltip="Количество принтеров в парке." />
-            <StatCard title="Самый загруженный" value={busiestPrinter?.name ?? "—"} sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""} icon={Star} iconColor="text-yellow-500" loading={isLoading} tooltip="Принтер с наибольшим числом заказов." />
-            <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={isLoading} tooltip="Принтеры без заказов за период." />
-            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={isLoading} tooltip="Средний процент выработанного ресурса парка. Свыше 70% — планировать обслуживание." />
+            <StatCard title="Всего принтеров" value={fmtNum(effectivePrinters.length)} icon={Printer} loading={effectiveLoading} tooltip="Количество принтеров в парке." />
+            <StatCard title="Самый загруженный" value={busiestPrinter?.name ?? "—"} sub={busiestPrinter ? `${busiestPrinter.orders} заказов` : ""} icon={Star} iconColor="text-yellow-500" loading={effectiveLoading} tooltip="Принтер с наибольшим числом заказов." />
+            <StatCard title="Не использовались" value={fmtNum(unusedPrinters.length)} icon={AlertTriangle} iconColor={unusedPrinters.length > 0 ? "text-orange-500" : "text-muted-foreground"} loading={effectiveLoading} tooltip="Принтеры без заказов за период." />
+            <StatCard title="Средний износ" value={`${avgWearPct.toFixed(1)}%`} icon={Percent} iconColor={avgWearPct > 70 ? "text-red-500" : "text-muted-foreground"} loading={effectiveLoading} tooltip="Средний процент выработанного ресурса парка. Свыше 70% — планировать обслуживание." />
           </div>
           {printerTypeData.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2">
@@ -1457,30 +1600,30 @@ export default function StatisticsPage() {
         {/* ══════════════════════════════ MATERIALS ══════════════════════════════ */}
         <TabsContent value="materials" className="space-y-6">
           <MaterialsTab
-            materials={personalMaterials}
+            materials={effectiveMaterials}
             materialStats={materialStats}
             transactions={transactions}
             txLoading={txLoading}
             monthlyFilamentAvg={monthlyFilamentAvg}
             materialRunout={materialRunout}
             totalFilament={totalFilament}
-            isLoading={isLoading}
+            isLoading={effectiveLoading}
           />
         </TabsContent>
 
         {/* ══════════════════════════════ ROI ══════════════════════════════ */}
         <TabsContent value="roi" className="space-y-6">
           <RoiTab
-            printers={personalPrinters}
+            printers={effectivePrinters}
             printerStats={printerStats}
-            materials={personalMaterials}
+            materials={effectiveMaterials}
             materialStats={materialStats}
             totalRevenue={totalRevenue}
             totalProfit={totalProfit}
             totalExpenses={totalExpenses}
             totalElectricityCost={totalElectricityCost}
             monthlyData={monthlyData}
-            isLoading={isLoading}
+            isLoading={effectiveLoading}
             fmt={fmt}
             fmtNum={fmtNum}
           />
