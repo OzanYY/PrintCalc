@@ -167,10 +167,26 @@ export default function UserPage() {
 
     // ── Команды ───────────────────────────────────────────────────────────────
     const [teams, setTeams] = useState<Team[]>([]);
+    const [teamMembers, setTeamMembers] = useState<Record<number, { avatar: string | null; username: string }[]>>({});
 
     useEffect(() => {
         if (!user?.is_activated) return;
-        teamsAPI.getMyTeams().then(res => setTeams(res.data.data)).catch(() => {});
+        teamsAPI.getMyTeams().then(res => {
+            const data = res.data.data;
+            setTeams(data);
+            const visible = data.slice(0, 3);
+            Promise.all(
+                visible.map(t =>
+                    teamsAPI.getMembers(t.id)
+                        .then(r => ({ id: t.id, members: r.data.data.slice(0, 4).map(m => ({ avatar: m.avatar, username: m.username })) }))
+                        .catch(() => ({ id: t.id, members: [] }))
+                )
+            ).then(results => {
+                const map: Record<number, { avatar: string | null; username: string }[]> = {};
+                results.forEach(r => { map[r.id] = r.members; });
+                setTeamMembers(map);
+            });
+        }).catch(() => {});
     }, [user?.is_activated]);
 
     // ── Статистика ────────────────────────────────────────────────────────────
@@ -547,7 +563,24 @@ export default function UserPage() {
                                                     </div>
                                                     <div>
                                                         <p className="font-medium text-sm">{team.name}</p>
-                                                        <p className="text-xs text-muted-foreground">{team.member_count} участников</p>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            {(teamMembers[team.id] ?? []).length > 0 && (
+                                                                <div className="flex -space-x-1.5">
+                                                                    {(teamMembers[team.id] ?? []).map((m, i) => (
+                                                                        <Avatar key={i} className="w-5 h-5 border border-background">
+                                                                            <AvatarImage src={m.avatar ?? undefined} alt={m.username} />
+                                                                            <AvatarFallback className="text-[8px]">{getInitials(m.username)}</AvatarFallback>
+                                                                        </Avatar>
+                                                                    ))}
+                                                                    {team.member_count > 4 && (
+                                                                        <div className="w-5 h-5 rounded-full border border-background bg-muted flex items-center justify-center text-[8px] text-muted-foreground font-medium">
+                                                                            +{team.member_count - 4}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            <p className="text-xs text-muted-foreground">{team.member_count} участников</p>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <Badge variant="outline" className={badge.cls}>{badge.label}</Badge>
