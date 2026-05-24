@@ -73,7 +73,16 @@ class MaterialTransactionModel {
                    o.name AS order_name
             FROM material_transactions t
             LEFT JOIN orders o ON t.order_id = o.id
-            WHERE t.material_id = $1 AND t.user_id = $2
+            WHERE t.material_id = $1
+              AND (
+                  EXISTS (SELECT 1 FROM materials WHERE id = $1 AND user_id = $2)
+                  OR EXISTS (
+                      SELECT 1 FROM team_resources tr
+                      JOIN team_members tm ON tm.team_id = tr.team_id
+                      WHERE tr.resource_id = $1 AND tr.resource_type = 'material'
+                        AND tm.user_id = $2
+                  )
+              )
             ORDER BY t.created_at DESC
             LIMIT $3 OFFSET $4
         `;
