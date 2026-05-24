@@ -1,8 +1,9 @@
 // pages/AdminPage/AdminPage.tsx
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { adminAPI, type AdminUser, type TableInfo, type ColumnInfo } from '@/api/admin';
+import { ordersAPI, type OrderStatsResponse } from '@/api/orders';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -80,8 +81,19 @@ const IconChevronRight = () => (
         <polyline points="9 18 15 12 9 6"/>
     </svg>
 );
+const IconChart = () => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+        <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+    </svg>
+);
+const IconShield = () => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+);
 
-type Section = 'users' | 'tables';
+type Section = 'stats' | 'users' | 'teams' | 'tables';
 
 // ─── Компонент: управление пользователями ────────────────────────────────────
 function UsersSection() {
@@ -89,10 +101,12 @@ function UsersSection() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [editUser, setEditUser] = useState<AdminUser | null>(null);
-    const [editForm, setEditForm] = useState({ username: '', email: '', is_activated: false });
+    const [editForm, setEditForm] = useState({ username: '', email: '', is_activated: false, role: 'user' });
     const [pwdDialog, setPwdDialog] = useState<{ open: boolean; userId: string; username: string }>({
         open: false, userId: '', username: ''
     });
+    const [filterText, setFilterText] = useState('');
+    const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'user'>('all');
     const [newPwd, setNewPwd] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; user: AdminUser | null }>({
         open: false, user: null
@@ -114,8 +128,17 @@ function UsersSection() {
 
     const openEdit = (u: AdminUser) => {
         setEditUser(u);
-        setEditForm({ username: u.username, email: u.email, is_activated: u.is_activated });
+        setEditForm({ username: u.username, email: u.email, is_activated: u.is_activated, role: u.role });
     };
+
+    const filteredUsers = useMemo(() => {
+        return users.filter(u => {
+            const text = filterText.toLowerCase();
+            const matchText = !text || u.username.toLowerCase().includes(text) || u.email.toLowerCase().includes(text);
+            const matchRole = filterRole === 'all' || u.role === filterRole;
+            return matchText && matchRole;
+        });
+    }, [users, filterText, filterRole]);
 
     const saveEdit = async () => {
         if (!editUser) return;
@@ -168,9 +191,26 @@ function UsersSection() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-xl font-semibold">Пользователи</h2>
-                <Badge variant="secondary">{users.length} всего</Badge>
+                <div className="flex items-center gap-2">
+                    <Input
+                        placeholder="Поиск по имени или email..."
+                        value={filterText}
+                        onChange={e => setFilterText(e.target.value)}
+                        className="h-8 text-sm w-56"
+                    />
+                    <select
+                        value={filterRole}
+                        onChange={e => setFilterRole(e.target.value as 'all' | 'admin' | 'user')}
+                        className="text-sm border rounded-md px-2 py-1.5 bg-background h-8"
+                    >
+                        <option value="all">Все роли</option>
+                        <option value="admin">Администраторы</option>
+                        <option value="user">Пользователи</option>
+                    </select>
+                    <Badge variant="secondary">{filteredUsers.length} / {users.length}</Badge>
+                </div>
             </div>
 
             <div className="rounded-md border overflow-hidden">
@@ -187,7 +227,7 @@ function UsersSection() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {users.map((u) => (
+                        {filteredUsers.map((u) => (
                             <TableRow key={u.id} className={u.id === currentUser?.id ? 'bg-muted/30' : ''}>
                                 <TableCell className="font-mono text-xs text-muted-foreground">{u.id}</TableCell>
                                 <TableCell className="font-medium">
@@ -269,6 +309,21 @@ function UsersSection() {
                                 onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
                             />
                         </div>
+                        <div>
+                            <label className="text-sm font-medium mb-1 block">Роль</label>
+                            <select
+                                value={editForm.role}
+                                onChange={(e) => setEditForm(f => ({ ...f, role: e.target.value }))}
+                                className="w-full text-sm border rounded-md px-2 py-1.5 bg-background"
+                                disabled={editUser?.id === currentUser?.id}
+                            >
+                                <option value="user">user</option>
+                                <option value="admin">admin</option>
+                            </select>
+                            {editUser?.id === currentUser?.id && (
+                                <p className="text-xs text-muted-foreground mt-1">Нельзя изменить роль собственного аккаунта</p>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2">
                             <input
                                 type="checkbox"
@@ -326,6 +381,152 @@ function UsersSection() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+        </div>
+    );
+}
+
+// ─── Компонент: статистика системы ──────────────────────────────────────────
+function StatsSection() {
+    const [loading, setLoading] = useState(true);
+    const [users, setUsers] = useState<AdminUser[]>([]);
+    const [stats, setStats] = useState<OrderStatsResponse | null>(null);
+
+    useEffect(() => {
+        Promise.all([
+            adminAPI.getUsers(),
+            ordersAPI.getStats('all'),
+        ]).then(([usersRes, statsRes]) => {
+            setUsers(usersRes.data.users);
+            setStats(statsRes.data.data);
+        }).catch(() => toast.error('Не удалось загрузить статистику'))
+          .finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
+    if (!stats) return null;
+
+    const activeUsers = users.filter(u => u.is_activated).length;
+    const adminCount = users.filter(u => u.role === 'admin').length;
+
+    const n = (v: string | number, dec = 0) => {
+        const num = Number(v);
+        return isNaN(num) ? '—' : num.toLocaleString('ru-RU', { maximumFractionDigits: dec });
+    };
+    const rub = (v: string | number) => `${n(v, 2)} ₽`;
+    const monthName = (m: number) => {
+        try { return new Date(2000, m - 1).toLocaleString('ru-RU', { month: 'long' }); }
+        catch { return `Месяц ${m}`; }
+    };
+    const statusLabel = (s: string) =>
+        s === 'completed' ? 'Выполнен' : s === 'in_progress' ? 'В работе' : 'Отменён';
+    const statusVariant = (s: string): 'secondary' | 'default' | 'destructive' =>
+        s === 'completed' ? 'secondary' : s === 'in_progress' ? 'default' : 'destructive';
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-semibold">Обзор системы</h2>
+
+            {/* KPI-карточки */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Пользователей</p>
+                    <p className="text-3xl font-bold">{users.length}</p>
+                    <p className="text-xs text-muted-foreground">{activeUsers} активных · {adminCount} {adminCount === 1 ? 'админ' : 'админов'}</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Всего заказов</p>
+                    <p className="text-3xl font-bold">{n(stats.summary.total_orders)}</p>
+                    <p className="text-xs text-muted-foreground">{n(stats.summary.in_progress_orders)} в работе</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Выручка</p>
+                    <p className="text-3xl font-bold">{rub(stats.summary.total_revenue)}</p>
+                    <p className="text-xs text-muted-foreground">прибыль {rub(stats.summary.total_profit)}</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Средний чек</p>
+                    <p className="text-3xl font-bold">{rub(stats.summary.avg_order_value)}</p>
+                    <p className="text-xs text-muted-foreground">макс {rub(stats.summary.max_order_value)}</p>
+                </div>
+            </div>
+
+            {/* Аналитика */}
+            <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Конверсия</p>
+                    <p className="text-2xl font-bold">{n(stats.analytics.conversion_rate, 1)}%</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Средняя маржа</p>
+                    <p className="text-2xl font-bold">{n(stats.analytics.average_profit_margin, 1)}%</p>
+                </div>
+                <div className="rounded-lg border p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Цена 1 г филамента</p>
+                    <p className="text-2xl font-bold">{rub(stats.analytics.average_cost_per_gram)}</p>
+                </div>
+            </div>
+
+            {/* По статусам */}
+            <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">По статусам</p>
+                <div className="rounded-md border overflow-hidden">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Статус</TableHead>
+                                <TableHead className="text-right">Заказов</TableHead>
+                                <TableHead className="text-right">Сумма</TableHead>
+                                <TableHead className="text-right">Материал</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {stats.by_status.map(row => (
+                                <TableRow key={row.status}>
+                                    <TableCell>
+                                        <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">{n(row.count)}</TableCell>
+                                    <TableCell className="text-right">{rub(row.total_value)}</TableCell>
+                                    <TableCell className="text-right">{n(row.total_weight)} г</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
+
+            {/* По месяцам */}
+            {stats.monthly.length > 0 && (
+                <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">По месяцам</p>
+                    <div className="rounded-md border overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Месяц</TableHead>
+                                    <TableHead className="text-right">Заказов</TableHead>
+                                    <TableHead className="text-right">Выполнено</TableHead>
+                                    <TableHead className="text-right">Отменено</TableHead>
+                                    <TableHead className="text-right">Выручка</TableHead>
+                                    <TableHead className="text-right">Филамент</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {[...stats.monthly].reverse().map((row, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell className="font-medium capitalize">{monthName(row.month)}</TableCell>
+                                        <TableCell className="text-right">{n(row.orders_count)}</TableCell>
+                                        <TableCell className="text-right">{n(row.completed_count)}</TableCell>
+                                        <TableCell className="text-right">{n(row.cancelled_count)}</TableCell>
+                                        <TableCell className="text-right">{rub(row.revenue)}</TableCell>
+                                        <TableCell className="text-right">{n(row.filament_used)} г</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -708,11 +909,322 @@ function TablesSection() {
     );
 }
 
+// ─── Компонент: управление командами ─────────────────────────────────────────
+function TeamsSection() {
+    const [teams, setTeams] = useState<Record<string, unknown>[]>([]);
+    const [usersMap, setUsersMap] = useState<Map<string, AdminUser>>(new Map());
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 });
+
+    const [editTeam, setEditTeam] = useState<Record<string, unknown> | null>(null);
+    const [editForm, setEditForm] = useState({ name: '', description: '' });
+    const [saving, setSaving] = useState(false);
+
+    const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string; name: string }>({
+        open: false, id: '', name: ''
+    });
+
+    const [membersPanel, setMembersPanel] = useState<{ id: string; name: string } | null>(null);
+    const [members, setMembers] = useState<Record<string, unknown>[]>([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+
+    const loadTeams = useCallback(async (page = 1, s = '') => {
+        setLoading(true);
+        try {
+            const res = await adminAPI.getTableRows('teams', { page, limit: 20, search: s, searchCol: 'name' });
+            setTeams(res.data.rows);
+            setPagination({ page: res.data.page, pages: res.data.pages, total: res.data.total, limit: res.data.limit });
+        } catch {
+            toast.error('Не удалось загрузить команды');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        Promise.all([
+            adminAPI.getTableRows('teams', { page: 1, limit: 20 }),
+            adminAPI.getUsers(),
+        ]).then(([teamsRes, usersRes]) => {
+            setTeams(teamsRes.data.rows);
+            setPagination({ page: teamsRes.data.page, pages: teamsRes.data.pages, total: teamsRes.data.total, limit: teamsRes.data.limit });
+            setUsersMap(new Map(usersRes.data.users.map(u => [String(u.id), u])));
+        }).catch(() => toast.error('Не удалось загрузить данные'))
+          .finally(() => setLoading(false));
+    }, []);
+
+    const loadMembers = async (teamId: string) => {
+        setMembersLoading(true);
+        try {
+            const res = await adminAPI.getTableRows('team_members', { page: 1, limit: 100, search: teamId, searchCol: 'team_id' });
+            // Filter exact match — backend may use LIKE which could over-match
+            setMembers(res.data.rows.filter(r => String(r.team_id) === teamId));
+        } catch {
+            toast.error('Не удалось загрузить участников');
+        } finally {
+            setMembersLoading(false);
+        }
+    };
+
+    const openMembers = (team: Record<string, unknown>) => {
+        const id = String(team.id);
+        setMembersPanel({ id, name: String(team.name) });
+        loadMembers(id);
+    };
+
+    const openEdit = (team: Record<string, unknown>) => {
+        setEditTeam(team);
+        setEditForm({
+            name: String(team.name ?? ''),
+            description: team.description ? String(team.description) : '',
+        });
+    };
+
+    const saveEdit = async () => {
+        if (!editTeam) return;
+        setSaving(true);
+        try {
+            await adminAPI.updateTableRow('teams', String(editTeam.id), {
+                name: editForm.name,
+                description: editForm.description || null,
+            });
+            toast.success('Команда обновлена');
+            setEditTeam(null);
+            loadTeams(pagination.page, search);
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Ошибка обновления');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteConfirm.id) return;
+        try {
+            await adminAPI.deleteTableRow('teams', deleteConfirm.id);
+            toast.success('Команда удалена');
+            setDeleteConfirm({ open: false, id: '', name: '' });
+            loadTeams(pagination.page, search);
+        } catch (e: unknown) {
+            const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Ошибка удаления');
+        }
+    };
+
+    const ROLE_LABEL: Record<string, string> = {
+        owner: 'Владелец', admin: 'Администратор', member: 'Участник',
+    };
+
+    if (loading && teams.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-semibold">Команды</h2>
+                    <Badge variant="secondary">{pagination.total} всего</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Input
+                        placeholder="Поиск по названию..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && loadTeams(1, search)}
+                        className="h-8 text-sm w-56"
+                    />
+                    <Button size="sm" variant="outline" onClick={() => loadTeams(1, search)}>Найти</Button>
+                </div>
+            </div>
+
+            <div className="rounded-md border overflow-hidden">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-10">ID</TableHead>
+                            <TableHead>Название</TableHead>
+                            <TableHead>Описание</TableHead>
+                            <TableHead>Владелец</TableHead>
+                            <TableHead>Создана</TableHead>
+                            <TableHead className="text-right">Действия</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {teams.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                                    {search ? 'Ничего не найдено' : 'Команд нет'}
+                                </TableCell>
+                            </TableRow>
+                        ) : teams.map(team => {
+                            const owner = usersMap.get(String(team.owner_id));
+                            return (
+                                <TableRow key={String(team.id)}>
+                                    <TableCell className="font-mono text-xs text-muted-foreground">{String(team.id)}</TableCell>
+                                    <TableCell className="font-medium">{String(team.name)}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                                        {team.description ? String(team.description) : <span className="opacity-40">—</span>}
+                                    </TableCell>
+                                    <TableCell>
+                                        {owner ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <Avatar className="w-5 h-5 shrink-0">
+                                                    <AvatarImage src={owner.avatar} />
+                                                    <AvatarFallback className="text-[10px]">{owner.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+                                                </Avatar>
+                                                <span className="text-sm">{owner.username}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="font-mono text-xs text-muted-foreground">#{String(team.owner_id)}</span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                        {new Date(String(team.created_at)).toLocaleDateString('ru-RU')}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                            <Button variant="ghost" size="sm" onClick={() => openMembers(team)} title="Участники">
+                                                <IconUsers />
+                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={() => openEdit(team)} title="Редактировать">
+                                                <IconEdit />
+                                            </Button>
+                                            <Button
+                                                variant="ghost" size="sm"
+                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => setDeleteConfirm({ open: true, id: String(team.id), name: String(team.name) })}
+                                                title="Удалить"
+                                            >
+                                                <IconTrash />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </div>
+
+            {pagination.pages > 1 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Страница {pagination.page} из {pagination.pages} ({pagination.total} команд)</span>
+                    <div className="flex items-center gap-1">
+                        <Button variant="outline" size="sm" disabled={pagination.page <= 1} onClick={() => loadTeams(pagination.page - 1, search)}>
+                            <IconChevronLeft />
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={pagination.page >= pagination.pages} onClick={() => loadTeams(pagination.page + 1, search)}>
+                            <IconChevronRight />
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Панель участников */}
+            <Dialog open={!!membersPanel} onOpenChange={o => !o && setMembersPanel(null)}>
+                <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Участники — «{membersPanel?.name}»</DialogTitle>
+                    </DialogHeader>
+                    {membersLoading ? (
+                        <div className="flex items-center justify-center py-8 text-muted-foreground">Загрузка...</div>
+                    ) : members.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground text-sm">Нет участников</div>
+                    ) : (
+                        <div className="space-y-2 py-2">
+                            {members.map((m, i) => {
+                                const u = usersMap.get(String(m.user_id));
+                                const roleStr = String(m.role ?? 'member');
+                                return (
+                                    <div key={i} className="flex items-center justify-between p-2.5 rounded-md border">
+                                        <div className="flex items-center gap-2.5">
+                                            <Avatar className="w-8 h-8 shrink-0">
+                                                <AvatarImage src={u?.avatar} />
+                                                <AvatarFallback className="text-xs">
+                                                    {u ? u.username.slice(0, 2).toUpperCase() : '?'}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <p className="text-sm font-medium">{u?.username ?? `User #${m.user_id}`}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {u?.email ?? ''}{m.joined_at ? ` · ${new Date(String(m.joined_at)).toLocaleDateString('ru-RU')}` : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Badge variant={roleStr === 'owner' ? 'default' : 'outline'} className="text-xs shrink-0">
+                                            {ROLE_LABEL[roleStr] ?? roleStr}
+                                        </Badge>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setMembersPanel(null)}>Закрыть</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Диалог редактирования */}
+            <Dialog open={!!editTeam} onOpenChange={o => !o && setEditTeam(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Редактировать команду #{String(editTeam?.id)}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                        <div>
+                            <label className="text-sm font-medium mb-1 block">Название</label>
+                            <Input
+                                value={editForm.name}
+                                onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium mb-1 block">Описание</label>
+                            <Textarea
+                                value={editForm.description}
+                                onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                                placeholder="Описание команды..."
+                                className="min-h-[80px]"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditTeam(null)}>Отмена</Button>
+                        <Button onClick={saveEdit} disabled={saving || !editForm.name.trim()}>
+                            {saving ? 'Сохранение...' : 'Сохранить'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Подтверждение удаления */}
+            <AlertDialog open={deleteConfirm.open} onOpenChange={o => !o && setDeleteConfirm(p => ({ ...p, open: false }))}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Удалить команду «{deleteConfirm.name}»?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Команда и все связанные данные будут удалены безвозвратно.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Отмена</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Удалить
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+    );
+}
+
 // ─── Главная страница Admin ───────────────────────────────────────────────────
 export default function AdminPage() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [section, setSection] = useState<Section>('users');
+    const [section, setSection] = useState<Section>('stats');
 
     useEffect(() => {
         if (!user || user.role !== 'admin') {
@@ -742,30 +1254,30 @@ export default function AdminPage() {
             <div className="max-w-7xl mx-auto px-4 py-6">
                 {/* Навигация */}
                 <div className="flex gap-2 mb-6 border-b pb-4">
-                    <button
-                        onClick={() => setSection('users')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            section === 'users'
-                                ? 'bg-primary text-primary-foreground'
-                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                        }`}
-                    >
-                        <IconUsers /> Пользователи
-                    </button>
-                    <button
-                        onClick={() => setSection('tables')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            section === 'tables'
-                                ? 'bg-primary text-primary-foreground'
-                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                        }`}
-                    >
-                        <IconTable /> Таблицы БД
-                    </button>
+                    {([
+                        { id: 'stats',  label: 'Статистика',    icon: <IconChart />  },
+                        { id: 'users',  label: 'Пользователи',  icon: <IconUsers />  },
+                        { id: 'teams',  label: 'Команды',       icon: <IconShield /> },
+                        { id: 'tables', label: 'Таблицы БД',    icon: <IconTable />  },
+                    ] as { id: Section; label: string; icon: React.ReactNode }[]).map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setSection(tab.id)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                                section === tab.id
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
                 </div>
 
                 {/* Контент */}
-                {section === 'users' && <UsersSection />}
+                {section === 'stats'  && <StatsSection />}
+                {section === 'users'  && <UsersSection />}
+                {section === 'teams'  && <TeamsSection />}
                 {section === 'tables' && <TablesSection />}
             </div>
         </div>

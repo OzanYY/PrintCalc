@@ -69,7 +69,9 @@ class AdminController {
     static #ALLOWED_TABLES = [
         'users', 'tokens', 'token_denylist',
         'printers', 'materials', 'orders', 'material_transactions',
-        'clients', 'tags', 'order_comments',
+        'clients', 'tags', 'order_tags', 'order_comments',
+        'notifications',
+        'teams', 'team_members', 'team_invitations', 'team_resources',
     ];
 
     static #validateTable(table) {

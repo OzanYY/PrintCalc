@@ -4,7 +4,9 @@
       "Bash(npx tsc *)",
       "Bash(grep *)",
       "Bash(Get-ChildItem -Path \"F:\\\\Projects\\\\PrintCacl\\\\backend\" -Recurse -Filter \"*order*\" -ErrorAction SilentlyContinue)",
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Projects\\\\PrintCacl\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

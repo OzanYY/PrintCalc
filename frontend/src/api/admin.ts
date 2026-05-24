@@ -38,7 +38,7 @@ export const adminAPI = {
     getUsers: () =>
         api.get<{ users: AdminUser[] }>('/admin/users'),
 
-    updateUser: (id: string, data: { username?: string; email?: string; is_activated?: boolean }) =>
+    updateUser: (id: string, data: { username?: string; email?: string; is_activated?: boolean; role?: string }) =>
         api.put<{ user: AdminUser }>(`/admin/users/${id}`, data),
 
     updateUserPassword: (id: string, password: string) =>
