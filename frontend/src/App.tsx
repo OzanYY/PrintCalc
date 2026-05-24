@@ -14,6 +14,7 @@ import AdminPage from './pages/AdminPage/AdminPage';
 import ActivationPage from './pages/ActivationPage/ActivationPage';
 import TeamsPage from './pages/TeamsPage/TeamsPage';
 import TeamPage from './pages/TeamPage/TeamPage';
+import ResetPasswordPage from './pages/ResetPasswordPage/ResetPasswordPage';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
             {/* Публичные маршруты */}
             <Route path="/" element={<CalcPage />} />
             <Route path="/activation-success" element={<ActivationPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
 
             {/* Защищенные маршруты */}

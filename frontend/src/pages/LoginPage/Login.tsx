@@ -5,6 +5,13 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog"
 import { FieldGroup } from "@/components/ui/field"
 import { UserPlus, LogIn } from 'lucide-react'
 import { Input } from "@/components/ui/input"
@@ -240,6 +247,83 @@ function RegisterForm({ ...props }: React.ComponentProps<typeof Card>) {
 
 // ─── Форма входа ──────────────────────────────────────────────────────────────
 
+function ForgotPasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+    const [email, setEmail] = useState('');
+    const [emailError, setEmailError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [sent, setSent] = useState(false);
+
+    const validateEmail = (value: string) => {
+        if (!value) return 'Email обязателен';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(value)) return 'Введите корректный email адрес';
+        return '';
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const err = validateEmail(email);
+        setEmailError(err);
+        if (err) return;
+
+        setIsLoading(true);
+        try {
+            await authAPI.requestPasswordReset(email);
+            setSent(true);
+        } catch {
+            toast.error('Ошибка при отправке запроса');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleClose = (v: boolean) => {
+        onOpenChange(v);
+        if (!v) {
+            setEmail('');
+            setEmailError('');
+            setSent(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={handleClose}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle>Восстановление пароля</DialogTitle>
+                    <DialogDescription>
+                        {sent
+                            ? 'Если такой email зарегистрирован, мы отправили инструкции по сбросу пароля. Проверьте папку «Спам».'
+                            : 'Введите email вашего аккаунта — мы отправим ссылку для сброса пароля.'}
+                    </DialogDescription>
+                </DialogHeader>
+                {!sent && (
+                    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3 mt-2">
+                        <div className="space-y-1">
+                            <Input
+                                id="forgot_email"
+                                type="email"
+                                placeholder="почта"
+                                value={email}
+                                onChange={e => {
+                                    setEmail(e.target.value);
+                                    setEmailError(validateEmail(e.target.value));
+                                }}
+                                className={emailError ? 'border-red-500' : ''}
+                                required
+                            />
+                            {emailError && <p className="text-xs text-red-500">{emailError}</p>}
+                        </div>
+                        <Button type="submit" disabled={isLoading}>
+                            {isLoading ? 'Отправка...' : 'Отправить ссылку'}
+                        </Button>
+                    </form>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     const navigate = useNavigate();
     const { setUser } = useAuth();
@@ -248,6 +332,7 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     const [isLoading, setIsLoading] = useState(false);
     const [serverError, setServerError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+    const [forgotOpen, setForgotOpen] = useState(false);
 
     useEffect(() => {
         if (serverError) toast.error(serverError);
@@ -278,7 +363,6 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
         }
     };
 
-    // Обработчик для PasswordInput
     const handlePasswordChange = (value: string) => {
         setFormData(prev => ({ ...prev, password: value }));
         setErrors(prev => ({ ...prev, password: validatePassword(value) }));
@@ -327,55 +411,58 @@ function LoginForm({ ...props }: React.ComponentProps<typeof Card>) {
     };
 
     return (
-        <Card {...props}>
-            <CardHeader>
-                <CardTitle className="flex items-center">
-                    <LogIn />
-                    <p className="ml-4">Войти в аккаунт</p>
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit} noValidate>
-                    <FieldGroup className="flex flex-col gap-2">
-                        {/* Email */}
-                        <div className="space-y-1">
-                            <Input
-                                id="login_email"
-                                type="email"
-                                placeholder="почта"
-                                value={formData.email}
-                                onChange={handleChange}
-                                className={errors.email ? "border-red-500" : ""}
-                                required
+        <>
+            <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
+            <Card {...props}>
+                <CardHeader>
+                    <CardTitle className="flex items-center">
+                        <LogIn />
+                        <p className="ml-4">Войти в аккаунт</p>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit} noValidate>
+                        <FieldGroup className="flex flex-col gap-2">
+                            {/* Email */}
+                            <div className="space-y-1">
+                                <Input
+                                    id="login_email"
+                                    type="email"
+                                    placeholder="почта"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    className={errors.email ? "border-red-500" : ""}
+                                    required
+                                />
+                                {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
+                            </div>
+
+                            {/* Пароль */}
+                            <PasswordInput
+                                id="login_password"
+                                value={formData.password}
+                                onChange={handlePasswordChange}
+                                placeholder="пароль"
+                                error={errors.password}
                             />
-                            {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
-                        </div>
 
-                        {/* Пароль — используем новый компонент */}
-                        <PasswordInput
-                            id="login_password"
-                            value={formData.password}
-                            onChange={handlePasswordChange}
-                            placeholder="пароль"
-                            error={errors.password}
-                        />
+                            <div className="flex items-center">
+                                <button
+                                    type="button"
+                                    className="ml-auto text-sm underline-offset-4 hover:underline text-muted-foreground cursor-pointer"
+                                    onClick={() => setForgotOpen(true)}
+                                >
+                                    Забыли пароль?
+                                </button>
+                            </div>
 
-                        <div className="flex items-center">
-                            <a
-                                href="#"
-                                className="ml-auto inline-block text-sm underline-offset-4 hover:underline text-muted-foreground"
-                                onClick={e => e.preventDefault()}
-                            >
-                                Забыли пароль?
-                            </a>
-                        </div>
-
-                        <Button className="border" disabled={isLoading} type="submit">
-                            {isLoading ? 'Вход...' : 'Войти'}
-                        </Button>
-                    </FieldGroup>
-                </form>
-            </CardContent>
-        </Card>
+                            <Button className="border" disabled={isLoading} type="submit">
+                                {isLoading ? 'Вход...' : 'Войти'}
+                            </Button>
+                        </FieldGroup>
+                    </form>
+                </CardContent>
+            </Card>
+        </>
     )
 }

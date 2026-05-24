@@ -51,6 +51,14 @@ export const authAPI = {
     deleteAccount: (password: string) =>
         api.delete<{ message: string }>("/auth/delete-account", { data: { password } }),
 
+    // POST /auth/password-reset-request — запросить сброс пароля
+    requestPasswordReset: (email: string) =>
+        api.post<{ message: string }>("/auth/password-reset-request", { email }),
+
+    // POST /auth/reset-password — сбросить пароль по токену
+    resetPassword: (token: string, newPassword: string) =>
+        api.post<{ message: string }>("/auth/reset-password", { token, newPassword }),
+
     // POST /auth/resend-activation — повторно отправить письмо активации
     resendActivation: () =>
         api.post<{ message: string }>("/auth/resend-activation"),
