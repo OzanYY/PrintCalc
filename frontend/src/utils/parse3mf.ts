@@ -5,6 +5,8 @@ export interface Parse3mfResult {
   supportWeight?: number   // г — только поддержки
   totalWeight?: number     // г — model + support
   printTime?: number       // мин
+  filamentPrice?: number   // ₽/кг — цена филамента (filament_cost)
+  timeCost?: number        // ₽/ч — стоимость машино-часа (time_cost)
   slicer?: string
   /** true — файл опознан как проект OrcaSlicer/BambuStudio без данных нарезки */
   isUnslicedProject?: boolean
@@ -44,6 +46,14 @@ function parseGcode(text: string): Partial<Parse3mfResult> {
     const cw = text.match(/;FILAMENT_WEIGHT[\d[\]]*:([\d.]+)/i)
     if (cw) r.totalWeight = parseFloat(cw[1])
   }
+
+  // OrcaSlicer/BambuStudio: settings dump in gcode tail
+  // filament_cost = price per kg (NOT "filament cost" with space = calculated spend)
+  const fc = text.match(/^;\s*filament_cost\s*=\s*([\d.]+)/m)
+  if (fc) { const v = parseFloat(fc[1]); if (v > 0) r.filamentPrice = v }
+
+  const tc = text.match(/^;\s*time_cost\s*=\s*([\d.]+)/m)
+  if (tc) { const v = parseFloat(tc[1]); if (v > 0) r.timeCost = v }
 
   return r
 }
@@ -134,7 +144,7 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
   }
 
   // ── GCode комментарии (PrusaSlicer, SuperSlicer, Cura) ────────────────────
-  if (!result.modelWeight || !result.printTime) {
+  if (!result.modelWeight || !result.printTime || !result.filamentPrice) {
     const gcodeNames = Object.keys(zip.files).filter(n => /\.gcode$/i.test(n))
     for (const name of gcodeNames.slice(0, 2)) {
       try {
@@ -143,12 +153,14 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
         const head = dec.decode(buf.slice(0, 65536))
         const g = parseGcode(head)
         // Конец файла (OrcaSlicer, BambuStudio размещают метаданные в хвосте)
-        if (!g.totalWeight || !g.printTime) {
+        if (!g.totalWeight || !g.printTime || !g.filamentPrice) {
           const tail = dec.decode(buf.slice(Math.max(0, buf.length - 65536)))
           const gt = parseGcode(tail)
           if (!g.totalWeight && gt.totalWeight) g.totalWeight = gt.totalWeight
           if (!g.supportWeight && gt.supportWeight) g.supportWeight = gt.supportWeight
           if (!g.printTime && gt.printTime) g.printTime = gt.printTime
+          if (!g.filamentPrice && gt.filamentPrice) g.filamentPrice = gt.filamentPrice
+          if (!g.timeCost && gt.timeCost) g.timeCost = gt.timeCost
         }
         // В gcode total = model + support; раскладываем по полям
         if (!result.modelWeight && g.totalWeight) {
@@ -160,7 +172,29 @@ export async function parse3mf(file: File): Promise<Parse3mfResult> {
           }
         }
         if (!result.printTime && g.printTime) result.printTime = g.printTime
+        if (!result.filamentPrice && g.filamentPrice) result.filamentPrice = g.filamentPrice
+        if (!result.timeCost && g.timeCost) result.timeCost = g.timeCost
         if (!result.slicer) result.slicer = 'GCode'
+      } catch { /* ignore */ }
+    }
+  }
+
+  // ── project_settings.config — cost params (OrcaSlicer/BambuStudio) ───────
+  if (result.filamentPrice === undefined || result.timeCost === undefined) {
+    const psFile = zip.file('Metadata/project_settings.config')
+    if (psFile) {
+      try {
+        const ps = JSON.parse(await psFile.async('text'))
+        if (result.filamentPrice === undefined) {
+          const fc = Array.isArray(ps.filament_cost)
+            ? parseFloat(ps.filament_cost[0])
+            : parseFloat(ps.filament_cost)
+          if (!isNaN(fc) && fc > 0) result.filamentPrice = fc
+        }
+        if (result.timeCost === undefined) {
+          const tc = parseFloat(ps.time_cost)
+          if (!isNaN(tc) && tc > 0) result.timeCost = tc
+        }
       } catch { /* ignore */ }
     }
   }

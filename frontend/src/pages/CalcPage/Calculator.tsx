@@ -463,6 +463,8 @@ export default function Calc() {
     const [applyModelWeight, setApplyModelWeight] = useState(true)
     const [applySupportWeight, setApplySupportWeight] = useState(true)
     const [applyPrintTime, setApplyPrintTime] = useState(true)
+    const [applyFilamentPrice, setApplyFilamentPrice] = useState(false)
+    const [applyTimeCost, setApplyTimeCost] = useState(false)
     const [import3mfModelWEdit, setImport3mfModelWEdit] = useState(0)
     const [isDragging, setIsDragging] = useState(false)
     const dragCounterRef = useRef(0)
@@ -889,6 +891,8 @@ export default function Calc() {
             setApplyModelWeight(parsed.modelWeight !== undefined)
             setApplySupportWeight(parsed.supportWeight !== undefined)
             setApplyPrintTime(parsed.printTime !== undefined)
+            setApplyFilamentPrice(parsed.filamentPrice !== undefined && parsed.filamentPrice > 0)
+            setApplyTimeCost(parsed.timeCost !== undefined && parsed.timeCost > 0)
             setImport3mfOpen(true)
         } catch {
             toast.error('Ошибка при чтении .3mf файла')
@@ -956,6 +960,10 @@ export default function Calc() {
         }
         if (applyPrintTime && import3mfResult.printTime !== undefined)
             handleElectricityChange('printTime', import3mfResult.printTime)
+        if (applyFilamentPrice && import3mfResult.filamentPrice !== undefined)
+            handleMaterialsChange('filamentPrice', import3mfResult.filamentPrice)
+        if (applyTimeCost && import3mfResult.timeCost !== undefined)
+            handleLaborChange('hourlyRate', import3mfResult.timeCost)
         setImport3mfOpen(false)
         toast.success('Параметры из .3mf применены')
     }
@@ -2308,6 +2316,34 @@ export default function Calc() {
                                                     </Badge>
                                                 </label>
                                             )}
+                                            {import3mfResult.filamentPrice !== undefined && import3mfResult.filamentPrice > 0 && (
+                                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applyFilamentPrice}
+                                                        onChange={e => setApplyFilamentPrice(e.target.checked)}
+                                                        className="accent-primary h-4 w-4"
+                                                    />
+                                                    <span className="text-sm flex-1">Цена филамента</span>
+                                                    <Badge variant="outline" className="font-mono tabular-nums">
+                                                        {import3mfResult.filamentPrice} ₽/кг
+                                                    </Badge>
+                                                </label>
+                                            )}
+                                            {import3mfResult.timeCost !== undefined && import3mfResult.timeCost > 0 && (
+                                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={applyTimeCost}
+                                                        onChange={e => setApplyTimeCost(e.target.checked)}
+                                                        className="accent-primary h-4 w-4"
+                                                    />
+                                                    <span className="text-sm flex-1">Ставка оператора</span>
+                                                    <Badge variant="outline" className="font-mono tabular-nums">
+                                                        {import3mfResult.timeCost} ₽/ч
+                                                    </Badge>
+                                                </label>
+                                            )}
                                         </div>
 
                                         {derivedMode && (
@@ -2327,7 +2363,7 @@ export default function Calc() {
                         </DialogClose>
                         <Button
                             onClick={confirmImport3mf}
-                            disabled={!applyModelWeight && !applySupportWeight && !applyPrintTime}
+                            disabled={!applyModelWeight && !applySupportWeight && !applyPrintTime && !applyFilamentPrice && !applyTimeCost}
                         >
                             Применить
                         </Button>
