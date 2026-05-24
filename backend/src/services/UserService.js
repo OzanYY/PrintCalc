@@ -4,6 +4,8 @@ const TokenService = require('./TokenService'); // нужен для resetPasswo
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const MailService = require('./MailService');
+const path = require('path');
+const fs = require('fs');
 
 class UserService {
     // ─── Регистрация ──────────────────────────────────────────────────────────
@@ -227,6 +229,17 @@ class UserService {
 
         const isValid = await bcrypt.compare(password, fullUser.password_hash);
         if (!isValid) throw new Error('Invalid password');
+
+        if (user.avatar) {
+            try {
+                const filename  = path.basename(user.avatar);
+                const avatarDir = path.join(__dirname, '../../uploads/avatars');
+                const filepath  = path.join(avatarDir, filename);
+                if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+            } catch (err) {
+                console.error('Failed to delete avatar on account deletion:', err);
+            }
+        }
 
         await UserModel.delete(userId);
         return { message: 'Account deleted successfully' };
