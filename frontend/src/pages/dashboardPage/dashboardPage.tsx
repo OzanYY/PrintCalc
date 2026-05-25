@@ -8,7 +8,7 @@ import {
 } from "recharts"
 import {
   Printer, Package, ShoppingCart, DollarSign, Clock, TrendingUp,
-  Calendar, Download, RefreshCw, CheckCircle2,
+  Calendar, RefreshCw, CheckCircle2,
   Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
   ArrowUpRight, ArrowDownRight, Minus, Star, Users,
   Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
@@ -26,7 +26,7 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 
-import { ordersAPI, downloadOrdersCSV } from "@/api/orders"
+import { ordersAPI } from "@/api/orders"
 import type { OrderStatsResponse, Order } from "@/api/orders"
 import { printersAPI } from "@/api/printers"
 import type { Printer as PrinterType } from "@/api/printers"
@@ -1275,11 +1275,6 @@ export default function StatisticsPage() {
               <SelectItem value="all">За всё время</SelectItem>
             </SelectContent>
           </Select>
-          {viewMode === "personal" && (
-            <Button variant="outline" size="sm" onClick={() => downloadOrdersCSV()}>
-              <Download className="h-4 w-4 mr-2" />Экспорт
-            </Button>
-          )}
           <Button
             variant="outline" size="icon"
             onClick={() => {

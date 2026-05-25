@@ -133,7 +133,7 @@ function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMembe
                 <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
                     <ClipboardList className="h-10 w-10 opacity-25" />
                     <p className="text-sm">
-                        {statusFilter !== 'all' || memberFilter !== 'all'
+                        {statusFilter !== 'all'
                             ? 'Заказы не найдены по выбранным фильтрам'
                             : 'В команде ещё нет заказов'}
                     </p>
@@ -957,7 +957,6 @@ export default function TeamPage() {
                         </Card>
                         {myRole !== 'owner' && (
                             <Card className="border-destructive/30">
-                                <CardHeader><CardTitle className="text-base text-destructive">Опасная зона</CardTitle></CardHeader>
                                 <CardContent>
                                     <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => myMember && handleRemoveMember(myMember.user_id, myMember.username)}>
                                         <LogOut className="mr-2 h-4 w-4" />Покинуть команду

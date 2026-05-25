@@ -284,25 +284,6 @@ class OrderController {
         }
     }
 
-    // GET /orders/export
-    // Query: ?status=completed
-    static async exportOrders(req, res) {
-        try {
-            const userId = requireAuth(req, res);
-            if (!userId) return;
-
-            const { status = null } = req.query;
-            const result = await OrderService.exportOrdersToCSV(userId, status);
-
-            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-            res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-            res.status(200).send(result.data);
-        } catch (error) {
-            console.error('Export orders error:', error);
-            sendError(res, error, 500);
-        }
-    }
-
     // POST /orders/:id/clone
     // Создаёт копию заказа с тем же calc_result и параметрами калькулятора,
     // сбрасывая статус в in_progress и добавляя суффикс "(копия)" к названию.

@@ -317,15 +317,6 @@ export const ordersAPI = {
       { orderIds, status },
     ),
 
-  /**
-   * Экспорт в CSV.
-   */
-  exportCSV: (status?: "in_progress" | "completed" | "cancelled") =>
-    api.get<Blob>("/orders/export", {
-      params: { status },
-      responseType: "blob",
-    }),
-
   getByTag: (tagId: number, params?: { limit?: number; page?: number }) =>
     api.get<{ success: boolean; data: Order[] }>(`/orders`, {
       params: { tag_id: tagId, ...params },
@@ -336,31 +327,6 @@ export const ordersAPI = {
 };
 
 // ─── Хелперы ──────────────────────────────────────────────────────────────────
-
-/**
- * Скачивает CSV-файл с заказами через браузер.
- */
-export const downloadOrdersCSV = async (
-  status?: "in_progress" | "completed" | "cancelled",
-  filename?: string,
-): Promise<{ success: boolean; error?: unknown }> => {
-  try {
-    const response = await ordersAPI.exportCSV(status);
-    const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", filename ?? `orders_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-    return { success: true };
-  } catch (error) {
-    console.error("Error downloading CSV:", error);
-    return { success: false, error };
-  }
-};
 
 /**
  * Формирует CreateOrderData из состояния калькулятора.

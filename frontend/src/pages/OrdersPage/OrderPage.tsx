@@ -13,7 +13,6 @@ import {
   Copy,
   CheckCircle,
   XCircle,
-  Download,
   RefreshCw,
   TrendingUp,
   ChevronLeft,
@@ -701,7 +700,6 @@ export default function OrdersPage() {
     cancelOrder,
     reopenOrder,
     updateStatus,
-    exportCSV,
     clearError,
     refresh,
   } = useOrders({ autoFetch: true });
@@ -945,10 +943,6 @@ export default function OrdersPage() {
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={() => { refresh(); refreshDictionaries(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="outline" onClick={() => exportCSV(statusFilter ?? undefined)}>
-            <Download className="mr-2 h-4 w-4" />
-            Экспорт CSV
           </Button>
           <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />

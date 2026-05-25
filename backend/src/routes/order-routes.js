@@ -20,12 +20,10 @@ router.post('/',    OrderController.createOrder);
 // ─── Служебные маршруты (до /:id, чтобы не перехватывались им) ───────────────
 // GET   /orders/recent      — последние N заказов
 // GET   /orders/stats       — сводная статистика (query: ?period=all|week|month|year)
-// GET   /orders/export      — экспорт в CSV     (query: ?status=...)
 // PATCH /orders/bulk-status — массовое обновление статуса
 //                             body: { orderIds: number[], status: string }
 router.get  ('/recent',       OrderController.getRecentOrders);
 router.get  ('/stats',        OrderController.getOrderStats);
-router.get  ('/export',       OrderController.exportOrders);
 router.patch('/bulk-status',  OrderController.bulkUpdateStatus);
 
 // ─── Фильтрация по статусу ────────────────────────────────────────────────────

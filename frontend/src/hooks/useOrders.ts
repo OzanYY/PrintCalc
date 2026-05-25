@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ordersAPI, downloadOrdersCSV } from '@/api/orders';
+import { ordersAPI } from '@/api/orders';
 import type {
   Order,
   CreateOrderData,
@@ -348,18 +348,6 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     [fetchOrders, fetchStats],
   );
 
-  // ─── Export CSV ─────────────────────────────────────────────────────────────
-  const exportCSV = useCallback(
-    async (status?: OrderStatus): Promise<boolean> => {
-      const result = await downloadOrdersCSV(status);
-      if (!result.success) {
-        setError('Ошибка экспорта CSV');
-      }
-      return result.success;
-    },
-    [],
-  );
-
   // ─── Фильтры: пишем в URL, сбрасываем страницу ─────────────────────────────
   const handleSetStatusFilter      = useCallback((v: OrderStatus | null) => updateParam('status', v, true), [updateParam]);
   const handleSetTagFilter         = useCallback((v: number | null) => updateParam('tag', v !== null ? String(v) : null, true), [updateParam]);
@@ -424,7 +412,6 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     reopenOrder,
     updateStatus,
     bulkUpdateStatus,
-    exportCSV,
     clearError: () => setError(null),
     refresh,
   };
