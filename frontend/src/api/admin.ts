@@ -49,6 +49,37 @@ export interface AdminTeamMember {
     is_activated: boolean;
 }
 
+export interface AdminUserStats {
+    id: string;
+    username: string;
+    email: string;
+    avatar?: string;
+    role: string;
+    is_activated: boolean;
+    created_at: string;
+    printer_count: number;
+    printer_investment: string;
+    material_count: number;
+    material_stock_value: string;
+    order_count: number;
+    total_revenue: string;
+    total_profit: string;
+    client_count: number;
+}
+
+export interface AdminSystemTotals {
+    total_users: number;
+    active_users: number;
+    total_printers: number;
+    total_printer_investment: string;
+    total_materials: number;
+    total_material_stock_value: string;
+    total_orders: number;
+    completed_orders: number;
+    total_revenue: string;
+    total_clients: number;
+}
+
 export interface TableRowsResponse {
     rows: Record<string, unknown>[];
     total: number;
@@ -92,6 +123,10 @@ export const adminAPI = {
 
     deleteUser: (id: string) =>
         api.delete<{ message: string }>(`/admin/users/${id}`),
+
+    // ─── System Stats ─────────────────────────────────────────────────────────
+    getSystemStats: () =>
+        api.get<{ users: AdminUserStats[]; totals: AdminSystemTotals }>('/admin/stats'),
 
     // ─── Tables ───────────────────────────────────────────────────────────────
     getTables: () =>

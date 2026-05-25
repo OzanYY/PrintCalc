@@ -9,6 +9,9 @@ router.use(authMiddleware);
 router.use(requireAuth);
 router.use(requireAdmin);
 
+// ─── Статистика системы ──────────────────────────────────────────────────────
+router.get('/stats', AdminController.getSystemStats);
+
 // ─── Пользователи ────────────────────────────────────────────────────────────
 router.get('/users', AdminController.getUsers);
 router.put('/users/:id', AdminController.updateUser);

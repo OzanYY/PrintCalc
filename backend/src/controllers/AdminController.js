@@ -432,6 +432,54 @@ class AdminController {
         }
     }
 
+    // ─── Агрегированная статистика системы ───────────────────────────────────
+
+    static async getSystemStats(req, res) {
+        try {
+            const [usersRes, totalsRes] = await Promise.all([
+                pool.query(`
+                    SELECT
+                        u.id, u.username, u.email, u.avatar, u.role,
+                        u.is_activated, u.created_at,
+                        (SELECT COUNT(*) FROM printers p WHERE p.user_id = u.id)::int AS printer_count,
+                        (SELECT COALESCE(SUM(p.purchase_price), 0) FROM printers p WHERE p.user_id = u.id) AS printer_investment,
+                        (SELECT COUNT(*) FROM materials m WHERE m.user_id = u.id)::int AS material_count,
+                        (SELECT COALESCE(SUM(m.stock_grams / 1000.0 * m.price_per_kg), 0)
+                            FROM materials m WHERE m.user_id = u.id
+                            AND m.stock_grams IS NOT NULL AND m.price_per_kg IS NOT NULL) AS material_stock_value,
+                        (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id)::int AS order_count,
+                        (SELECT COALESCE(SUM(o.final_price), 0) FROM orders o
+                            WHERE o.user_id = u.id AND o.status = 'completed') AS total_revenue,
+                        (SELECT COALESCE(SUM(o.final_price - COALESCE(o.total_cost, 0)), 0) FROM orders o
+                            WHERE o.user_id = u.id AND o.status = 'completed') AS total_profit,
+                        (SELECT COUNT(*) FROM clients c WHERE c.user_id = u.id)::int AS client_count
+                    FROM users u
+                    ORDER BY u.created_at DESC
+                `),
+                pool.query(`
+                    SELECT
+                        (SELECT COUNT(*) FROM users)::int                                          AS total_users,
+                        (SELECT COUNT(*) FROM users WHERE is_activated = true)::int                AS active_users,
+                        (SELECT COUNT(*) FROM printers)::int                                       AS total_printers,
+                        (SELECT COALESCE(SUM(purchase_price), 0) FROM printers)                   AS total_printer_investment,
+                        (SELECT COUNT(*) FROM materials)::int                                      AS total_materials,
+                        (SELECT COALESCE(SUM(stock_grams / 1000.0 * price_per_kg), 0)
+                            FROM materials
+                            WHERE stock_grams IS NOT NULL AND price_per_kg IS NOT NULL)            AS total_material_stock_value,
+                        (SELECT COUNT(*) FROM orders)::int                                         AS total_orders,
+                        (SELECT COUNT(*) FROM orders WHERE status = 'completed')::int              AS completed_orders,
+                        (SELECT COALESCE(SUM(final_price), 0) FROM orders WHERE status='completed') AS total_revenue,
+                        (SELECT COUNT(*) FROM clients)::int                                        AS total_clients
+                `),
+            ]);
+
+            res.json({ users: usersRes.rows, totals: totalsRes.rows[0] });
+        } catch (error) {
+            console.error('Admin getSystemStats error:', error);
+            res.status(500).json({ error: 'Failed to fetch system stats' });
+        }
+    }
+
     static async createTableRow(req, res) {
         try {
             const { table } = req.params;

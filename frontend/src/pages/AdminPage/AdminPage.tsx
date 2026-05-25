@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { adminAPI, type AdminUser, type AdminTeam, type AdminTeamMember, type TableInfo, type ColumnInfo } from '@/api/admin';
-import { ordersAPI, type OrderStatsResponse } from '@/api/orders';
+import { adminAPI, type AdminUser, type AdminTeam, type AdminTeamMember, type TableInfo, type ColumnInfo, type AdminUserStats, type AdminSystemTotals } from '@/api/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -397,145 +396,162 @@ function UsersSection() {
 // ─── Компонент: статистика системы ──────────────────────────────────────────
 function StatsSection() {
     const [loading, setLoading] = useState(true);
-    const [users, setUsers] = useState<AdminUser[]>([]);
-    const [stats, setStats] = useState<OrderStatsResponse | null>(null);
+    const [users, setUsers] = useState<AdminUserStats[]>([]);
+    const [totals, setTotals] = useState<AdminSystemTotals | null>(null);
+    const [sortCol, setSortCol] = useState<keyof AdminUserStats>('created_at');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
     useEffect(() => {
-        Promise.all([
-            adminAPI.getUsers(),
-            ordersAPI.getStats('all'),
-        ]).then(([usersRes, statsRes]) => {
-            setUsers(usersRes.data.users);
-            setStats(statsRes.data.data);
-        }).catch(() => toast.error('Не удалось загрузить статистику'))
-          .finally(() => setLoading(false));
+        adminAPI.getSystemStats()
+            .then(res => {
+                setUsers(res.data.users);
+                setTotals(res.data.totals);
+            })
+            .catch(() => toast.error('Не удалось загрузить статистику'))
+            .finally(() => setLoading(false));
     }, []);
 
-    if (loading) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
-    if (!stats) return null;
+    const sorted = useMemo(() => {
+        return [...users].sort((a, b) => {
+            const av = Number(a[sortCol]) || 0;
+            const bv = Number(b[sortCol]) || 0;
+            return sortDir === 'asc' ? av - bv : bv - av;
+        });
+    }, [users, sortCol, sortDir]);
 
-    const activeUsers = users.filter(u => u.is_activated).length;
-    const adminCount = users.filter(u => u.role === 'admin').length;
+    const toggleSort = (col: keyof AdminUserStats) => {
+        if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        else { setSortCol(col); setSortDir('desc'); }
+    };
+
+    if (loading) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
+    if (!totals) return null;
 
     const n = (v: string | number, dec = 0) => {
         const num = Number(v);
         return isNaN(num) ? '—' : num.toLocaleString('ru-RU', { maximumFractionDigits: dec });
     };
     const rub = (v: string | number) => `${n(v, 2)} ₽`;
-    const monthName = (m: number) => {
-        try { return new Date(2000, m - 1).toLocaleString('ru-RU', { month: 'long' }); }
-        catch { return `Месяц ${m}`; }
-    };
-    const statusLabel = (s: string) =>
-        s === 'completed' ? 'Выполнен' : s === 'in_progress' ? 'В работе' : 'Отменён';
-    const statusVariant = (s: string): 'secondary' | 'default' | 'destructive' =>
-        s === 'completed' ? 'secondary' : s === 'in_progress' ? 'default' : 'destructive';
+
+    const SortIcon = ({ col }: { col: keyof AdminUserStats }) => (
+        <span className="ml-1 text-muted-foreground/60 text-[10px]">
+            {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+        </span>
+    );
+
+    const thCls = (col: keyof AdminUserStats) =>
+        `cursor-pointer select-none whitespace-nowrap hover:text-foreground transition-colors ${sortCol === col ? 'text-foreground' : ''}`;
 
     return (
         <div className="space-y-6">
-            <h2 className="text-xl font-semibold">Обзор системы</h2>
+            <h2 className="text-xl font-semibold">Статистика пользователей</h2>
 
-            {/* KPI-карточки */}
+            {/* Сводные KPI */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="rounded-lg border p-4 space-y-1">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Пользователей</p>
-                    <p className="text-3xl font-bold">{users.length}</p>
-                    <p className="text-xs text-muted-foreground">{activeUsers} активных · {adminCount} {adminCount === 1 ? 'админ' : 'админов'}</p>
+                    <p className="text-3xl font-bold">{n(totals.total_users)}</p>
+                    <p className="text-xs text-muted-foreground">{n(totals.active_users)} активных</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Всего заказов</p>
-                    <p className="text-3xl font-bold">{n(stats.summary.total_orders)}</p>
-                    <p className="text-xs text-muted-foreground">{n(stats.summary.in_progress_orders)} в работе</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Принтеров</p>
+                    <p className="text-3xl font-bold">{n(totals.total_printers)}</p>
+                    <p className="text-xs text-muted-foreground">инвестиций {rub(totals.total_printer_investment)}</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Выручка</p>
-                    <p className="text-3xl font-bold">{rub(stats.summary.total_revenue)}</p>
-                    <p className="text-xs text-muted-foreground">прибыль {rub(stats.summary.total_profit)}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Материалов</p>
+                    <p className="text-3xl font-bold">{n(totals.total_materials)}</p>
+                    <p className="text-xs text-muted-foreground">остатков {rub(totals.total_material_stock_value)}</p>
                 </div>
                 <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Средний чек</p>
-                    <p className="text-3xl font-bold">{rub(stats.summary.avg_order_value)}</p>
-                    <p className="text-xs text-muted-foreground">макс {rub(stats.summary.max_order_value)}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Заказов</p>
+                    <p className="text-3xl font-bold">{n(totals.total_orders)}</p>
+                    <p className="text-xs text-muted-foreground">{n(totals.completed_orders)} выполнено · {rub(totals.total_revenue)}</p>
                 </div>
             </div>
 
-            {/* Аналитика */}
-            <div className="grid grid-cols-3 gap-4">
-                <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Конверсия</p>
-                    <p className="text-2xl font-bold">{n(stats.analytics.conversion_rate, 1)}%</p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Средняя маржа</p>
-                    <p className="text-2xl font-bold">{n(stats.analytics.average_profit_margin, 1)}%</p>
-                </div>
-                <div className="rounded-lg border p-4 space-y-1">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Цена 1 г филамента</p>
-                    <p className="text-2xl font-bold">{rub(stats.analytics.average_cost_per_gram)}</p>
-                </div>
-            </div>
-
-            {/* По статусам */}
+            {/* Таблица по пользователям */}
             <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">По статусам</p>
-                <div className="rounded-md border overflow-hidden">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                    По пользователям
+                </p>
+                <div className="rounded-md border overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Статус</TableHead>
-                                <TableHead className="text-right">Заказов</TableHead>
-                                <TableHead className="text-right">Сумма</TableHead>
-                                <TableHead className="text-right">Материал</TableHead>
+                                <TableHead>Пользователь</TableHead>
+                                <TableHead className={`text-right ${thCls('printer_count')}`} onClick={() => toggleSort('printer_count')}>
+                                    Принтеров<SortIcon col="printer_count" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('printer_investment')}`} onClick={() => toggleSort('printer_investment')}>
+                                    Инвестиции<SortIcon col="printer_investment" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('material_count')}`} onClick={() => toggleSort('material_count')}>
+                                    Материалов<SortIcon col="material_count" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('material_stock_value')}`} onClick={() => toggleSort('material_stock_value')}>
+                                    Ст-ть остатков<SortIcon col="material_stock_value" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('order_count')}`} onClick={() => toggleSort('order_count')}>
+                                    Заказов<SortIcon col="order_count" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('total_revenue')}`} onClick={() => toggleSort('total_revenue')}>
+                                    Выручка<SortIcon col="total_revenue" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('total_profit')}`} onClick={() => toggleSort('total_profit')}>
+                                    Прибыль<SortIcon col="total_profit" />
+                                </TableHead>
+                                <TableHead className={`text-right ${thCls('client_count')}`} onClick={() => toggleSort('client_count')}>
+                                    Клиентов<SortIcon col="client_count" />
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {stats.by_status.map(row => (
-                                <TableRow key={row.status}>
+                            {sorted.map(u => (
+                                <TableRow key={u.id}>
                                     <TableCell>
-                                        <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
+                                        <div className="flex items-center gap-2">
+                                            <Avatar className="w-7 h-7 shrink-0">
+                                                <AvatarImage src={u.avatar} alt={u.username} />
+                                                <AvatarFallback className="text-xs">
+                                                    {u.username.slice(0, 2).toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <p className="text-sm font-medium leading-tight">{u.username}</p>
+                                                <p className="text-xs text-muted-foreground">{u.email}</p>
+                                            </div>
+                                            {u.role === 'admin' && (
+                                                <Badge variant="default" className="text-[10px] px-1.5 py-0">admin</Badge>
+                                            )}
+                                            {!u.is_activated && (
+                                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">неактивен</Badge>
+                                            )}
+                                        </div>
                                     </TableCell>
-                                    <TableCell className="text-right">{n(row.count)}</TableCell>
-                                    <TableCell className="text-right">{rub(row.total_value)}</TableCell>
-                                    <TableCell className="text-right">{n(row.total_weight)} г</TableCell>
+                                    <TableCell className="text-right font-mono">{n(u.printer_count)}</TableCell>
+                                    <TableCell className="text-right font-mono">{rub(u.printer_investment)}</TableCell>
+                                    <TableCell className="text-right font-mono">{n(u.material_count)}</TableCell>
+                                    <TableCell className="text-right font-mono">{rub(u.material_stock_value)}</TableCell>
+                                    <TableCell className="text-right font-mono">{n(u.order_count)}</TableCell>
+                                    <TableCell className="text-right font-mono">{rub(u.total_revenue)}</TableCell>
+                                    <TableCell className={`text-right font-mono ${Number(u.total_profit) < 0 ? 'text-destructive' : ''}`}>
+                                        {rub(u.total_profit)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono">{n(u.client_count)}</TableCell>
                                 </TableRow>
                             ))}
+                            {sorted.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                                        Нет данных
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </div>
             </div>
-
-            {/* По месяцам */}
-            {stats.monthly.length > 0 && (
-                <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">По месяцам</p>
-                    <div className="rounded-md border overflow-hidden">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Месяц</TableHead>
-                                    <TableHead className="text-right">Заказов</TableHead>
-                                    <TableHead className="text-right">Выполнено</TableHead>
-                                    <TableHead className="text-right">Отменено</TableHead>
-                                    <TableHead className="text-right">Выручка</TableHead>
-                                    <TableHead className="text-right">Филамент</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {[...stats.monthly].reverse().map((row, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell className="font-medium capitalize">{monthName(row.month)}</TableCell>
-                                        <TableCell className="text-right">{n(row.orders_count)}</TableCell>
-                                        <TableCell className="text-right">{n(row.completed_count)}</TableCell>
-                                        <TableCell className="text-right">{n(row.cancelled_count)}</TableCell>
-                                        <TableCell className="text-right">{rub(row.revenue)}</TableCell>
-                                        <TableCell className="text-right">{n(row.filament_used)} г</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
