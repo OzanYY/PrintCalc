@@ -22,7 +22,6 @@ import {
   Tag as TagIco,
   CalendarDays,
   User,
-  UserCheck,
   Users,
   Phone,
   Mail,
@@ -81,7 +80,7 @@ import { printersAPI } from '@/api/printers';
 import type { Printer } from '@/api/printers';
 import { materialsAPI } from '@/api/materials';
 import type { Material } from '@/api/materials';
-import { teamsAPI, type Team, type TeamMember } from '@/api/teams';
+import { teamsAPI, type Team } from '@/api/teams';
 import { toast } from 'sonner';
 
 // ─── Вспомогательные утилиты ──────────────────────────────────────────────────
@@ -758,12 +757,9 @@ export default function OrdersPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
 
   // Командный режим создания заказа
-  const [myTeams, setMyTeams]                       = useState<Team[]>([]);
-  const [orderMode, setOrderMode]                   = useState<'personal' | 'team'>('personal');
-  const [selectedTeamId, setSelectedTeamId]         = useState<number | null>(null);
-  const [teamMembers, setTeamMembers]               = useState<TeamMember[]>([]);
-  const [assignedToUserId, setAssignedToUserId]     = useState<number | null>(null);
-  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [myTeams, setMyTeams]           = useState<Team[]>([]);
+  const [orderMode, setOrderMode]       = useState<'personal' | 'team'>('personal');
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
   // Загружаем теги, клиентов, принтеры и материалы при мо��тировании
   useEffect(() => {
@@ -780,23 +776,18 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!selectedTeamId) {
-      setTeamMembers([]); setAssignedToUserId(null);
       setTeamPrinters([]); setTeamMaterials([]);
       return;
     }
-    setTeamMembersLoading(true);
     Promise.all([
-      teamsAPI.getMembers(selectedTeamId),
       teamsAPI.getTeamPrinters(selectedTeamId),
       teamsAPI.getTeamMaterials(selectedTeamId),
     ])
-      .then(([membRes, prRes, matRes]) => {
-        setTeamMembers(membRes.data.data);
+      .then(([prRes, matRes]) => {
         setTeamPrinters(prRes.data.data);
         setTeamMaterials(matRes.data.data);
       })
-      .catch(() => {})
-      .finally(() => setTeamMembersLoading(false));
+      .catch(() => {});
   }, [selectedTeamId]);
 
   const handleFormChange = (name: string, value: string) =>
@@ -814,8 +805,6 @@ export default function OrdersPage() {
     setTagIds([]);
     setOrderMode('personal');
     setSelectedTeamId(null);
-    setAssignedToUserId(null);
-    setTeamMembers([]);
     setIsCreateOpen(true);
   };
 
@@ -858,7 +847,6 @@ export default function OrdersPage() {
       deadline: deadline ?? undefined,
       order_mode: orderMode,
       team_id: orderMode === 'team' ? selectedTeamId ?? undefined : undefined,
-      assigned_to_user_id: orderMode === 'team' ? assignedToUserId ?? undefined : undefined,
     } as any);
     if (result) {
       // После создания применяем теги если выбраны
@@ -1270,21 +1258,14 @@ export default function OrdersPage() {
                       </>
                     )}
 
-                    {/* Команда / назначение */}
-                    {order.order_mode === 'team' && (order.team_name || order.assigned_to_username) && (
+                    {/* Команда */}
+                    {order.order_mode === 'team' && order.team_name && (
                       <>
                         <Separator />
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          {order.team_name && (
-                            <span className="inline-flex items-center gap-1 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2 py-0.5 font-medium">
-                              <Users className="h-3 w-3" />{order.team_name}
-                            </span>
-                          )}
-                          {order.assigned_to_username && (
-                            <span className="inline-flex items-center gap-1">
-                              <UserCheck className="h-3 w-3" />{order.assigned_to_username}
-                            </span>
-                          )}
+                          <span className="inline-flex items-center gap-1 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2 py-0.5 font-medium">
+                            <Users className="h-3 w-3" />{order.team_name}
+                          </span>
                         </div>
                       </>
                     )}
@@ -1545,18 +1526,11 @@ export default function OrdersPage() {
                 )}
 
                 {/* Команда */}
-                {viewOrder.order_mode === 'team' && (viewOrder.team_name || viewOrder.assigned_to_username) && (
+                {viewOrder.order_mode === 'team' && viewOrder.team_name && (
                   <div className="flex flex-wrap items-center gap-2 text-sm">
-                    {viewOrder.team_name && (
-                      <span className="inline-flex items-center gap-1.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2.5 py-0.5 font-medium">
-                        <Users className="h-3.5 w-3.5" />{viewOrder.team_name}
-                      </span>
-                    )}
-                    {viewOrder.assigned_to_username && (
-                      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                        <UserCheck className="h-4 w-4" />Исполнитель: {viewOrder.assigned_to_username}
-                      </span>
-                    )}
+                    <span className="inline-flex items-center gap-1.5 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 rounded-full px-2.5 py-0.5 font-medium">
+                      <Users className="h-3.5 w-3.5" />{viewOrder.team_name}
+                    </span>
                   </div>
                 )}
 
@@ -1782,28 +1756,6 @@ export default function OrdersPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {selectedTeamId && (
-                      <Select
-                        value={assignedToUserId?.toString() ?? 'none'}
-                        onValueChange={v => setAssignedToUserId(v === 'none' ? null : Number(v))}
-                      >
-                        <SelectTrigger>
-                          {teamMembersLoading
-                            ? <span className="text-muted-foreground text-sm">Загрузка...</span>
-                            : <SelectValue placeholder="Назначить участнику (необязательно)" />
-                          }
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Без назначения</SelectItem>
-                          {teamMembers.map(m => (
-                            <SelectItem key={m.user_id} value={m.user_id.toString()}>
-                              {m.username}
-                              {m.role === 'owner' ? ' (владелец)' : m.role === 'admin' ? ' (адм.)' : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
                   </div>
                 )}
               </div>

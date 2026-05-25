@@ -70,20 +70,18 @@ function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMembe
     const [total, setTotal]     = useState(0);
     const [page, setPage]       = useState(1);
     const [statusFilter, setStatusFilter] = useState<string>('all');
-    const [memberFilter, setMemberFilter] = useState<string>('all');
 
     const limit = 20;
 
     useEffect(() => {
         load();
-    }, [teamId, page, statusFilter, memberFilter]);
+    }, [teamId, page, statusFilter]);
 
     async function load() {
         setLoading(true);
         try {
             const res = await teamsAPI.getTeamOrders(teamId, {
-                status:      statusFilter !== 'all' ? statusFilter as any : undefined,
-                assigned_to: memberFilter !== 'all' ? Number(memberFilter) : undefined,
+                status: statusFilter !== 'all' ? statusFilter as any : undefined,
                 limit,
                 page,
             });
@@ -122,19 +120,6 @@ function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMembe
                         <SelectItem value="cancelled">Отменённые</SelectItem>
                     </SelectContent>
                 </Select>
-                <Select value={memberFilter} onValueChange={v => { setMemberFilter(v); setPage(1); }}>
-                    <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Исполнитель" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Все участники</SelectItem>
-                        {members.map(m => (
-                            <SelectItem key={m.user_id} value={String(m.user_id)}>
-                                {m.username}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
                 <span className="text-sm text-muted-foreground self-center ml-auto">
                     Всего: {total}
                 </span>
@@ -169,12 +154,6 @@ function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMembe
                                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                                             <Users className="h-3 w-3" />
                                             {order.owner_username}
-                                        </span>
-                                    )}
-                                    {order.assigned_to_username && (
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <UserCheck className="h-3 w-3" />
-                                            {order.assigned_to_username}
                                         </span>
                                     )}
                                     {order.print_time_minutes > 0 && (

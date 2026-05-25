@@ -377,13 +377,12 @@ class TeamController {
     static async getTeamOrders(req, res) {
         try {
             const teamId    = req.params.id;
-            const status    = req.query.status   || null;
-            const assignedTo = req.query.assigned_to ? Number(req.query.assigned_to) : null;
-            const limit     = Math.min(parseInt(req.query.limit) || 50, 200);
-            const page      = parseInt(req.query.page) || 1;
-            const offset    = (page - 1) * limit;
+            const status = req.query.status || null;
+            const limit  = Math.min(parseInt(req.query.limit) || 50, 200);
+            const page   = parseInt(req.query.page) || 1;
+            const offset = (page - 1) * limit;
 
-            const filters = { status, assigned_to: assignedTo };
+            const filters = { status };
             const [orders, total] = await Promise.all([
                 OrderModel.findByTeam(teamId, filters, limit, offset),
                 OrderModel.countByTeam(teamId, filters),

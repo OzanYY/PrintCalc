@@ -65,7 +65,6 @@ export interface Order {
   is_urgent: boolean;
   order_mode: 'personal' | 'team';
   team_id: number | null;
-  assigned_to_user_id: number | null;
 
   // JOIN-поля клиента (присутствуют в большинстве запросов)
   client_name?: string | null;
@@ -90,7 +89,6 @@ export interface Order {
 
   // Командные JOIN-поля
   team_name?: string | null;
-  assigned_to_username?: string | null;
   owner_username?: string | null;
   owner_avatar?: string | null;
 }
@@ -111,7 +109,6 @@ export interface CreateOrderData {
   deadline?: string | null;
   order_mode?: 'personal' | 'team';
   team_id?: number | null;
-  assigned_to_user_id?: number | null;
 }
 
 // При обновлении все поля опциональны.

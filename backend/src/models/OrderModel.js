@@ -15,7 +15,6 @@ class OrderModel {
                 status VARCHAR(50) DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'cancelled')),
                 order_mode VARCHAR(20) NOT NULL DEFAULT 'personal' CHECK (order_mode IN ('personal', 'team')),
                 team_id BIGINT,
-                assigned_to_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
                 completed_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
                 deadline DATE,
                 is_urgent BOOLEAN NOT NULL DEFAULT FALSE,
@@ -100,6 +99,10 @@ class OrderModel {
                 FOR EACH ROW EXECUTE FUNCTION orders_sync_urgent();
         `;
         await pool.query(query);
+        // Удаляем устаревшую колонку исполнителя, если она ещё существует
+        await pool.query(`
+            ALTER TABLE orders DROP COLUMN IF EXISTS assigned_to_user_id
+        `);
     }
 
     // ─── Вспомогательный метод: извлекает финансовые поля из calc_result ────────
@@ -149,7 +152,6 @@ class OrderModel {
             settings = {},
             order_mode = 'personal',
             team_id = null,
-            assigned_to_user_id = null,
         } = orderData;
 
         const query = `
@@ -158,13 +160,13 @@ class OrderModel {
             calc_materials, calc_electricity, calc_depreciation,
             calc_labor, calc_additional, calc_result,
             notes, settings, deadline,
-            order_mode, team_id, assigned_to_user_id
+            order_mode, team_id
         ) VALUES (
             $1, $2, $3, $4, $5, 'in_progress',
             $6, $7, $8,
             $9, $10, $11,
             $12, $13, $14,
-            $15, $16, $17
+            $15, $16
         )
         RETURNING *
     `;
@@ -185,7 +187,6 @@ class OrderModel {
             deadline || null,
             order_mode,
             team_id || null,
-            assigned_to_user_id || null,
         ];
         const result = await pool.query(query, values);
         return this.#flattenResult(result.rows[0]);
@@ -248,7 +249,6 @@ class OrderModel {
                m.name as material_name, m.category as material_category, m.type as material_type,
                c.name as client_name, c.phone as client_phone, c.email as client_email,
                tm.name as team_name,
-               au.username as assigned_to_username,
                COALESCE(
                    (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
@@ -257,11 +257,10 @@ class OrderModel {
                ) AS tags,
                (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
-        LEFT JOIN printers  p  ON o.printer_id          = p.id
-        LEFT JOIN materials m  ON o.material_id         = m.id
-        LEFT JOIN clients   c  ON o.client_id           = c.id
-        LEFT JOIN teams     tm ON o.team_id             = tm.id
-        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
+        LEFT JOIN printers  p  ON o.printer_id  = p.id
+        LEFT JOIN materials m  ON o.material_id = m.id
+        LEFT JOIN clients   c  ON o.client_id   = c.id
+        LEFT JOIN teams     tm ON o.team_id     = tm.id
         ${where}
         ORDER BY o.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -287,7 +286,6 @@ class OrderModel {
                m.name as material_name, m.category as material_category, m.type as material_type,
                c.name as client_name, c.phone as client_phone, c.email as client_email,
                tm.name as team_name,
-               au.username as assigned_to_username,
                COALESCE(
                    (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
                     FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
@@ -296,11 +294,10 @@ class OrderModel {
                ) AS tags,
                (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
-        LEFT JOIN printers  p  ON o.printer_id          = p.id
-        LEFT JOIN materials m  ON o.material_id         = m.id
-        LEFT JOIN clients   c  ON o.client_id           = c.id
-        LEFT JOIN teams     tm ON o.team_id             = tm.id
-        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
+        LEFT JOIN printers  p  ON o.printer_id  = p.id
+        LEFT JOIN materials m  ON o.material_id = m.id
+        LEFT JOIN clients   c  ON o.client_id   = c.id
+        LEFT JOIN teams     tm ON o.team_id     = tm.id
         WHERE o.id = $1 AND (
             o.user_id = $2
             OR (o.order_mode = 'team' AND EXISTS (
@@ -333,17 +330,13 @@ class OrderModel {
 
     // ─── Все заказы команды ───────────────────────────────────────────────────────
     static async findByTeam(teamId, filters = {}, limit = 50, offset = 0) {
-        const { status = null, assigned_to = null } = filters;
+        const { status = null } = filters;
         const params = [teamId];
         let where = `WHERE o.team_id = $1 AND o.order_mode = 'team'`;
 
         if (status) {
             params.push(status);
             where += ` AND o.status = $${params.length}`;
-        }
-        if (assigned_to) {
-            params.push(assigned_to);
-            where += ` AND o.assigned_to_user_id = $${params.length}`;
         }
 
         const query = `
@@ -352,7 +345,6 @@ class OrderModel {
                m.name  as material_name, m.category as material_category, m.type as material_type,
                c.name  as client_name,   c.phone as client_phone, c.email as client_email,
                tm.name as team_name,
-               au.username as assigned_to_username,
                uo.username as owner_username, uo.avatar as owner_avatar,
                COALESCE(
                    (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
@@ -362,12 +354,11 @@ class OrderModel {
                ) AS tags,
                (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
         FROM orders o
-        LEFT JOIN printers  p  ON o.printer_id          = p.id
-        LEFT JOIN materials m  ON o.material_id         = m.id
-        LEFT JOIN clients   c  ON o.client_id           = c.id
-        LEFT JOIN teams     tm ON o.team_id             = tm.id
-        LEFT JOIN users     au ON o.assigned_to_user_id = au.id
-        LEFT JOIN users     uo ON o.user_id             = uo.id
+        LEFT JOIN printers  p  ON o.printer_id  = p.id
+        LEFT JOIN materials m  ON o.material_id = m.id
+        LEFT JOIN clients   c  ON o.client_id   = c.id
+        LEFT JOIN teams     tm ON o.team_id     = tm.id
+        LEFT JOIN users     uo ON o.user_id     = uo.id
         ${where}
         ORDER BY o.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -378,11 +369,10 @@ class OrderModel {
     }
 
     static async countByTeam(teamId, filters = {}) {
-        const { status = null, assigned_to = null } = filters;
+        const { status = null } = filters;
         const params = [teamId];
         let where = `WHERE o.team_id = $1 AND o.order_mode = 'team'`;
         if (status) { params.push(status); where += ` AND o.status = $${params.length}`; }
-        if (assigned_to) { params.push(assigned_to); where += ` AND o.assigned_to_user_id = $${params.length}`; }
         const result = await pool.query(`SELECT COUNT(*) FROM orders o ${where}`, params);
         return parseInt(result.rows[0].count) || 0;
     }

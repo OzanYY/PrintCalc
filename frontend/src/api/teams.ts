@@ -145,7 +145,6 @@ export const teamsAPI = {
     // ─── Заказы команды ──────────────────────────────────────────────────────
     getTeamOrders: (teamId: number, params?: {
         status?: 'in_progress' | 'completed' | 'cancelled';
-        assigned_to?: number;
         limit?: number;
         page?: number;
     }) =>
