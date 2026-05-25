@@ -98,7 +98,7 @@ class MaterialInventoryService {
                 balance_before: parseFloat(mat.stock_grams),
                 balance_after:  parseFloat(mat.stock_grams),  // stock не меняется при брони
                 note: note ?? `Бронирование для заказа #${orderId}`,
-            });
+            }, client);
 
             await client.query('COMMIT');
             return { transaction: tx, warning };
@@ -139,7 +139,7 @@ class MaterialInventoryService {
                 balance_before: parseFloat(mat.stock_grams),
                 balance_after:  parseFloat(mat.stock_grams),
                 note: note ?? `Возврат резерва по заказу #${orderId}`,
-            });
+            }, client);
 
             await client.query('COMMIT');
             return { transaction: tx };
@@ -185,7 +185,7 @@ class MaterialInventoryService {
                 balance_before: stockBefore,
                 balance_after:  newStock,
                 note: note ?? `Списание по заказу #${orderId}`,
-            });
+            }, client);
 
             await client.query('COMMIT');
             return { transaction: tx };
@@ -229,7 +229,7 @@ class MaterialInventoryService {
                 balance_before: stockBefore,
                 balance_after:  newStock,
                 note: note ?? (isAdd ? 'Ручное пополнение' : 'Ручное списание'),
-            });
+            }, client);
 
             await client.query('COMMIT');
             return { transaction: tx, newStock };

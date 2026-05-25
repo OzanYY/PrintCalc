@@ -38,7 +38,8 @@ class MaterialTransactionModel {
     }
 
     // Записать транзакцию и вернуть её
-    static async create(data) {
+    // client — опциональный pg-клиент (для вызова внутри транзакции)
+    static async create(data, client = pool) {
         const { user_id, material_id, order_id, type, amount_grams, balance_before, balance_after, note } = data;
         const query = `
             INSERT INTO material_transactions
@@ -46,7 +47,7 @@ class MaterialTransactionModel {
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
             RETURNING *
         `;
-        const result = await pool.query(query, [
+        const result = await client.query(query, [
             user_id, material_id, order_id ?? null, type,
             amount_grams, balance_before, balance_after, note ?? null,
         ]);
