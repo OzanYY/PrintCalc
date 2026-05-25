@@ -1030,21 +1030,23 @@ export default function OrdersPage() {
           </Select>
         )}
 
-        <Select
-          value={deadlineFilter ?? 'all'}
-          onValueChange={v => setDeadlineFilter(v === 'all' ? null : v as any)}
-        >
-          <SelectTrigger className="w-[160px]">
-            <CalendarDays className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Дедлайн" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все дедлайны</SelectItem>
-            <SelectItem value="has_deadline">Есть дедлайн</SelectItem>
-            <SelectItem value="overdue">Просроченные</SelectItem>
-            <SelectItem value="this_week">На этой неделе</SelectItem>
-          </SelectContent>
-        </Select>
+        {orders.some(o => (o as any).deadline) && (
+          <Select
+            value={deadlineFilter ?? 'all'}
+            onValueChange={v => setDeadlineFilter(v === 'all' ? null : v as any)}
+          >
+            <SelectTrigger className="w-[160px]">
+              <CalendarDays className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Дедлайн" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все дедлайны</SelectItem>
+              <SelectItem value="has_deadline">Есть дедлайн</SelectItem>
+              <SelectItem value="overdue">Просроченные</SelectItem>
+              <SelectItem value="this_week">На этой неделе</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         {allClients.length > 0 && (
           <Select
@@ -1064,33 +1066,35 @@ export default function OrdersPage() {
           </Select>
         )}
 
-        {myTeams.length > 0 && (
-          <div className="flex gap-1 border rounded-lg p-1">
-            <Button
-              variant={orderModeFilter === null ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setOrderModeFilter(null)}
-            >Все</Button>
-            <Button
-              variant={orderModeFilter === 'personal' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setOrderModeFilter('personal')}
-            >Мои</Button>
-            <Button
-              variant={orderModeFilter === 'team' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setOrderModeFilter('team')}
-            ><Users className="h-3.5 w-3.5 mr-1" />Командные</Button>
-          </div>
-        )}
+        <div className="ml-auto flex gap-2">
+          {orders.some(o => o.order_mode === 'team') && (
+            <div className="flex gap-1 border rounded-lg p-1">
+              <Button
+                variant={orderModeFilter === null ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setOrderModeFilter(null)}
+              >Все</Button>
+              <Button
+                variant={orderModeFilter === 'personal' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setOrderModeFilter('personal')}
+              >Мои</Button>
+              <Button
+                variant={orderModeFilter === 'team' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setOrderModeFilter('team')}
+              ><Users className="h-3.5 w-3.5 mr-1" />Командные</Button>
+            </div>
+          )}
 
-        <div className="flex gap-1 border rounded-lg p-1">
-          <Button variant={viewMode === 'cards' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('cards')}>
-            Карточки
-          </Button>
-          <Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('table')}>
-            Таблица
-          </Button>
+          <div className="flex gap-1 border rounded-lg p-1">
+            <Button variant={viewMode === 'cards' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('cards')}>
+              Карточки
+            </Button>
+            <Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('table')}>
+              Таблица
+            </Button>
+          </div>
         </div>
 
         </div>
@@ -1753,7 +1757,7 @@ export default function OrdersPage() {
                     type="button" size="sm"
                     variant={orderMode === 'personal' ? 'default' : 'outline'}
                     className="flex-1"
-                    onClick={() => { setOrderMode('personal'); setSelectedTeamId(null); setAssignedToUserId(null); }}
+                    onClick={() => { setOrderMode('personal'); setSelectedTeamId(null); }}
                   >Личный</Button>
                   <Button
                     type="button" size="sm"
@@ -1766,7 +1770,7 @@ export default function OrdersPage() {
                   <div className="space-y-2">
                     <Select
                       value={selectedTeamId?.toString() ?? ''}
-                      onValueChange={v => { setSelectedTeamId(Number(v)); setAssignedToUserId(null); }}
+                      onValueChange={v => { setSelectedTeamId(Number(v)); }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Выберите команду" />

@@ -1240,27 +1240,29 @@ export default function StatisticsPage() {
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           {/* Выбор: личная / команда */}
-          <Select
-            value={viewMode === "personal" ? "personal" : String(selectedTeamId)}
-            onValueChange={v => {
-              if (v === "personal") {
-                setViewMode("personal"); setSelectedTeamId(null)
-              } else {
-                setViewMode("team"); setSelectedTeamId(Number(v))
-              }
-            }}
-          >
-            <SelectTrigger className="w-48">
-              <Users className="h-4 w-4 mr-2 shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="personal">Личная статистика</SelectItem>
-              {teams.map(t => (
-                <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {teams.length > 0 && (
+            <Select
+              value={viewMode === "personal" ? "personal" : String(selectedTeamId)}
+              onValueChange={v => {
+                if (v === "personal") {
+                  setViewMode("personal"); setSelectedTeamId(null)
+                } else {
+                  setViewMode("team"); setSelectedTeamId(Number(v))
+                }
+              }}
+            >
+              <SelectTrigger className="w-48">
+                <Users className="h-4 w-4 mr-2 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="personal">Личная статистика</SelectItem>
+                {teams.map(t => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={period} onValueChange={v => setPeriod(v as Period)}>
             <SelectTrigger className="w-40">
               <Calendar className="h-4 w-4 mr-2 shrink-0" />
