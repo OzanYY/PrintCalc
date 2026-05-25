@@ -206,13 +206,10 @@ class OrderModel {
         } else if (order_mode === 'team') {
             where = `WHERE o.order_mode = 'team' AND ${inTeam}`;
         } else {
-            // null — личные + командные с merge_stats_with_personal = TRUE
+            // null — все: личные + все командные, где пользователь состоит
             where = `WHERE (
                 (o.user_id = $1 AND o.order_mode = 'personal')
-                OR (o.order_mode = 'team' AND o.team_id IN (
-                    SELECT tm2.team_id FROM team_members tm2
-                    WHERE tm2.user_id = $1 AND tm2.merge_stats_with_personal = TRUE
-                ))
+                OR (o.order_mode = 'team' AND ${inTeam})
             )`;
         }
 
