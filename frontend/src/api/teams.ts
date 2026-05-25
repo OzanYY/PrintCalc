@@ -86,6 +86,14 @@ export const teamsAPI = {
     updateTeam: (id: number, data: { name?: string; description?: string }) =>
         api.patch<{ data: Team }>(`/teams/${id}`, data),
 
+    uploadTeamAvatar: (id: number, file: File) => {
+        const formData = new FormData();
+        formData.append('avatar', file);
+        return api.post<{ data: Team }>(`/teams/${id}/avatar`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+
     deleteTeam: (id: number) =>
         api.delete<{ message: string }>(`/teams/${id}`),
 

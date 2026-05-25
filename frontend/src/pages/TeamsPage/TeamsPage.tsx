@@ -281,6 +281,7 @@ export default function TeamsPage() {
                                 <div className="flex items-start justify-between">
                                     <div className="flex items-center gap-3">
                                         <Avatar className="w-12 h-12 border border-border">
+                                            <AvatarImage src={team.avatar ?? undefined} alt={team.name} />
                                             <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                                                 {getInitials(team.name)}
                                             </AvatarFallback>

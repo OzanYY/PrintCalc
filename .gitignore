@@ -42,3 +42,4 @@ backend/uploads/avatars/
 *.njsproj
 *.sln
 *.sw?
+./.claude/

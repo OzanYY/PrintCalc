@@ -558,9 +558,12 @@ export default function UserPage() {
                                                 className="flex items-center justify-between p-3 rounded-xl border bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 font-semibold text-primary text-sm">
-                                                        {getInitials(team.name)}
-                                                    </div>
+                                                    <Avatar className="w-10 h-10 border border-border shrink-0">
+                                                        <AvatarImage src={team.avatar ?? undefined} alt={team.name} />
+                                                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                                                            {getInitials(team.name)}
+                                                        </AvatarFallback>
+                                                    </Avatar>
                                                     <div>
                                                         <p className="font-medium text-sm">{team.name}</p>
                                                         <div className="flex items-center gap-1.5 mt-0.5">

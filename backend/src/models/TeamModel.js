@@ -92,6 +92,14 @@ class TeamModel {
         return result.rows[0] ?? null;
     }
 
+    static async updateAvatar(id, avatarUrl) {
+        await pool.query(
+            `UPDATE teams SET avatar = $1, updated_at = NOW() WHERE id = $2`,
+            [avatarUrl, id]
+        );
+        return this.findById(id);
+    }
+
     static async delete(id) {
         const result = await pool.query(
             'DELETE FROM teams WHERE id = $1 RETURNING id',

@@ -29,11 +29,12 @@ import {
     Users, UserPlus, Settings, Trash2, MoreVertical, LogOut,
     Shield, UserCheck, Printer, Package, CheckCircle,
     DollarSign, Loader2, ArrowLeft, X, Share2, ClipboardList,
-    Clock, Weight,
+    Clock, Weight, Camera,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { AvatarCropDialog } from '@/components/AvatarCropDialog';
 
 const ROLE_LABEL: Record<string, string> = {
     owner: 'Владелец',
@@ -465,6 +466,35 @@ export default function TeamPage() {
     const [isSavingEdit, setIsSavingEdit]     = useState(false);
     const [isDeleting, setIsDeleting]         = useState(false);
 
+    // ── Аватар команды ────────────────────────────────────────────────────────
+    const teamAvatarInputRef = useRef<HTMLInputElement>(null);
+    const [teamCropSrc, setTeamCropSrc] = useState<string | null>(null);
+    const [isUploadingTeamAvatar, setIsUploadingTeamAvatar] = useState(false);
+
+    const handleTeamFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setTeamCropSrc(reader.result as string);
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    };
+
+    const handleTeamCropConfirm = async (blob: Blob) => {
+        setIsUploadingTeamAvatar(true);
+        setTeamCropSrc(null);
+        try {
+            const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+            const res = await teamsAPI.uploadTeamAvatar(teamId, file);
+            setTeam(res.data.data);
+            toast.success('Аватар команды обновлён');
+        } catch {
+            toast.error('Не удалось загрузить аватар');
+        } finally {
+            setIsUploadingTeamAvatar(false);
+        }
+    };
+
     // ── Поиск пользователей для приглашения ───────────────────────────────────
     const [inviteSearchQuery, setInviteSearchQuery] = useState('');
     const [inviteSearchResults, setInviteSearchResults] = useState<{ id: number; username: string; avatar: string | null }[]>([]);
@@ -637,16 +667,44 @@ export default function TeamPage() {
 
     return (
         <div className="container mx-auto p-6 max-w-5xl">
+            <input
+                ref={teamAvatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleTeamFileSelected}
+            />
+            <AvatarCropDialog
+                imageSrc={teamCropSrc}
+                onClose={() => setTeamCropSrc(null)}
+                onConfirm={handleTeamCropConfirm}
+            />
             {/* ── Шапка ── */}
             <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" size="icon" onClick={() => navigate('/teams')}>
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <Avatar className="w-12 h-12 border border-border">
-                    <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
-                        {getInitials(team.name)}
-                    </AvatarFallback>
-                </Avatar>
+                <div className="relative group shrink-0">
+                    <Avatar className="w-12 h-12 border border-border">
+                        <AvatarImage src={team.avatar ?? undefined} alt={team.name} />
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
+                            {getInitials(team.name)}
+                        </AvatarFallback>
+                    </Avatar>
+                    {isAdmin && (
+                        <button
+                            type="button"
+                            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                            disabled={isUploadingTeamAvatar}
+                            onClick={() => teamAvatarInputRef.current?.click()}
+                        >
+                            {isUploadingTeamAvatar
+                                ? <Loader2 className="h-3.5 w-3.5 text-white animate-spin" />
+                                : <Camera className="h-3.5 w-3.5 text-white" />
+                            }
+                        </button>
+                    )}
+                </div>
                 <div className="flex-1">
                     <h1 className="text-2xl font-bold">{team.name}</h1>
                     {team.description && <p className="text-sm text-muted-foreground">{team.description}</p>}
@@ -1022,6 +1080,26 @@ export default function TeamPage() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>Редактировать команду</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label>Аватар</Label>
+                            <div className="flex items-center gap-4">
+                                <Avatar className="w-16 h-16 border border-border">
+                                    <AvatarImage src={team?.avatar ?? undefined} alt={team?.name} />
+                                    <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
+                                        {team ? getInitials(team.name) : ''}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <Button variant="outline" size="sm"
+                                    disabled={isUploadingTeamAvatar}
+                                    onClick={() => teamAvatarInputRef.current?.click()}>
+                                    {isUploadingTeamAvatar
+                                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        : <Camera className="mr-2 h-4 w-4" />
+                                    }
+                                    {isUploadingTeamAvatar ? 'Загрузка...' : 'Загрузить фото'}
+                                </Button>
+                            </div>
+                        </div>
                         <div className="grid gap-2">
                             <Label>Название</Label>
                             <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} maxLength={100} />
