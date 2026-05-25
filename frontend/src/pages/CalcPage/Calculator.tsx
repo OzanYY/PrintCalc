@@ -1324,9 +1324,8 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label htmlFor="modelWeight" className="flex items-center gap-2">
+                                                <Label htmlFor="modelWeight">
                                                     Вес модели
-                                                    <Badge variant="outline" className="ml-auto">г</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1343,9 +1342,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="supportWeight" className="flex items-center gap-2">
+                                                <Label htmlFor="supportWeight">
                                                     Вес поддержек
-                                                    <Badge variant="outline" className="ml-auto">г</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1362,9 +1360,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2 md:col-span-2">
-                                                <Label htmlFor="filamentPrice" className="flex items-center gap-2">
+                                                <Label htmlFor="filamentPrice">
                                                     Цена филамента
-                                                    <Badge variant="outline" className="ml-auto">₽/кг</Badge>
                                                 </Label>
                                                 <PresetSmartInput
                                                     id="filamentPrice"
@@ -1390,9 +1387,8 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label htmlFor="powerConsumption" className="flex items-center gap-2">
+                                                <Label htmlFor="powerConsumption">
                                                     Мощность принтера
-                                                    <Badge variant="outline" className="ml-auto">Вт</Badge>
                                                 </Label>
                                                 <PresetSmartInput
                                                     id="powerConsumption"
@@ -1410,9 +1406,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="printTime" className="flex items-center gap-2">
+                                                <Label htmlFor="printTime">
                                                     Время печати
-                                                    <Badge variant="outline" className="ml-auto">мин</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1429,9 +1424,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2 md:col-span-2">
-                                                <Label htmlFor="electricityPrice" className="flex items-center gap-2">
+                                                <Label htmlFor="electricityPrice">
                                                     Стоимость электроэнергии
-                                                    <Badge variant="outline" className="ml-auto">₽/кВт·ч</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1455,9 +1449,8 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label htmlFor="printerCost" className="flex items-center gap-2">
+                                                <Label htmlFor="printerCost">
                                                     Стоимость принтера
-                                                    <Badge variant="outline" className="ml-auto">₽</Badge>
                                                 </Label>
                                                 <PresetSmartInput
                                                     id="printerCost"
@@ -1475,9 +1468,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="printResource" className="flex items-center gap-2">
+                                                <Label htmlFor="printResource">
                                                     Ресурс печати
-                                                    <Badge variant="outline" className="ml-auto">часов</Badge>
                                                 </Label>
                                                 <PresetSmartInput
                                                     id="printResource"
@@ -1502,9 +1494,8 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label htmlFor="hourlyRate" className="flex items-center gap-2">
+                                                <Label htmlFor="hourlyRate">
                                                     Ставка оператора
-                                                    <Badge variant="outline" className="ml-auto">₽/ч</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1521,9 +1512,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="workTime" className="flex items-center gap-2">
+                                                <Label htmlFor="workTime">
                                                     Время работы
-                                                    <Badge variant="outline" className="ml-auto">мин</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1547,9 +1537,8 @@ export default function Calc() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
-                                                <Label htmlFor="additionalExpensesPercent" className="flex items-center gap-2">
+                                                <Label htmlFor="additionalExpensesPercent">
                                                     Доп. расходы
-                                                    <Badge variant="outline" className="ml-auto">%</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
@@ -1567,9 +1556,8 @@ export default function Calc() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <Label htmlFor="marginPercent" className="flex items-center gap-2">
+                                                <Label htmlFor="marginPercent">
                                                     Маржа
-                                                    <Badge variant="outline" className="ml-auto">%</Badge>
                                                 </Label>
                                                 <div className="relative">
                                                     <SmartInput
