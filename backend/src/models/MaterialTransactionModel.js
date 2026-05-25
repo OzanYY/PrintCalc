@@ -33,19 +33,6 @@ class MaterialTransactionModel {
             CREATE INDEX IF NOT EXISTS idx_mat_tx_order    ON material_transactions(order_id);
             CREATE INDEX IF NOT EXISTS idx_mat_tx_type     ON material_transactions(type);
             CREATE INDEX IF NOT EXISTS idx_mat_tx_created  ON material_transactions(created_at);
-
-            -- Migration: add weight_per_spool_grams and stock_grams to materials if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'materials' AND column_name = 'weight_per_spool_grams'
-                ) THEN
-                    ALTER TABLE materials
-                        ADD COLUMN weight_per_spool_grams DECIMAL(10,2) DEFAULT 1000 NOT NULL,
-                        ADD COLUMN stock_grams            DECIMAL(10,2) DEFAULT 0    NOT NULL,
-                        ADD COLUMN reserved_grams         DECIMAL(10,2) DEFAULT 0    NOT NULL;
-                END IF;
-            END $$;
         `;
         await pool.query(query);
     }

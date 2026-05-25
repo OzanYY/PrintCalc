@@ -14,28 +14,11 @@ class TeamModel {
             );
             CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_id);
 
-            -- Добавляем FK и CHECK на orders.team_id (колонка создана в OrderModel.createTable без FK)
             DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.table_constraints
-                    WHERE constraint_name = 'orders_team_id_fkey'
-                      AND table_name = 'orders'
-                ) THEN
-                    ALTER TABLE orders
-                        ADD CONSTRAINT orders_team_id_fkey
-                        FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
-                END IF;
-            END $$;
-
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.check_constraints
-                    WHERE constraint_name = 'orders_order_mode_check'
-                ) THEN
-                    ALTER TABLE orders
-                        ADD CONSTRAINT orders_order_mode_check
-                        CHECK (order_mode IN ('personal', 'team'));
-                END IF;
+                ALTER TABLE orders
+                    ADD CONSTRAINT orders_team_id_fkey
+                    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL;
+            EXCEPTION WHEN duplicate_object THEN NULL;
             END $$;
         `);
     }

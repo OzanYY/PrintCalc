@@ -26,38 +26,6 @@ class MaterialModel {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- Migration: add quantity column if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'materials' AND column_name = 'quantity'
-                ) THEN
-                    ALTER TABLE materials ADD COLUMN quantity INTEGER DEFAULT 1 CHECK (quantity >= 0);
-                END IF;
-            END $$;
-
-            -- Migration: add inventory columns if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'materials' AND column_name = 'weight_per_spool_grams'
-                ) THEN
-                    ALTER TABLE materials ADD COLUMN weight_per_spool_grams DECIMAL(10,2) NOT NULL DEFAULT 1000;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'materials' AND column_name = 'stock_grams'
-                ) THEN
-                    ALTER TABLE materials ADD COLUMN stock_grams DECIMAL(12,2) NOT NULL DEFAULT 0;
-                END IF;
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'materials' AND column_name = 'reserved_grams'
-                ) THEN
-                    ALTER TABLE materials ADD COLUMN reserved_grams DECIMAL(12,2) NOT NULL DEFAULT 0;
-                END IF;
-            END $$;
-
             CREATE INDEX IF NOT EXISTS idx_materials_user_id ON materials(user_id);
             CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category);
             CREATE INDEX IF NOT EXISTS idx_materials_type ON materials(type);

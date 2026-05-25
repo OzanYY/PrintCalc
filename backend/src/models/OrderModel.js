@@ -10,72 +10,29 @@ class OrderModel {
                 user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 printer_id BIGINT REFERENCES printers(id) ON DELETE SET NULL,
                 material_id BIGINT REFERENCES materials(id) ON DELETE SET NULL,
+                client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
                 name VARCHAR(255) NOT NULL,
                 status VARCHAR(50) DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'cancelled')),
+                order_mode VARCHAR(20) NOT NULL DEFAULT 'personal' CHECK (order_mode IN ('personal', 'team')),
+                team_id BIGINT,
+                assigned_to_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                completed_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+                deadline DATE,
+                is_urgent BOOLEAN NOT NULL DEFAULT FALSE,
 
-                -- Параметры калькулятора (входные данные)
                 calc_materials JSONB DEFAULT '{}',
-                -- {
-                --   "modelWeight": number,       -- вес модели (г)
-                --   "supportWeight": number,     -- вес поддержек (г)
-                --   "filamentPrice": number      -- цена филамента (за кг)
-                -- }
-
                 calc_electricity JSONB DEFAULT '{}',
-                -- {
-                --   "powerConsumption": number,  -- потребляемая мощность (Вт)
-                --   "printTime": number,         -- время печати (мин)
-                --   "electricityPrice": number   -- цена электроэнергии (за кВт·ч)
-                -- }
-
                 calc_depreciation JSONB DEFAULT '{}',
-                -- {
-                --   "printerCost": number,       -- стоимость принтера
-                --   "printResource": number      -- ресурс принтера (часы)
-                -- }
-
                 calc_labor JSONB DEFAULT '{}',
-                -- {
-                --   "hourlyRate": number,        -- ставка за час
-                --   "workTime": number           -- время работы (мин)
-                -- }
-
                 calc_additional JSONB DEFAULT '{}',
-                -- {
-                --   "additionalExpensesPercent": number,  -- доп. расходы (%)
-                --   "marginPercent": number               -- маржа (%)
-                -- }
-
-                -- Результаты расчёта (выходные данные)
                 calc_result JSONB DEFAULT '{}',
-                -- Структура соответствует CalculationResult:
-                -- {
-                --   "materials": {
-                --     "model":   { "value": number, "formatted": string, "currency": string },
-                --     "support": { "value": number, "formatted": string, "currency": string },
-                --     "total":   { "value": number, "formatted": string, "currency": string }
-                --   },
-                --   "electricity":        { "value": number, "formatted": string, "currency": string },
-                --   "depreciation":       { "value": number, "formatted": string, "currency": string },
-                --   "labor":              { "value": number, "formatted": string, "currency": string },
-                --   "primeCost":          { "value": number, "formatted": string, "currency": string },
-                --   "additionalExpenses": { "value": number, "formatted": string, "currency": string, "percent": string },
-                --   "fullCost":           { "value": number, "formatted": string, "currency": string },
-                --   "margin":             { "value": number, "formatted": string, "currency": string, "percent": string },
-                --   "finalPrice":         { "value": number, "formatted": string, "currency": string },
-                --   "pricePerGram":       { "value": number, "formatted": string, "unit": string },
-                --   "totalWeight":        { "grams": number, "kg": number }
-                -- }
 
-                -- Денормализованные поля для быстрой фильтрации и агрегации
-                -- Заполняются триггером trg_orders_sync_denorm на INSERT/UPDATE
                 total_weight_grams DECIMAL(10,2) DEFAULT 0,
                 print_time_minutes INTEGER        DEFAULT 0,
                 total_cost         DECIMAL(10,2)  DEFAULT 0,
                 margin_percent     INTEGER         DEFAULT 0,
                 final_price        DECIMAL(10,2)  DEFAULT 0,
 
-                -- Дополнительные данные
                 notes TEXT,
                 settings JSONB DEFAULT '{}',
 
@@ -84,18 +41,20 @@ class OrderModel {
                 completed_at TIMESTAMP
             );
 
-            CREATE INDEX IF NOT EXISTS idx_orders_user_id   ON orders(user_id);
-            CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
-            CREATE INDEX IF NOT EXISTS idx_orders_created   ON orders(created_at);
-            CREATE INDEX IF NOT EXISTS idx_orders_printer   ON orders(printer_id);
-            CREATE INDEX IF NOT EXISTS idx_orders_material  ON orders(material_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_user_id          ON orders(user_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_status           ON orders(status);
+            CREATE INDEX IF NOT EXISTS idx_orders_created          ON orders(created_at);
+            CREATE INDEX IF NOT EXISTS idx_orders_printer          ON orders(printer_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_material         ON orders(material_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_client_id        ON orders(client_id);
+            CREATE INDEX IF NOT EXISTS idx_orders_deadline         ON orders(deadline) WHERE deadline IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_orders_team_id          ON orders(team_id) WHERE team_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_orders_completed_by_uid ON orders(completed_by_user_id) WHERE completed_by_user_id IS NOT NULL;
 
-            -- GIN-индексы для поиска по JSONB-параметрам
             CREATE INDEX IF NOT EXISTS idx_orders_calc_result      ON orders USING GIN (calc_result);
             CREATE INDEX IF NOT EXISTS idx_orders_calc_materials   ON orders USING GIN (calc_materials);
             CREATE INDEX IF NOT EXISTS idx_orders_calc_electricity ON orders USING GIN (calc_electricity);
 
-            -- Триггерная функция: синхронизирует денормализованные поля из JSONB
             CREATE OR REPLACE FUNCTION orders_sync_denorm()
             RETURNS TRIGGER AS $$
             BEGIN
@@ -123,27 +82,6 @@ class OrderModel {
                 BEFORE INSERT OR UPDATE ON orders
                 FOR EACH ROW EXECUTE FUNCTION orders_sync_denorm();
 
-            -- Новые колонки (из миграции 001)
-            ALTER TABLE orders
-                ADD COLUMN IF NOT EXISTS client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
-                ADD COLUMN IF NOT EXISTS deadline  DATE,
-                ADD COLUMN IF NOT EXISTS is_urgent BOOLEAN NOT NULL DEFAULT FALSE;
-
-            CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
-            CREATE INDEX IF NOT EXISTS idx_orders_deadline  ON orders(deadline) WHERE deadline IS NOT NULL;
-
-            -- Колонки командных заказов (из миграции 002)
-            -- FK на teams добавляется в TeamModel.createTable() после создания таблицы teams
-            ALTER TABLE orders
-                ADD COLUMN IF NOT EXISTS order_mode            VARCHAR(20) DEFAULT 'personal',
-                ADD COLUMN IF NOT EXISTS team_id               BIGINT,
-                ADD COLUMN IF NOT EXISTS assigned_to_user_id   BIGINT REFERENCES users(id) ON DELETE SET NULL,
-                ADD COLUMN IF NOT EXISTS completed_by_user_id  BIGINT REFERENCES users(id) ON DELETE SET NULL;
-
-            CREATE INDEX IF NOT EXISTS idx_orders_team_id          ON orders(team_id) WHERE team_id IS NOT NULL;
-            CREATE INDEX IF NOT EXISTS idx_orders_completed_by_uid ON orders(completed_by_user_id) WHERE completed_by_user_id IS NOT NULL;
-
-            -- Триггер: автоматически выставляет is_urgent (дедлайн ≤ 2 дней)
             CREATE OR REPLACE FUNCTION orders_sync_urgent()
             RETURNS TRIGGER AS $$
             BEGIN

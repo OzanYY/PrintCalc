@@ -9,59 +9,22 @@ class UserModel {
                 username VARCHAR(100) UNIQUE NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
                 is_activated BOOLEAN DEFAULT FALSE,
                 activation_link VARCHAR(255),
+                avatar TEXT,
+                pending_email VARCHAR(255),
+                email_change_token VARCHAR(255),
                 reset_password_token VARCHAR(255),
                 reset_password_expires TIMESTAMP,
+                deletion_warning_sent BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_users_reset_token ON users(reset_password_token);
-
-            -- Migration: add role column if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'role'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'
-                        CHECK (role IN ('user', 'admin'));
-                END IF;
-            END $$;
-
-            -- Migration: add deletion_warning_sent column if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'deletion_warning_sent'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN deletion_warning_sent BOOLEAN NOT NULL DEFAULT FALSE;
-                END IF;
-            END $$;
-
-            -- Migration: add avatar column if not exists
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'avatar'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN avatar TEXT;
-                END IF;
-            END $$;
-
-            -- Migration: add pending_email and email_change_token columns
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'pending_email'
-                ) THEN
-                    ALTER TABLE users ADD COLUMN pending_email VARCHAR(255);
-                    ALTER TABLE users ADD COLUMN email_change_token VARCHAR(255);
-                END IF;
-            END $$;
         `;
         await pool.query(query);
     }

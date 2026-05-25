@@ -121,14 +121,14 @@ const start = async () => {
         await MaterialModel.createTable();
         console.log('✅ Materials table ready');
 
+        await ClientModel.createTable();
+        console.log('✅ Clients table ready');
+
         await OrderModel.createTable();
         console.log('✅ Orders table ready');
 
         await MaterialTransactionModel.createTable();
         console.log('✅ Material transactions table ready');
-
-        await ClientModel.createTable();
-        console.log('✅ Clients table ready');
 
         await TagModel.createTable();
         console.log('✅ Tags & order_tags tables ready');
