@@ -582,6 +582,17 @@ export default function Calc() {
                     result: newResult,
                 }
                 setHistory(prev => {
+                    const last = prev[0]
+                    if (
+                        last &&
+                        JSON.stringify(last.materials) === JSON.stringify(entry.materials) &&
+                        JSON.stringify(last.electricity) === JSON.stringify(entry.electricity) &&
+                        JSON.stringify(last.depreciation) === JSON.stringify(entry.depreciation) &&
+                        JSON.stringify(last.labor) === JSON.stringify(entry.labor) &&
+                        JSON.stringify(last.additional) === JSON.stringify(entry.additional)
+                    ) {
+                        return prev
+                    }
                     const updated = [entry, ...prev].slice(0, HISTORY_MAX)
                     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
                     return updated
