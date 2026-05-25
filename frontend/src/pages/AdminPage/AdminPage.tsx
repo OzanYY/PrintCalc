@@ -92,6 +92,15 @@ const IconShield = () => (
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
 );
+const IconRefresh = ({ spinning }: { spinning?: boolean }) => (
+    <svg
+        width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+        className={spinning ? 'animate-spin' : undefined}
+    >
+        <polyline points="1 4 1 10 7 10"/>
+        <path d="M3.51 15a9 9 0 1 0 .49-4.58"/>
+    </svg>
+);
 
 type Section = 'stats' | 'users' | 'teams' | 'tables';
 
@@ -1312,6 +1321,14 @@ export default function AdminPage() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [section, setSection] = useState<Section>('stats');
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        setRefreshKey(k => k + 1);
+        setTimeout(() => setRefreshing(false), 700);
+    };
 
     useEffect(() => {
         if (!user || user.role !== 'admin') {
@@ -1332,9 +1349,15 @@ export default function AdminPage() {
                         </span>
                         <Badge variant="outline" className="text-xs">{user.username}</Badge>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-                        ← На сайт
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} title="Обновить данные">
+                            <IconRefresh spinning={refreshing} />
+                            <span className="ml-1.5">Обновить</span>
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+                            ← На сайт
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -1362,10 +1385,10 @@ export default function AdminPage() {
                 </div>
 
                 {/* Контент */}
-                {section === 'stats'  && <StatsSection />}
-                {section === 'users'  && <UsersSection />}
-                {section === 'teams'  && <TeamsSection />}
-                {section === 'tables' && <TablesSection />}
+                {section === 'stats'  && <StatsSection  key={refreshKey} />}
+                {section === 'users'  && <UsersSection  key={refreshKey} />}
+                {section === 'teams'  && <TeamsSection  key={refreshKey} />}
+                {section === 'tables' && <TablesSection key={refreshKey} />}
             </div>
         </div>
     );
