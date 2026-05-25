@@ -1,9 +1,5 @@
-// controllers/ClientController.js
 const ClientModel = require('../models/ClientModel');
-
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? null;
-}
+const { getUserId } = require('../utils/controllerHelpers');
 
 class ClientController {
     // GET /clients

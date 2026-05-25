@@ -1,26 +1,5 @@
-// controllers/materialController.js
 const MaterialService = require('../services/MaterialService');
-
-// ─── Утилиты ──────────────────────────────────────────────────────────────────
-
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? req.user?._id ?? null;
-}
-
-function errorStatus(message, fallback = 400) {
-    if (message === 'Материал не найден' || message === 'Исходный материал не найден') return 404;
-    return fallback;
-}
-
-function sendError(res, error, fallback = 400) {
-    res.status(errorStatus(error.message, fallback)).json({
-        success: false,
-        message: error.message,
-        error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
-}
-
-// ─── Контроллер ───────────────────────────────────────────────────────────────
+const { getUserId, sendError } = require('../utils/controllerHelpers');
 
 class MaterialController {
     // GET /materials?category=...

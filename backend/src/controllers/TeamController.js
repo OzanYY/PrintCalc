@@ -1,3 +1,4 @@
+const pool                 = require('../config/database');
 const TeamModel            = require('../models/TeamModel');
 const TeamMemberModel      = require('../models/TeamMemberModel');
 const TeamInvitationModel  = require('../models/TeamInvitationModel');
@@ -405,7 +406,6 @@ class TeamController {
     static async getTeamStats(req, res) {
         try {
             const teamId = req.params.id;
-            const pool = require('../config/database');
 
             const [printersRes, materialsRes, ordersRes] = await Promise.all([
                 pool.query(
@@ -453,7 +453,6 @@ class TeamController {
     // GET /api/teams/:id/stats/members — статистика по участникам
     static async getMemberStats(req, res) {
         try {
-            const pool = require('../config/database');
             const result = await pool.query(
                 `SELECT
                      u.id, u.username, u.avatar,

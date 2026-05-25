@@ -1,9 +1,5 @@
-// controllers/OrderCommentController.js
 const OrderCommentModel = require('../models/OrderCommentModel');
-
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? null;
-}
+const { getUserId } = require('../utils/controllerHelpers');
 
 class OrderCommentController {
     // GET /orders/:orderId/comments

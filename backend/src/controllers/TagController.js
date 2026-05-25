@@ -1,9 +1,5 @@
-// controllers/TagController.js
 const TagModel = require('../models/TagModel');
-
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? null;
-}
+const { getUserId } = require('../utils/controllerHelpers');
 
 class TagController {
     // GET /tags

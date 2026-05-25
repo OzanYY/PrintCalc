@@ -1,55 +1,6 @@
-// controllers/orderController.js
 const OrderService = require('../services/orderService');
 const TagModel = require('../models/TagModel');
-
-// ─── Вспомогательные утилиты ──────────────────────────────────────────────────
-
-/**
- * Извлекает userId из объекта req.user.
- * Возвращает null, если пользователь не авторизован.
- */
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? req.user?._id ?? null;
-}
-
-/**
- * Проверяет авторизацию и наличие userId.
- * Возвращает userId или отправляет ответ с ошибкой и возвращает null.
- */
-function requireAuth(req, res) {
-    if (!req.isAuth || !req.user) {
-        res.status(401).json({ success: false, message: 'Необходима авторизация' });
-        return null;
-    }
-    const userId = getUserId(req);
-    if (!userId) {
-        res.status(400).json({ success: false, message: 'ID пользователя не найден в токене' });
-        return null;
-    }
-    return userId;
-}
-
-/**
- * Определяет HTTP-статус по тексту ошибки.
- */
-function errorStatus(message, fallback = 400) {
-    if (message === 'Заказ не найден') return 404;
-    if (message === 'Необходима авторизация') return 401;
-    return fallback;
-}
-
-/**
- * Отправляет ответ с ошибкой.
- */
-function sendError(res, error, fallbackStatus = 400) {
-    res.status(errorStatus(error.message, fallbackStatus)).json({
-        success: false,
-        message: error.message,
-        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-}
-
-// ─── Контроллер ───────────────────────────────────────────────────────────────
+const { getUserId, requireAuth, sendError } = require('../utils/controllerHelpers');
 
 class OrderController {
 
@@ -182,10 +133,6 @@ class OrderController {
     }
 
     // PUT /orders/:id
-    // Body может содержать любое подмножество:
-    //   name, printer_id, material_id, notes, settings,
-    //   calc_materials, calc_electricity, calc_depreciation,
-    //   calc_labor, calc_additional, calc_result
     static async updateOrder(req, res) {
         try {
             const userId = requireAuth(req, res);
@@ -260,8 +207,7 @@ class OrderController {
         }
     }
 
-    // PATCH /orders/bulk-status
-    // Body: { orderIds: number[], status: string }
+    // PATCH /orders/bulk-status — body: { orderIds: number[], status: string }
     static async bulkUpdateStatus(req, res) {
         try {
             const userId = requireAuth(req, res);
@@ -285,8 +231,6 @@ class OrderController {
     }
 
     // POST /orders/:id/clone
-    // Создаёт копию заказа с тем же calc_result и параметрами калькулятора,
-    // сбрасывая статус в in_progress и добавляя суффикс "(копия)" к названию.
     static async cloneOrder(req, res) {
         try {
             const userId = requireAuth(req, res);
@@ -302,20 +246,17 @@ class OrderController {
                 settings:          original.settings,
                 client_id:         original.client_id,
                 deadline:          original.deadline,
-                // Параметры калькулятора копируются как есть
                 calc_materials:    original.calc_materials,
                 calc_electricity:  original.calc_electricity,
                 calc_depreciation: original.calc_depreciation,
                 calc_labor:        original.calc_labor,
                 calc_additional:   original.calc_additional,
-                // Результат расчёта тоже копируется — он актуален для тех же параметров
                 calc_result:       original.calc_result,
             };
 
             const result = await OrderService.createOrder(userId, clonedData);
             const clonedOrder = result.data;
 
-            // Копируем теги оригинального заказа
             const originalTags = await TagModel.getOrderTags(original.id);
             if (originalTags.length > 0) {
                 const tagIds = originalTags.map(t => t.id);

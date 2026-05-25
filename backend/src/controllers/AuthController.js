@@ -278,24 +278,23 @@ class AuthController {
     }
 
     static async terminateSession(req, res) {
-    try {
-        const { id } = req.params;
-        if (!id) {
-            return res.status(400).json({ error: 'Session ID required' });
+        try {
+            const { id } = req.params;
+            if (!id) {
+                return res.status(400).json({ error: 'Session ID required' });
+            }
+
+            const deleted = await TokenService.removeTokenById(id, req.user.id);
+            if (!deleted) {
+                return res.status(404).json({ error: 'Session not found or already terminated' });
+            }
+
+            res.json({ message: 'Session terminated successfully' });
+        } catch (error) {
+            console.error('Terminate session error:', error);
+            res.status(500).json({ error: 'Failed to terminate session' });
         }
- 
-        // Удаляем токен по id, но только если он принадлежит текущему пользователю
-        const deleted = await TokenService.removeTokenById(id, req.user.id);
-        if (!deleted) {
-            return res.status(404).json({ error: 'Session not found or already terminated' });
-        }
- 
-        res.json({ message: 'Session terminated successfully' });
-    } catch (error) {
-        console.error('Terminate session error:', error);
-        res.status(500).json({ error: 'Failed to terminate session' });
     }
-}
 
     // ==================== УДАЛЕНИЕ АККАУНТА ====================
     static async deleteAccount(req, res) {

@@ -1,23 +1,11 @@
-// controllers/InventoryController.js
+const pool = require('../config/database');
 const MaterialInventoryService = require('../services/MaterialInventoryService');
 const MaterialModel = require('../models/MaterialModel');
-
-function getUserId(req) {
-    return req.user?.id ?? req.user?.userId ?? req.user?._id ?? null;
-}
-
-function sendError(res, error, fallback = 400) {
-    const status = error.message.includes('не найден') ? 404 : fallback;
-    res.status(status).json({
-        success: false,
-        message: error.message,
-        error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
-}
+const { getUserId, sendError } = require('../utils/controllerHelpers');
 
 class InventoryController {
 
-    // GET /inventory/transactions — все транзакции пользователя
+    // GET /inventory/transactions
     static async getAllTransactions(req, res) {
         try {
             const userId = getUserId(req);
@@ -30,7 +18,7 @@ class InventoryController {
         }
     }
 
-    // GET /inventory/materials/:id/transactions — история по материалу
+    // GET /inventory/materials/:id/transactions
     static async getMaterialTransactions(req, res) {
         try {
             const userId = getUserId(req);
@@ -44,7 +32,7 @@ class InventoryController {
         }
     }
 
-    // GET /inventory/orders/:id/transactions — история по заказу
+    // GET /inventory/orders/:id/transactions
     static async getOrderTransactions(req, res) {
         try {
             const userId = getUserId(req);
@@ -56,7 +44,7 @@ class InventoryController {
         }
     }
 
-    // POST /inventory/materials/:id/adjust — ручная корректировка остатка
+    // POST /inventory/materials/:id/adjust
     // body: { amount_grams: number, is_add: boolean, note?: string }
     //   ИЛИ: { spools: number, note?: string }  — добавить/убрать N катушек
     static async adjustStock(req, res) {
@@ -68,7 +56,6 @@ class InventoryController {
             let grams = parseFloat(amount_grams) || 0;
 
             if (!grams && spools != null) {
-                // Считаем граммы из катушек
                 const mat = await MaterialModel.findById(parseInt(id), userId);
                 if (!mat) return res.status(404).json({ success: false, message: 'Материал не найден' });
                 grams = parseFloat(spools) * parseFloat(mat.weight_per_spool_grams || 1000);
@@ -96,7 +83,7 @@ class InventoryController {
         }
     }
 
-    // PATCH /inventory/materials/:id/spool-weight — обновить вес катушки
+    // PATCH /inventory/materials/:id/spool-weight
     // body: { weight_per_spool_grams: number }
     static async updateSpoolWeight(req, res) {
         try {
@@ -109,7 +96,6 @@ class InventoryController {
                 return res.status(400).json({ success: false, message: 'weight_per_spool_grams должен быть > 0' });
             }
 
-            const pool = require('../config/database');
             const result = await pool.query(
                 `UPDATE materials
                  SET weight_per_spool_grams = $1,
