@@ -368,7 +368,7 @@ export default function PrintersPage() {
                 </Card>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <Tabs defaultValue="all" onValueChange={setActiveTab}>
                     <TabsList>
                         <TabsTrigger value="all">Все</TabsTrigger>

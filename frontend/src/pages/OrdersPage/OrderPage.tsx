@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus,
   Printer as PrinterIco,
@@ -71,7 +71,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useOrders } from '@/hooks/useOrders';
-import { useContext } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import type { Order, CreateOrderData } from '@/api/orders';
 import { tagsAPI } from '@/api/tags';
@@ -717,9 +717,24 @@ export default function OrdersPage() {
     }
   }, [error, clearError]);
 
-  // Локальные фильтры (поиск — только клиентский)
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
+  // Поиск и вид — тоже в URL
+  const [pageSearchParams, setPageSearchParams] = useSearchParams();
+  const searchQuery = pageSearchParams.get('q') ?? '';
+  const setSearchQuery = useCallback((v: string) => {
+    setPageSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('q', v); else next.delete('q');
+      return next;
+    }, { replace: true });
+  }, [setPageSearchParams]);
+  const viewMode = (pageSearchParams.get('view') as 'table' | 'cards') ?? 'cards';
+  const setViewMode = useCallback((v: 'table' | 'cards') => {
+    setPageSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (v !== 'cards') next.set('view', v); else next.delete('view');
+      return next;
+    }, { replace: true });
+  }, [setPageSearchParams]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
   // Диалоги
@@ -761,14 +776,15 @@ export default function OrdersPage() {
   const [orderMode, setOrderMode]       = useState<'personal' | 'team'>('personal');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
-  // Загружаем теги, клиентов, принтеры и материалы при мо��тировании
-  useEffect(() => {
-    tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => { });
-    printersAPI.getAll().then(r => setPrinters(r.data.data)).catch(() => { });
-    materialsAPI.getAll().then(r => setMaterials(r.data.data)).catch(() => { });
+  const refreshDictionaries = useCallback(() => {
+    tagsAPI.getAll().then(r => setAllTags(r.data.data)).catch(() => {});
+    printersAPI.getAll().then(r => setPrinters(r.data.data)).catch(() => {});
+    materialsAPI.getAll().then(r => setMaterials(r.data.data)).catch(() => {});
     import('@/api/clients').then(m => m.clientsAPI.getAll().then(r => setAllClients(r.data.data)).catch(() => {}));
     teamsAPI.getMyTeams().then(r => setMyTeams(r.data.data)).catch(() => {});
   }, []);
+
+  useEffect(() => { refreshDictionaries(); }, []);
 
   // Ресурсы выбранной команды для формы создания заказа
   const [teamPrinters, setTeamPrinters]   = useState<any[]>([]);
@@ -927,7 +943,7 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={refresh} disabled={isLoading}>
+          <Button variant="outline" size="icon" onClick={() => { refresh(); refreshDictionaries(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
           <Button variant="outline" onClick={() => exportCSV(statusFilter ?? undefined)}>
@@ -962,8 +978,8 @@ export default function OrdersPage() {
       </div>
 
       {/* Фильтры */}
-      <div className="flex flex-col md:flex-row gap-2 mb-6 flex-wrap">
-        <div className="flex-1 min-w-[200px] relative">
+      <div className="flex flex-col gap-2 mb-6">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Поиск по названию или номеру..."
@@ -972,6 +988,8 @@ export default function OrdersPage() {
             className="pl-10"
           />
         </div>
+
+        <div className="flex flex-row gap-2 flex-wrap">
 
         <Select
           value={statusFilter ?? 'all'}
@@ -995,6 +1013,7 @@ export default function OrdersPage() {
             onValueChange={v => setTagFilter(v === 'all' ? null : Number(v))}
           >
             <SelectTrigger className="w-[150px]">
+              <TagIco className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Все теги" />
             </SelectTrigger>
             <SelectContent>
@@ -1072,6 +1091,8 @@ export default function OrdersPage() {
           <Button variant={viewMode === 'table' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('table')}>
             Таблица
           </Button>
+        </div>
+
         </div>
       </div>
 

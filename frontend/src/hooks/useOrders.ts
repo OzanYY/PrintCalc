@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ordersAPI, downloadOrdersCSV } from '@/api/orders';
 import type {
   Order,
@@ -100,12 +101,27 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(initialStatus);
-  const [tagFilter, setTagFilter] = useState<number | null>(null);
-  const [clientFilter, setClientFilter] = useState<number | null>(null);
-  const [deadlineFilter, setDeadlineFilter] = useState<'has_deadline' | 'overdue' | 'this_week' | null>(null);
-  const [orderModeFilter, setOrderModeFilter] = useState<'personal' | 'team' | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Фильтры — источник истины в URL
+  const statusFilter       = (searchParams.get('status') as OrderStatus | null) ?? initialStatus;
+  const tagFilter          = searchParams.get('tag')      ? Number(searchParams.get('tag'))      : null;
+  const clientFilter       = searchParams.get('client')   ? Number(searchParams.get('client'))   : null;
+  const deadlineFilter     = (searchParams.get('deadline') as 'has_deadline' | 'overdue' | 'this_week' | null) ?? null;
+  const orderModeFilter    = (searchParams.get('mode') as 'personal' | 'team' | null) ?? null;
+  const currentPage        = Math.max(1, Number(searchParams.get('page') ?? '1'));
+
+  const updateParam = useCallback(
+    (key: string, value: string | null, resetPage = false) => {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        if (value !== null) next.set(key, value); else next.delete(key);
+        if (resetPage) next.delete('page');
+        return next;
+      }, { replace: true });
+    },
+    [setSearchParams],
+  );
 
   // Защита от race conditions
   const abortRef = useRef<AbortController | null>(null);
@@ -344,35 +360,13 @@ export function useOrders(options: UseOrdersOptions = {}): UseOrdersReturn {
     [],
   );
 
-  // ─── Фильтры: сброс страницы при смене любого фильтра ──────────────────────
-  const handleSetStatusFilter = useCallback((status: OrderStatus | null) => {
-    setStatusFilter(status);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSetTagFilter = useCallback((tagId: number | null) => {
-    setTagFilter(tagId);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSetClientFilter = useCallback((clientId: number | null) => {
-    setClientFilter(clientId);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSetDeadlineFilter = useCallback((f: 'has_deadline' | 'overdue' | 'this_week' | null) => {
-    setDeadlineFilter(f);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSetOrderModeFilter = useCallback((m: 'personal' | 'team' | null) => {
-    setOrderModeFilter(m);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSetCurrentPage = useCallback((page: number) => {
-    setCurrentPage(page);
-  }, []);
+  // ─── Фильтры: пишем в URL, сбрасываем страницу ─────────────────────────────
+  const handleSetStatusFilter      = useCallback((v: OrderStatus | null) => updateParam('status', v, true), [updateParam]);
+  const handleSetTagFilter         = useCallback((v: number | null) => updateParam('tag', v !== null ? String(v) : null, true), [updateParam]);
+  const handleSetClientFilter      = useCallback((v: number | null) => updateParam('client', v !== null ? String(v) : null, true), [updateParam]);
+  const handleSetDeadlineFilter    = useCallback((v: 'has_deadline' | 'overdue' | 'this_week' | null) => updateParam('deadline', v, true), [updateParam]);
+  const handleSetOrderModeFilter   = useCallback((v: 'personal' | 'team' | null) => updateParam('mode', v, true), [updateParam]);
+  const handleSetCurrentPage       = useCallback((page: number) => updateParam('page', page > 1 ? String(page) : null), [updateParam]);
 
   // ─── Refresh ────────────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
