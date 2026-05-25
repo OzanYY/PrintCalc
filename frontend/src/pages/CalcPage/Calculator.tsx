@@ -34,7 +34,7 @@ import { useCalculator } from "@/context/CalculatorContext"
 import { useAuth } from "@/context/AuthContext"
 import { printersAPI } from "@/api/printers"
 import { materialsAPI, CATEGORY_UNIT_CONFIG } from "@/api/materials"
-import { teamsAPI, type Team, type TeamMember } from "@/api/teams"
+import { teamsAPI, type Team } from "@/api/teams"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parse3mf, type Parse3mfResult } from '@/utils/parse3mf'
 
@@ -429,12 +429,9 @@ export default function Calc() {
     const [saveDeadline, setSaveDeadline] = useState<string | null>(null)
     const [saveTagIds, setSaveTagIds] = useState<number[]>([])
     const [isSaving, setIsSaving] = useState(false)
-    const [saveOrderMode, setSaveOrderMode] = useState<'personal' | 'team'>('personal')
+    const [saveOrderMode, setSaveOrderMode] = useState<'personal' | 'team' | null>(null)
     const [myTeams, setMyTeams] = useState<Team[]>([])
     const [saveTeamId, setSaveTeamId] = useState<number | null>(null)
-    const [saveTeamMembers, setSaveTeamMembers] = useState<TeamMember[]>([])
-    const [saveAssignedToUserId, setSaveAssignedToUserId] = useState<number | null>(null)
-    const [teamMembersLoading, setTeamMembersLoading] = useState(false)
 
     // ─── История расчётов ─────────────────────────────────────────────────────
     const [history, setHistory] = useState<HistoryEntry[]>(() => {
@@ -660,10 +657,8 @@ export default function Calc() {
         setSaveClientEmail(null)
         setSaveDeadline(null)
         setSaveTagIds([])
-        setSaveOrderMode('personal')
+        setSaveOrderMode(null)
         setSaveTeamId(null)
-        setSaveTeamMembers([])
-        setSaveAssignedToUserId(null)
         setSaveDialogOpen(true)
         try {
             const r = await teamsAPI.getMyTeams()
@@ -673,22 +668,17 @@ export default function Calc() {
         }
     }
 
-    useEffect(() => {
-        if (saveTeamId === null) {
-            setSaveTeamMembers([])
-            setSaveAssignedToUserId(null)
-            return
-        }
-        setTeamMembersLoading(true)
-        teamsAPI.getMembers(saveTeamId)
-            .then(r => setSaveTeamMembers(r.data.data))
-            .catch(() => {})
-            .finally(() => setTeamMembersLoading(false))
-    }, [saveTeamId])
-
     // ─── Сохранение заказа ────────────────────────────────────────────────────
     const handleSaveOrder = async () => {
         if (!results) return
+        if (!saveOrderMode) {
+            toast.error('Выберите тип заказа')
+            return
+        }
+        if (saveOrderMode === 'team' && !saveTeamId) {
+            toast.error('Выберите команду')
+            return
+        }
 
         // Итоговое имя: "Доп. заголовок — Заказ от 27.04.2026 14:35"
         // Если пользователь ничего не ввёл — только автогенерация
@@ -724,7 +714,6 @@ export default function Calc() {
                 deadline: saveDeadline,
                 order_mode: saveOrderMode,
                 team_id: saveOrderMode === 'team' ? saveTeamId : null,
-                assigned_to_user_id: saveOrderMode === 'team' ? saveAssignedToUserId : null,
             })
 
             if (saveTagIds.length > 0 && response.data.data?.id) {
@@ -2034,6 +2023,76 @@ export default function Calc() {
                     </DialogHeader>
 
                     <div className="space-y-4 py-2">
+                        {/* Краткая сводка расчёта */}
+                        {results && (
+                            <div className="rounded-md border px-3 py-2 space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Итоговая цена</span>
+                                    <span className="font-semibold">{results.finalPrice.formatted}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Себестоимость</span>
+                                    <span>{results.fullCost.formatted}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Общий вес</span>
+                                    <span>{results.totalWeight.grams} г</span>
+                                </div>
+                            </div>
+                        )}
+
+                        <Separator />
+
+                        {/* Тип заказа */}
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-1.5">
+                                <Users className="h-3.5 w-3.5" />Тип заказа
+                                <span className="text-destructive">*</span>
+                            </Label>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant={saveOrderMode === 'personal' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => { setSaveOrderMode('personal'); setSaveTeamId(null) }}
+                                    disabled={isSaving}
+                                >
+                                    Личный
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={saveOrderMode === 'team' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setSaveOrderMode('team')}
+                                    disabled={isSaving || myTeams.length === 0}
+                                    title={myTeams.length === 0 ? 'Нет доступных команд' : undefined}
+                                >
+                                    Командный
+                                </Button>
+                            </div>
+
+                            {saveOrderMode === 'team' && (
+                                <Select
+                                    value={saveTeamId?.toString() ?? ''}
+                                    onValueChange={(v) => setSaveTeamId(Number(v))}
+                                    disabled={isSaving}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Выберите команду" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {myTeams.map(t => (
+                                            <SelectItem key={t.id} value={t.id.toString()}>
+                                                {t.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+
+                        <Separator />
+
                         {/* Название */}
                         <div className="space-y-2">
                             <Label htmlFor="orderTitle">
@@ -2048,18 +2107,14 @@ export default function Calc() {
                                 disabled={isSaving}
                                 autoFocus
                             />
+                            <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">Имя заказа: </span>
+                                {orderTitle.trim()
+                                    ? `${orderTitle.trim()} — ${generateOrderName()}`
+                                    : generateOrderName()
+                                }
+                            </div>
                         </div>
-
-                        {/* Превью итогового имени */}
-                        <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-                            <span className="font-medium text-foreground">Имя заказа: </span>
-                            {orderTitle.trim()
-                                ? `${orderTitle.trim()} — ${generateOrderName()}`
-                                : generateOrderName()
-                            }
-                        </div>
-
-                        <Separator />
 
                         {/* Клиент */}
                         <div className="space-y-2">
@@ -2103,76 +2158,6 @@ export default function Calc() {
                             <CreateTagSelector selectedIds={saveTagIds} onChange={setSaveTagIds} />
                         </div>
 
-                        {/* Тип заказа */}
-                        {myTeams.length > 0 && (
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-1.5">
-                                    <Users className="h-3.5 w-3.5" />Тип заказа
-                                </Label>
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        variant={saveOrderMode === 'personal' ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => { setSaveOrderMode('personal'); setSaveTeamId(null) }}
-                                        disabled={isSaving}
-                                    >
-                                        Личный
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={saveOrderMode === 'team' ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => setSaveOrderMode('team')}
-                                        disabled={isSaving}
-                                    >
-                                        Командный
-                                    </Button>
-                                </div>
-
-                                {saveOrderMode === 'team' && (
-                                    <div className="space-y-2">
-                                        <Select
-                                            value={saveTeamId?.toString() ?? ''}
-                                            onValueChange={(v) => setSaveTeamId(Number(v))}
-                                            disabled={isSaving}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Выберите команду" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {myTeams.map(t => (
-                                                    <SelectItem key={t.id} value={t.id.toString()}>
-                                                        {t.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-
-                                        {saveTeamId !== null && (
-                                            <Select
-                                                value={saveAssignedToUserId?.toString() ?? 'none'}
-                                                onValueChange={(v) => setSaveAssignedToUserId(v === 'none' ? null : Number(v))}
-                                                disabled={isSaving || teamMembersLoading}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder={teamMembersLoading ? 'Загрузка...' : 'Назначить участника'} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">Без назначения</SelectItem>
-                                                    {saveTeamMembers.map(m => (
-                                                        <SelectItem key={m.user_id} value={m.user_id.toString()}>
-                                                            {m.username}{m.role === 'owner' ? ' (владелец)' : m.role === 'admin' ? ' (админ)' : ''}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         {/* Примечания */}
                         <div className="space-y-2">
                             <Label htmlFor="saveNotes">
@@ -2188,26 +2173,6 @@ export default function Calc() {
                                 rows={2}
                             />
                         </div>
-
-                        <Separator />
-
-                        {/* Краткая сводка расчёта */}
-                        {results && (
-                            <div className="rounded-md border px-3 py-2 space-y-1 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Итоговая цена</span>
-                                    <span className="font-semibold">{results.finalPrice.formatted}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Себестоимость</span>
-                                    <span>{results.fullCost.formatted}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Общий вес</span>
-                                    <span>{results.totalWeight.grams} г</span>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     <DialogFooter className="gap-2">
@@ -2216,7 +2181,10 @@ export default function Calc() {
                                 Отмена
                             </Button>
                         </DialogClose>
-                        <Button onClick={handleSaveOrder} disabled={isSaving}>
+                        <Button
+                            onClick={handleSaveOrder}
+                            disabled={isSaving || !saveOrderMode || (saveOrderMode === 'team' && !saveTeamId)}
+                        >
                             {isSaving ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
