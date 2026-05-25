@@ -149,7 +149,7 @@ const EMPTY_FORM: MaterialFormData = {
     price_per_kg: '', density: '', diameter: '1.75',
     is_default: false, quantity: '1',
     weight_per_spool_grams: String(CATEGORY_UNIT_CONFIG['filament'].defaultContainerSize),
-    stock_grams: '0',
+    stock_grams: '1000',
     settings: {},
 }
 
@@ -166,7 +166,7 @@ function formToApiData(form: MaterialFormData): CreateMaterialData {
         is_default:   form.is_default,
         quantity:     parseInt(form.quantity) >= 0 ? parseInt(form.quantity) : 1,
         weight_per_spool_grams: parseFloat(form.weight_per_spool_grams) || 1000,
-        stock_grams:  parseFloat(form.stock_grams) || 0,
+        stock_grams:  parseFloat(form.stock_grams) || 1000,
         settings:     form.settings,
     }
 }
@@ -411,7 +411,7 @@ export default function MaterialsPage() {
     const diameters  = [...new Set(statsBase.filter(m => m.diameter).map(m => m.diameter))]
     const defaultMat = materials.find(m => m.is_default)
     const totalQuantity = statsBase.reduce((s, m) => s + (m.quantity ?? 1), 0)
-    const totalStockGrams = statsBase.reduce((s, m) => s + (Number(m.stock_grams) || 0), 0)
+    const totalStockGrams = statsBase.reduce((s, m) => s + (Number(m.stock_grams) || 1000), 0)
     const totalReservedGrams = statsBase.reduce((s, m) => s + (Number(m.reserved_grams) || 0), 0)
     const lowStockMaterials = statsBase.filter(m => {
         const available = Number(m.stock_grams) - Number(m.reserved_grams)
@@ -583,7 +583,7 @@ export default function MaterialsPage() {
             <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
                 <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     {viewMaterial && (() => {
-                        const stockGrams = Number(viewMaterial.stock_grams) || 0
+                        const stockGrams = Number(viewMaterial.stock_grams) || 1000
                         const spoolWeight = Number(viewMaterial.weight_per_spool_grams) || 1000
                         const reservedGrams = Number(viewMaterial.reserved_grams) || 0
                         const availableGrams = Math.max(0, stockGrams - reservedGrams)
@@ -943,7 +943,7 @@ function MaterialCard({ material, isOwn, isUpdatingQty, onView, onEdit, onDelete
     const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0
-    const stockGrams = Number(material.stock_grams) || 0
+    const stockGrams = Number(material.stock_grams) || 1000
     const spoolWeight = Number(material.weight_per_spool_grams) || 1000
     const qty = computeDisplayQty(stockGrams, spoolWeight)
     const reservedGrams = Number(material.reserved_grams) || 0
