@@ -197,7 +197,6 @@ class TokenModel {
             return insertResult.rows[0];
         } catch (error) {
             await client.query('ROLLBACK');
-            console.error('[replaceToken] FAILED:', error.message, '| detail:', error.detail, '| code:', error.code);
             throw error;
         } finally {
             client.release();

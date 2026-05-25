@@ -2,7 +2,26 @@
 const pool = require('../config/database');
 
 class OrderModel {
-    // Создание таблицы заказов
+    static #SELECT_BASE = `
+        SELECT o.*,
+               p.name as printer_name, p.type as printer_type,
+               m.name as material_name, m.category as material_category, m.type as material_type,
+               c.name as client_name, c.phone as client_phone, c.email as client_email,
+               tm.name as team_name,
+               COALESCE(
+                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
+                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
+                    WHERE ot.order_id = o.id),
+                   '[]'::json
+               ) AS tags,
+               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
+        FROM orders o
+        LEFT JOIN printers  p  ON o.printer_id  = p.id
+        LEFT JOIN materials m  ON o.material_id = m.id
+        LEFT JOIN clients   c  ON o.client_id   = c.id
+        LEFT JOIN teams     tm ON o.team_id     = tm.id
+    `;
+
     static async createTable() {
         const query = `
             CREATE TABLE IF NOT EXISTS orders (
@@ -239,25 +258,8 @@ class OrderModel {
     // ─── Получение всех заказов пользователя ─────────────────────────────────────
     static async findByUser(userId, filters = {}, limit = 50, offset = 0) {
         const { where, params } = this.#buildFilters(userId, filters);
-
         const query = `
-        SELECT o.*,
-               p.name as printer_name, p.type as printer_type,
-               m.name as material_name, m.category as material_category, m.type as material_type,
-               c.name as client_name, c.phone as client_phone, c.email as client_email,
-               tm.name as team_name,
-               COALESCE(
-                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
-                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
-                    WHERE ot.order_id = o.id),
-                   '[]'::json
-               ) AS tags,
-               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
-        FROM orders o
-        LEFT JOIN printers  p  ON o.printer_id  = p.id
-        LEFT JOIN materials m  ON o.material_id = m.id
-        LEFT JOIN clients   c  ON o.client_id   = c.id
-        LEFT JOIN teams     tm ON o.team_id     = tm.id
+        ${this.#SELECT_BASE}
         ${where}
         ORDER BY o.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -278,23 +280,7 @@ class OrderModel {
     // ─── Получение заказа по ID ───────────────────────────────────────────────────
     static async findById(id, userId) {
         const query = `
-        SELECT o.*,
-               p.name as printer_name, p.type as printer_type,
-               m.name as material_name, m.category as material_category, m.type as material_type,
-               c.name as client_name, c.phone as client_phone, c.email as client_email,
-               tm.name as team_name,
-               COALESCE(
-                   (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY t.name)
-                    FROM order_tags ot JOIN tags t ON t.id = ot.tag_id
-                    WHERE ot.order_id = o.id),
-                   '[]'::json
-               ) AS tags,
-               (SELECT COUNT(*) FROM order_comments WHERE order_id = o.id) AS comments_count
-        FROM orders o
-        LEFT JOIN printers  p  ON o.printer_id  = p.id
-        LEFT JOIN materials m  ON o.material_id = m.id
-        LEFT JOIN clients   c  ON o.client_id   = c.id
-        LEFT JOIN teams     tm ON o.team_id     = tm.id
+        ${this.#SELECT_BASE}
         WHERE o.id = $1 AND (
             o.user_id = $2
             OR (o.order_mode = 'team' AND EXISTS (
@@ -520,28 +506,29 @@ class OrderModel {
     //   personal — только личные заказы пользователя
     //   team     — все командные заказы в командах пользователя
     static #statsWhere(userId, orderMode = null) {
+        const params = [userId];
+        let where;
         if (orderMode === 'personal') {
-            return `WHERE user_id = ${userId} AND order_mode = 'personal'`;
-        }
-        if (orderMode === 'team') {
-            return `WHERE order_mode = 'team' AND (
-                user_id = ${userId}
-                OR team_id IN (SELECT team_id FROM team_members WHERE user_id = ${userId})
+            where = `WHERE user_id = $1 AND order_mode = 'personal'`;
+        } else if (orderMode === 'team') {
+            where = `WHERE order_mode = 'team' AND (
+                user_id = $1
+                OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+            )`;
+        } else {
+            where = `WHERE (
+                (user_id = $1 AND order_mode = 'personal')
+                OR (order_mode = 'team' AND team_id IN (
+                    SELECT team_id FROM team_members
+                    WHERE user_id = $1 AND merge_stats_with_personal = TRUE
+                ))
             )`;
         }
-        // null — личные + командные с merge_stats_with_personal = TRUE
-        return `WHERE (
-            (user_id = ${userId} AND order_mode = 'personal')
-            OR (order_mode = 'team' AND team_id IN (
-                SELECT team_id FROM team_members
-                WHERE user_id = ${userId} AND merge_stats_with_personal = TRUE
-            ))
-        )`;
+        return { where, params };
     }
 
     static async getStats(userId, period = 'all', orderMode = null) {
         let dateFilter = '';
-
         if (period === 'month') {
             dateFilter = "AND created_at >= date_trunc('month', CURRENT_DATE)";
         } else if (period === 'week') {
@@ -550,8 +537,7 @@ class OrderModel {
             dateFilter = "AND created_at >= date_trunc('year', CURRENT_DATE)";
         }
 
-        const statsWhere = this.#statsWhere(userId, orderMode);
-
+        const { where, params } = this.#statsWhere(userId, orderMode);
         const query = `
             SELECT
                 COUNT(*)                                                                     AS total_orders,
@@ -570,18 +556,18 @@ class OrderModel {
                 MAX(final_price)                                                              AS max_order_value,
                 MIN(CASE WHEN status = 'completed' THEN final_price END)                     AS min_order_value
             FROM orders
-            ${statsWhere}
+            ${where}
             ${dateFilter}
         `;
-
-        const result = await pool.query(query);
+        const result = await pool.query(query, params);
         return result.rows[0];
     }
 
     // ─── Статистика по месяцам ────────────────────────────────────────────────────
     static async getMonthlyStats(userId, year = null, orderMode = null) {
         if (!year) year = new Date().getFullYear();
-        const statsWhere = this.#statsWhere(userId, orderMode);
+        const { where, params } = this.#statsWhere(userId, orderMode);
+        params.push(year);
 
         const query = `
             SELECT
@@ -592,17 +578,17 @@ class OrderModel {
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN final_price        ELSE 0 END), 0) AS revenue,
                 COALESCE(SUM(CASE WHEN status = 'completed' THEN total_weight_grams ELSE 0 END), 0) AS filament_used
             FROM orders
-            ${statsWhere} AND EXTRACT(YEAR FROM created_at) = ${year}
+            ${where} AND EXTRACT(YEAR FROM created_at) = $${params.length}
             GROUP BY EXTRACT(MONTH FROM created_at)
             ORDER BY month
         `;
-        const result = await pool.query(query);
+        const result = await pool.query(query, params);
         return result.rows;
     }
 
     // ─── Статистика по статусам ───────────────────────────────────────────────────
     static async getStatusStats(userId, orderMode = null) {
-        const statsWhere = this.#statsWhere(userId, orderMode);
+        const { where, params } = this.#statsWhere(userId, orderMode);
         const query = `
             SELECT
                 status,
@@ -610,7 +596,7 @@ class OrderModel {
                 COALESCE(SUM(final_price), 0)        AS total_value,
                 COALESCE(SUM(total_weight_grams), 0) AS total_weight
             FROM orders
-            ${statsWhere}
+            ${where}
             GROUP BY status
             ORDER BY
                 CASE status
@@ -619,7 +605,7 @@ class OrderModel {
                     WHEN 'cancelled'   THEN 3
                 END
         `;
-        const result = await pool.query(query);
+        const result = await pool.query(query, params);
         return result.rows;
     }
 
@@ -657,8 +643,7 @@ class OrderModel {
     // ─── Массовое обновление статусов (один запрос) ───────────────────────────────
     static async bulkUpdateStatus(userId, orderIds, newStatus) {
         if (!orderIds.length) return [];
-        // Параметры: $1=userId, $2=status, $3...=ids
-        const idPlaceholders = orderIds.map((_, i) => `${i + 3}`).join(', ');
+        const idPlaceholders = orderIds.map((_, i) => `$${i + 3}`).join(', ');
         const completedAt = newStatus === 'completed' ? 'CURRENT_TIMESTAMP' : 'NULL';
         const query = `
             UPDATE orders

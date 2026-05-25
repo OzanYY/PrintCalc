@@ -2,7 +2,41 @@
 const pool = require('../config/database');
 
 class MaterialModel {
-    // Создание таблицы материалов
+    static #VALID_TYPES = {
+        filament: ['pla', 'abs', 'petg', 'tpu', 'nylon', 'pc', 'peek', 'pva', 'hips', 'asa', 'pp', 'carbon', 'wood', 'metal', 'glow', 'other'],
+        resin: ['standard', 'tough', 'flexible', 'castable', 'dental', 'jewelry', 'transparent', 'colored', 'engineering', 'other'],
+        powder: ['nylon', 'alumide', 'steel', 'titanium', 'aluminum', 'other'],
+        other: ['wax', 'paper', 'ceramic', 'other'],
+    };
+
+    // Колонки с учётом командного доступа (параметр $1 = userId)
+    static get #TEAM_COLS() {
+        return `
+            CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
+            u.username AS owner_username,
+            CASE WHEN m.user_id != $1 THEN (
+                SELECT t.name FROM teams t
+                JOIN team_resources tr2 ON tr2.team_id = t.id
+                    AND tr2.resource_id = m.id
+                    AND tr2.resource_type = 'material'
+                JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
+                LIMIT 1
+            ) ELSE NULL END AS team_name
+        `;
+    }
+
+    // WHERE-условие: свои + расшаренные в командах (параметр $1 = userId)
+    static get #ACCESS_WHERE() {
+        return `(m.user_id = $1
+           OR m.id IN (
+               SELECT tr.resource_id
+               FROM team_resources tr
+               JOIN team_members tm ON tm.team_id = tr.team_id
+               WHERE tr.resource_type = 'material'
+                 AND tm.user_id = $1
+           ))`;
+    }
+
     static async createTable() {
         const query = `
             CREATE TABLE IF NOT EXISTS materials (
@@ -34,23 +68,13 @@ class MaterialModel {
         await pool.query(query);
     }
 
-    // Валидация типа материала в зависимости от категории
     static validateType(category, type) {
-        const validTypes = {
-            filament: ['pla', 'abs', 'petg', 'tpu', 'nylon', 'pc', 'peek', 'pva', 'hips', 'asa', 'pp', 'carbon', 'wood', 'metal', 'glow', 'other'],
-            resin: ['standard', 'tough', 'flexible', 'castable', 'dental', 'jewelry', 'transparent', 'colored', 'engineering', 'other'],
-            powder: ['nylon', 'alumide', 'steel', 'titanium', 'aluminum', 'other'],
-            other: ['wax', 'paper', 'ceramic', 'other']
-        };
-
-        if (!validTypes[category]) {
+        if (!this.#VALID_TYPES[category]) {
             throw new Error(`Invalid category: ${category}`);
         }
-
-        if (!validTypes[category].includes(type)) {
-            throw new Error(`Invalid type '${type}' for category '${category}'. Allowed types: ${validTypes[category].join(', ')}`);
+        if (!this.#VALID_TYPES[category].includes(type)) {
+            throw new Error(`Invalid type '${type}' for category '${category}'. Allowed types: ${this.#VALID_TYPES[category].join(', ')}`);
         }
-
         return true;
     }
 
@@ -113,30 +137,12 @@ class MaterialModel {
         return result.rows[0];
     }
 
-    // Получение всех материалов пользователя и расшаренных в его командах
     static async findByUser(userId, category = null) {
         let query = `
-            SELECT m.*,
-                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
-                   u.username AS owner_username,
-                   CASE WHEN m.user_id != $1 THEN (
-                       SELECT t.name FROM teams t
-                       JOIN team_resources tr2 ON tr2.team_id = t.id
-                           AND tr2.resource_id = m.id
-                           AND tr2.resource_type = 'material'
-                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
-                       LIMIT 1
-                   ) ELSE NULL END AS team_name
+            SELECT m.*, ${this.#TEAM_COLS}
             FROM materials m
             JOIN users u ON u.id = m.user_id
-            WHERE (m.user_id = $1
-               OR m.id IN (
-                   SELECT tr.resource_id
-                   FROM team_resources tr
-                   JOIN team_members tm ON tm.team_id = tr.team_id
-                   WHERE tr.resource_type = 'material'
-                     AND tm.user_id = $1
-               ))`;
+            WHERE ${this.#ACCESS_WHERE}`;
         const params = [userId];
 
         if (category) {
@@ -173,30 +179,12 @@ class MaterialModel {
         return result.rows[0] || null;
     }
 
-    // Получение материалов по категории (только свои + расшаренные в командах)
     static async findByCategory(userId, category) {
         const query = `
-            SELECT m.*,
-                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
-                   u.username AS owner_username,
-                   CASE WHEN m.user_id != $1 THEN (
-                       SELECT t.name FROM teams t
-                       JOIN team_resources tr2 ON tr2.team_id = t.id
-                           AND tr2.resource_id = m.id
-                           AND tr2.resource_type = 'material'
-                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
-                       LIMIT 1
-                   ) ELSE NULL END AS team_name
+            SELECT m.*, ${this.#TEAM_COLS}
             FROM materials m
             JOIN users u ON u.id = m.user_id
-            WHERE (m.user_id = $1
-               OR m.id IN (
-                   SELECT tr.resource_id
-                   FROM team_resources tr
-                   JOIN team_members tm ON tm.team_id = tr.team_id
-                   WHERE tr.resource_type = 'material'
-                     AND tm.user_id = $1
-               ))
+            WHERE ${this.#ACCESS_WHERE}
               AND m.category = $2
             ORDER BY m.type, m.name
         `;
@@ -330,42 +318,16 @@ class MaterialModel {
         return result.rows[0];
     }
 
-    // Получение доступных типов для категории (для UI)
     static getTypesByCategory(category) {
-        const types = {
-            filament: ['pla', 'abs', 'petg', 'tpu', 'nylon', 'pc', 'peek', 'pva', 'hips', 'asa', 'pp', 'carbon', 'wood', 'metal', 'glow', 'other'],
-            resin: ['standard', 'tough', 'flexible', 'castable', 'dental', 'jewelry', 'transparent', 'colored', 'engineering', 'other'],
-            powder: ['nylon', 'alumide', 'steel', 'titanium', 'aluminum', 'other'],
-            other: ['wax', 'paper', 'ceramic', 'other']
-        };
-        
-        return types[category] || [];
+        return this.#VALID_TYPES[category] || [];
     }
 
-    // Поиск материалов по названию или бренду (только свои + расшаренные в командах)
     static async search(userId, searchTerm) {
         const query = `
-            SELECT m.*,
-                   CASE WHEN m.user_id = $1 THEN m.is_default ELSE false END AS is_default,
-                   u.username AS owner_username,
-                   CASE WHEN m.user_id != $1 THEN (
-                       SELECT t.name FROM teams t
-                       JOIN team_resources tr2 ON tr2.team_id = t.id
-                           AND tr2.resource_id = m.id
-                           AND tr2.resource_type = 'material'
-                       JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1
-                       LIMIT 1
-                   ) ELSE NULL END AS team_name
+            SELECT m.*, ${this.#TEAM_COLS}
             FROM materials m
             JOIN users u ON u.id = m.user_id
-            WHERE (m.user_id = $1
-               OR m.id IN (
-                   SELECT tr.resource_id
-                   FROM team_resources tr
-                   JOIN team_members tm ON tm.team_id = tr.team_id
-                   WHERE tr.resource_type = 'material'
-                     AND tm.user_id = $1
-               ))
+            WHERE ${this.#ACCESS_WHERE}
               AND (m.name ILIKE $2 OR m.brand ILIKE $2 OR m.type ILIKE $2)
             ORDER BY (m.user_id = $1 AND m.is_default) DESC, m.created_at DESC
         `;

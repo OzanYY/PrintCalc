@@ -35,13 +35,8 @@ class UserModel {
             VALUES ($1, $2, $3, $4)
             RETURNING id, username, email, is_activated, role, created_at
         `;
-        const values = [username, email, password_hash, activation_link];
-        try {
-            const result = await pool.query(query, values);
-            return result.rows[0];
-        } catch (error) {
-            throw error;
-        }
+        const result = await pool.query(query, [username, email, password_hash, activation_link]);
+        return result.rows[0];
     }
 
     static async findByEmail(email) {
