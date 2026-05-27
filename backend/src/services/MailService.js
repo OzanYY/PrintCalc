@@ -10,7 +10,9 @@ class MailService {
             auth: {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASSWORD
-            }
+            },
+            debug: true, // Включает вывод подробных логов в консоль
+            logger: true // Включает встроенный логгер
         });
     }
 
