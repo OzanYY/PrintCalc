@@ -1,7 +1,7 @@
 // routes/orderRoutes.js
 const express = require('express');
 const router  = express.Router();
-const OrderController = require('../controllers/orderController');
+const OrderController = require('../controllers/OrderController');
 const TagController         = require('../controllers/TagController');
 const OrderCommentController = require('../controllers/OrderCommentController');
 const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
