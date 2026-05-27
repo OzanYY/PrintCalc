@@ -1,7 +1,7 @@
 // routes/printerRoutes.js
 const express = require('express');
 const router  = express.Router();
-const PrinterController = require('../controllers/printerController');
+const PrinterController = require('../controllers/PrinterController');
 const { authMiddleware, requireAuth, requireActivated } = require('../middleware/auth-middleware');
 
 router.use(authMiddleware);
