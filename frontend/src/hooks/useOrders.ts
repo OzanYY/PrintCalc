@@ -70,9 +70,6 @@ interface UseOrdersReturn {
   // ─── Массовые операции ────────────────────────────────────────────────────
   bulkUpdateStatus: (ids: number[], status: OrderStatus) => Promise<boolean>;
 
-  // ─── Экспорт ──────────────────────────────────────────────────────────────
-  exportCSV: (status?: OrderStatus) => Promise<boolean>;
-
   // ─── Утилиты ──────────────────────────────────────────────────────────────
   clearError: () => void;
   refresh: () => Promise<void>;

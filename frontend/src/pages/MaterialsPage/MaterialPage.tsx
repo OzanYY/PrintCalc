@@ -3,7 +3,7 @@ import {
     Plus, Package, Edit, Trash2, MoreVertical, Star,
     Copy, Droplet, Ruler, Weight, CircleDot,
     Beaker, Loader2, RefreshCw, X, PlusCircle, Settings2,
-    Layers, Minus, History, AlertTriangle, TrendingDown, TrendingUp,
+    Layers, History, AlertTriangle, TrendingDown, TrendingUp,
     Users, User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -408,8 +408,6 @@ export default function MaterialsPage() {
     const avgPrice   = statsBase.length ? Math.round(totalPrice / statsBase.length) : 0
     const minPrice   = prices.length ? Math.min(...prices) : 0
     const maxPrice   = prices.length ? Math.max(...prices) : 0
-    const diameters  = [...new Set(statsBase.filter(m => m.diameter).map(m => m.diameter))]
-    const defaultMat = materials.find(m => m.is_default)
     const totalQuantity = statsBase.reduce((s, m) => s + (m.quantity ?? 1), 0)
     const totalStockGrams = statsBase.reduce((s, m) => s + (Number(m.stock_grams) || 1000), 0)
     const totalReservedGrams = statsBase.reduce((s, m) => s + (Number(m.reserved_grams) || 0), 0)
@@ -939,7 +937,7 @@ function formatAvailable(grams: number, category: MaterialCategory): string {
     return `${(grams / 1000).toFixed(3)} кг`
 }
 
-function MaterialCard({ material, isOwn, isUpdatingQty, onView, onEdit, onDelete, onSetDefault, onDuplicate, onQuantityInc, onQuantityDec, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
+function MaterialCard({ material, isOwn, isUpdatingQty, onView, onEdit, onDelete, onSetDefault, onDuplicate, onHistory, onAdjustAdd, onAdjustSub }: MaterialCardProps) {
     const [menuOpen, setMenuOpen] = useState(false)
     const settingsEntries = Object.entries(material.settings ?? {})
     const hasSettings = settingsEntries.length > 0

@@ -1084,9 +1084,6 @@ function TeamsSection() {
         [allUsers, members]
     );
 
-    const ROLE_LABEL: Record<string, string> = { owner: 'Владелец', admin: 'Администратор', member: 'Участник' };
-    const err = (e: unknown) => (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
-
     if (loading && teams.length === 0) return <div className="flex items-center justify-center h-48 text-muted-foreground">Загрузка...</div>;
 
     return (

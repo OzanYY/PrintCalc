@@ -74,7 +74,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import type { Order, CreateOrderData } from '@/api/orders';
 import { tagsAPI } from '@/api/tags';
-import type { Tag } from '@/api/tags';
 import { printersAPI } from '@/api/printers';
 import type { Printer } from '@/api/printers';
 import { materialsAPI } from '@/api/materials';
@@ -347,7 +346,7 @@ interface OrderFormProps {
   isEdit?: boolean;
 }
 
-const OrderForm = ({ data, onChange, printers = [], materials = [], isEdit }: OrderFormProps) => {
+const OrderForm = ({ data, onChange, printers = [], materials = [] }: OrderFormProps) => {
   const handle = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange(e.target.name, e.target.value);
 
@@ -699,7 +698,6 @@ export default function OrdersPage() {
     completeOrder,
     cancelOrder,
     reopenOrder,
-    updateStatus,
     clearError,
     refresh,
   } = useOrders({ autoFetch: true });

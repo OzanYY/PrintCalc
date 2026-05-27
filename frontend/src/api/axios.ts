@@ -34,7 +34,7 @@ export async function performRefresh(): Promise<void> {
 
     refreshPromise = axios
         .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
-        .then(async (res) => {
+        .then(async () => {
             await authRefreshBridge.notify();
             processQueue(null);
         })

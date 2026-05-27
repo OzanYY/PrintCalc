@@ -275,7 +275,6 @@ export default function Calc() {
         selectedPresets,
         setSelectedPreset,
         setSelectedPrinter,
-        resetToDefaults,
         resetAll,
     } = useCalculator()
 
@@ -289,7 +288,7 @@ export default function Calc() {
     }>({ power: [], cost: [], hours: [] })
 
     const [materialPresets, setMaterialPresets] = useState<PresetOption[]>([])
-    const [materialsData, setMaterialsData] = useState<import('@/api/materials').Material[]>([])
+    const [, setMaterialsData] = useState<import('@/api/materials').Material[]>([])
     const materialsDataRef = useRef<import('@/api/materials').Material[]>([])
 
     const loadPresets = useCallback(async () => {
@@ -856,11 +855,6 @@ export default function Calc() {
         setSuccessMessage('')
         localStorage.removeItem('calculator_results')
         toast.info("Значения сброшены к стандартным", { duration: 2000 })
-    }
-
-    const resetFormOnly = () => {
-        resetToDefaults()
-        toast.info("Параметры сброшены, результаты сохранены", { duration: 2000 })
     }
 
     // ─── Импорт .3mf ─────────────────────────────────────────────────────────

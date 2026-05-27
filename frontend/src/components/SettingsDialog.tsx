@@ -72,10 +72,6 @@ const getDeviceLabel = (userAgent: string) => {
     return os ? `${browser} · ${os}` : browser;
 };
 
-// TTL access-токена — 15 мин. last_used_at = expires_at access-токена.
-// Сессия считается «в сети» если access-токен ещё не истёк (last_used_at > now).
-const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
-
 const isOnline = (lastUsedAt: string | undefined): boolean => {
     if (!lastUsedAt) return false;
     return new Date(lastUsedAt).getTime() > Date.now();

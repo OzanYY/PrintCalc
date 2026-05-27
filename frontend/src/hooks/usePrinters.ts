@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
-import { printersAPI, type Printer, type CreatePrinterData, type UpdatePrinterData, type PrinterType } from '@/api/printers'
+import { printersAPI, type Printer, type CreatePrinterData, type UpdatePrinterData } from '@/api/printers'
 
 export function usePrinters() {
     const [printers, setPrinters]   = useState<Printer[]>([])

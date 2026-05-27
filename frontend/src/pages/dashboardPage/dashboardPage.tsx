@@ -2,14 +2,13 @@
 
 import * as React from "react"
 import {
-  Area, AreaChart, Bar, BarChart, Pie, PieChart, Line, LineChart,
-  CartesianGrid, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip, Legend,
-  RadialBarChart, RadialBar,
+  Area, AreaChart, Bar, BarChart, Pie, PieChart, Line,
+  CartesianGrid, XAxis, YAxis, Cell, Tooltip
 } from "recharts"
 import {
-  Printer, Package, ShoppingCart, DollarSign, Clock, TrendingUp,
+  Printer, Package, ShoppingCart, DollarSign, TrendingUp,
   Calendar, RefreshCw, CheckCircle2,
-  Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity, Target,
+  Timer, Loader2, Zap, BarChart2, AlertTriangle, Activity,
   ArrowUpRight, ArrowDownRight, Minus, Star, Users,
   Hash, Percent, Banknote, Scale, ReceiptText, HelpCircle,
   ChevronDown, ChevronUp, History, Lock, Unlock, PackageMinus, PackagePlus,
@@ -22,9 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Separator } from "@/components/ui/separator"
 
 import { ordersAPI } from "@/api/orders"
 import type { OrderStatsResponse, Order } from "@/api/orders"
@@ -32,7 +29,7 @@ import { printersAPI } from "@/api/printers"
 import type { Printer as PrinterType } from "@/api/printers"
 import { materialsAPI, CATEGORY_UNIT_CONFIG, CATEGORY_LABELS } from "@/api/materials"
 import type { Material } from "@/api/materials"
-import { inventoryAPI, TX_LABELS, TX_COLORS, TX_SIGN } from "@/api/inventory"
+import { inventoryAPI, TX_LABELS, TX_COLORS } from "@/api/inventory"
 import type { MaterialTransaction } from "@/api/inventory"
 import { teamsAPI } from "@/api/teams"
 import type { Team } from "@/api/teams"
@@ -190,7 +187,6 @@ const StockBar = ({ stock, reserved, spool, unit }: { stock: number; reserved: n
   const total = Math.max(stock, spool, 1)
   const reservedPct = Math.min((reserved / total) * 100, 100)
   const freePct = Math.min((free / total) * 100, 100 - reservedPct)
-  const criticalPct = spool > 0 ? 10 : 0 // метка 10% от катушки
 
   return (
     <div className="space-y-1">
@@ -261,7 +257,7 @@ interface RoiTabProps {
 const RoiTab = ({
   printers, printerStats, materials, materialStats,
   totalRevenue, totalProfit, totalExpenses, totalElectricityCost,
-  monthlyData, isLoading, fmt, fmtNum,
+  monthlyData, isLoading, fmt,
 }: RoiTabProps) => {
   const toNum = (v: unknown) => { const n = Number(v); return isFinite(n) ? n : 0 }
 
@@ -526,7 +522,7 @@ interface MaterialsTabProps {
 
 const MaterialsTab = ({
   materials, materialStats, transactions, txLoading,
-  monthlyFilamentAvg, materialRunout, totalFilament, isLoading,
+  monthlyFilamentAvg, materialRunout, isLoading,
 }: MaterialsTabProps) => {
   const [expandedMaterial, setExpandedMaterial] = React.useState<number | null>(null)
   const [txPage, setTxPage] = React.useState(1)
@@ -1092,9 +1088,6 @@ export default function StatisticsPage() {
   const totalFilament = toNum(s?.total_filament_used)
   const totalPrintTime = toNum(s?.total_print_time)
   const avgOrderValue = toNum(s?.avg_order_value)
-
-  const cancellationRate = totalOrders > 0 ? (cancelled / totalOrders) * 100 : 0
-  const completionRate = totalOrders > 0 ? (completed / totalOrders) * 100 : 0
   const conversionRate = toNum(effectiveStatsData?.analytics?.conversion_rate)
   const avgMargin = toNum(effectiveStatsData?.analytics?.average_profit_margin)
   const avgCostPerGram = toNum(effectiveStatsData?.analytics?.average_cost_per_gram)

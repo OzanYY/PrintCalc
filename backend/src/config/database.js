@@ -19,7 +19,7 @@ const pool = new Pool({
   port: process.env.DB_PORT,
   max: 20, // максимальное количество клиентов в пуле
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
 // Проверка подключения

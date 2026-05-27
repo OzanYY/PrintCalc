@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,7 +63,7 @@ const STATUS_COLOR: Record<string, string> = {
     cancelled:   'bg-destructive text-white',
 };
 
-function TeamOrdersTab({ teamId, members }: { teamId: number; members: TeamMember[] }) {
+function TeamOrdersTab({ teamId }: { teamId: number; members: TeamMember[] }) {
     const [orders, setOrders]   = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal]     = useState(0);
