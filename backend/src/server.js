@@ -40,6 +40,7 @@ const invitationRoutes    = require('./routes/invitation-routes');
 const PORT = process.env.PORT || 5000;
 // Создаем приложение express
 const app = express()
+app.set('trust proxy', 1);
 
 // ─── Rate Limiters ───────────────────────────────────────────────────────────
 const authLimiter = rateLimit({

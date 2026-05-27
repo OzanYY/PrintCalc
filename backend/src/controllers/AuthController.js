@@ -13,13 +13,14 @@ class AuthController {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'none',
+            partitioned: true,
         };
         res.cookie('accessToken', accessToken, { ...base, maxAge: AuthController.ACCESS_MAX_AGE });
         res.cookie('refreshToken', refreshToken, { ...base, maxAge: AuthController.REFRESH_MAX_AGE });
     }
 
     static #clearCookies(res) {
-        const base = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none' };
+        const base = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', partitioned: true, };
         res.clearCookie('accessToken', base);
         res.clearCookie('refreshToken', base);
     }
