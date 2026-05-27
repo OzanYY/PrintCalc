@@ -58,10 +58,7 @@ const ALLOWED_ORIGINS = [
     ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
 ];
 const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
-        callback(new Error(`CORS: origin ${origin} not allowed`));
-    },
+    origin: process.env.CLIENT_URL,
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
