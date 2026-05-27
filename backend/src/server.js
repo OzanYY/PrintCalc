@@ -73,7 +73,7 @@ app.use(cookieParser());
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
-app.use(helmet({ contentSecurityPolicy: false })); // Security headers
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false })); // Security headers
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth", authRoutes);
